@@ -1,12 +1,16 @@
-An open source 3D first-person player controller for [Godot Engine](https://godotengine.org/) (made in version *4.2+*). This controller currently supports air strafing, bunny hopping, crouching, walking, and more!
+An **open source** 3D first-person player controller for [Godot Engine](https://godotengine.org/) (version *4.3* and should work with *4.2*). This controller currently supports air strafing, bunny hopping, crouching, walking, and more!
 
 This asset is a big work in progress and we plan on adding more features along with improving the current player movement in the future as we develop our own [open source games](https://moddingcommunity.com/forum/335-dot-games/).
 
 ## Features
 * Air strafing
-* Bunny hopping
+* Bunny-hopping (with auto-hop option)
 * Crouching
+* Sprinting
 * Walking
+* FPS and speed 2D labels
+
+View our roadmap [here](https://github.com/orgs/modcommunity/projects/8)!
 
 ## Godot Input Actions
 The following input actions need to be added to the Godot project via *Project -> Project Settings -> Input Map* for the controller to work properly.
@@ -15,38 +19,61 @@ The following input actions need to be added to the Godot project via *Project -
 | ------ | ----------- |
 | `player_l` | Moves the player to the left. |
 | `player_r` | Moves the player to the right. |
-| `player_f` | Moves the player forward. |
-| `player_b` | Moves the player backward. |
-| `player_jump` | Has the player jump. |
-| `player_crouch` | Has the player crouch. |
+| `player_f` | Moves the player forwards. |
+| `player_b` | Moves the player backwards. |
+| `player_jump` | The player jump action. |
+| `player_crouch` | The player crouch action. |
+| `player_shift` | The player shift action. |
+| `player_walk` | The player walk action. |
 
 **Note** - Mouse wheel up button is supported for the `player_jump` input!
 
-**Note** - The `player_crouch` input works as a press/release. Therefore, the player must hold the input down to crouch and release it when they want to stop crouching.
+**Note** - The `player_crouch`, `player_shift`, and `player_walk` inputs works as press and release. For example, the player must hold the input down to crouch and release it when they want to stop crouching.
 
 ## Controller Settings
 The following are variables exported by the player controller that can be modified outside of the controller.
 
-**Warning** - These settings are a bit messy right now and will be overhauled in the future!
-
+### General
 | Setting | Default | Description |
 | ------- | ------- | ----------- |
-| `MAX_G_SPEED` | `6.0` | The maximum ground/base speed. |
-| `MAX_W_SPEED` | `4.0` | The maximum walk speed. |
-| `MAX_C_SPEED` | `3.0` | The maximum crouch speed. |
-| `MAX_G_ACCEL` | `20.0` | The maximum acceleration speed. |
-| `MAX_AIR_SPEED` | `0.5` | The maximum speed while in the air. |
-| `MAX_AIR_ACCEL` | `100.0` | The maximum acceleration while in the air. |
-| `JUMP_FORCE` | `4.5` | The force to apply vertically when jumping. |
-| `GRAVITY_FORCE` | `15.0` | The gravity force to apply when the player is in the air. |
-| `MAX_SLOPE` | `0.803` | *To Do...* |
-| `LERP_SPEED` | `12.0` | The lerp time. This is times with the delta when using `lerp()` to smooth out player movement. |
-| `FRICTION` | `10.0` | The amount of friction to apply to the player when moving. This is also used in the `lerp()` function when smoothing out player movement. |
-| `CROUCH_DEPTH` | `-0.5` | Subtracts this value from the `y` position of the player controller's camera when the player is crouching. |
-| `FLOOR_RAY_POS` | `(0, 0, 0)` | *To Do...* |
-| `FLOOR_RAY_REACH` | `3.0` | How far to create a ray to the ground when detecting if the player is on the floor. |
-| `MOUSE_SENS` | `0.002` | The mouse sensitivity. |
-| `AUTO_BHOP` | `false` | When on, the player can hold in the `player_jump` input and automatically jump when detected on the floor. |
+| `verbose` | `0` | The verbose level (determines what is printed to the Godot debug console). |
+| `mouse_sens_x` | `0.3` | The mouse sensitivity while looking left and right. |
+| `mouse_sens_y` | `0.3` | The mouse sensitivity while looking up and down. |
+| `max_look_angle_down` | `-90` | The max look angle down. |
+| `max_look_angle_up` | `90` | The max look angle up. |
+| `max_slope_angle` | `deg_to_rad(45)` | The max slope angle. |
+| `crouch_depth` | `-0.5` | The depth to apply when crouching. |
+| `crouch_lerp_speed` | `12.0` | The lerp speed when crouching. |
+
+### Feature Settings
+| Setting | Default | Description |
+| ------- | ------- | ----------- |
+| `can_noclip` | `false` | Whether the player can noclip (not yet implemented). |
+| `can_crouch` | `true` | Whether the player can crouch. |
+| `can_sprint` | `true` | Whether the player can sprint. |
+| `can_walk` | `true` | Whether the player can walk. |
+| `can_auto_hop` | `false` | Whether the player can auto-hop by holding down space. |
+
+### Movement Settings
+| Setting | Default | Description |
+| ------- | ------- | ----------- |
+| `max_speed` | `7` | The max speed. |
+| `speed_left` | `0.100` | The left speed. |
+| `speed_right` | `0.100` | The right speed. |
+| `speed_forward` | `0.100` | The forward speed. |
+| `speed_back` | `0.100` | The backwards speed. |
+| `crouch_speed_multiplier` | `0.4` | The crouch speed multiplier. |
+| `walk_speed_multiplier` | `0.4` | The walk speed multiplier. |
+| `sprint_speed_multiplier` | `1.5` | The sprint speed multiplier. |
+| `accelerate` | `3` | The accelerate speed. |
+| `air_accelerate` | `100` | The accelerate speed while in air. |
+| `max_air_speed` | `1` | The max speed while in the air. |
+| `friction` | `1.5` | The amount of friction to apply. |
+| `stop_speed` | `10` | The stop speed. |
+| `gravity` | `25` | The amount of gravity to apply. |
+| `max_velocity` | `40000` | The maximum velocity. |
+| `jump_height` | `1` | The jump height. |
+
 
 ## Preview
 Here are some GIFs and images showcasing the controller as of *3-2-24*.
