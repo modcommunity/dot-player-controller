@@ -10,7 +10,7 @@ This asset is a big work in progress and we plan on adding more features along w
 * Walking
 * FPS and speed 2D labels
 
-View our roadmap [here](https://github.com/orgs/modcommunity/projects/8)!
+View our roadmap [here](https://github.com/orgs/modcommunity/projects/9)!
 
 ## Godot Input Actions
 The following input actions need to be added to the Godot project via *Project -> Project Settings -> Input Map* for the controller to work properly.
