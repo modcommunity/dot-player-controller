@@ -1,3 +1,20 @@
-# Godot 4+ specific ignores
+# Godot 4
 .godot/
+/android/
+
+# dot-core is a separate repository. For local development, symlink it:
+#   ln -s ../../dot-core/addons/dot_core addons/dot_core
+# Consumers copy both addons into their own project.
+/addons/dot_core
+
+# Exports
+build/
+export_presets.cfg
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
 .vscode/
+/addons/dot_net
