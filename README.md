@@ -19,8 +19,8 @@ stair stepping, crouching that checks for headroom, coyote time and jump bufferi
 The simulation is deterministic and driven entirely by explicit commands, so a client
 can predict it and a server can reconcile it.
 
-Part of the [dot-\*](../) family. Requires [dot-core](../dot-core). Works with
-[dot-net](../dot-net) and [dot-server](../dot-server), and requires neither.
+Part of the [dot-\*](https://github.com/modcommunity) family. Requires [dot-core](https://github.com/modcommunity/dot-core). Works with
+[dot-net](https://github.com/modcommunity/dot-net) and [dot-server](https://github.com/modcommunity/dot-server), and requires neither.
 
 ## Install
 
