@@ -734,5 +734,41 @@ func _test_local_drive_accumulator() -> void:
 		"render_state is a copy, so nothing can write back through it"
 	)
 
+	# [b]And it has to do that under EXTERNAL drive, which is the only one a
+	# networked game uses.[/b] It used to refuse anything but LOCAL and return the raw
+	# tick state, so every client of every game in this family drew its own player
+	# quantised to the tick rate — 74 mm on six frames out of seven and 112 mm on the
+	# seventh, at 60 frames against a 128-tick server. The cure was written, documented
+	# and unreachable from the one deployment shape that needed it.
+	#
+	# Asserted with an explicit alpha rather than a frame-timed one: the fraction's
+	# source is the host's business, the blend is this class's, and only the blend can
+	# be checked without a clock.
+	controller.drive = DotFpsController.Drive.EXTERNAL
+	controller._previous_state.copy_from(controller.state)
+	controller._previous_state.position = Vector3(0.0, 0.0, 0.0)
+	controller.state.position = Vector3(0.0, 0.0, 10.0)
+
+	var midpoint := controller.render_state(0.5)
+	_check(
+		midpoint.position.is_equal_approx(Vector3(0.0, 0.0, 5.0)),
+		"render_state blends under EXTERNAL drive, which is what a netcode uses",
+		str(midpoint.position)
+	)
+	_check(
+		controller.render_state(0.0).position.is_equal_approx(Vector3.ZERO)
+		and controller.render_state(1.0).position.is_equal_approx(Vector3(0.0, 0.0, 10.0)),
+		"and reaches both ends of the tick it is drawn across"
+	)
+
+	# A remote player is written by the interpolator every frame and has no second
+	# tick to blend from; blending would drag it back toward a state nothing updates.
+	controller.drive = DotFpsController.Drive.REMOTE
+	_check(
+		controller.render_state(0.5).position.is_equal_approx(Vector3(0.0, 0.0, 10.0)),
+		"but a REMOTE player is left exactly where the network put it"
+	)
+	controller.drive = DotFpsController.Drive.LOCAL
+
 	world.queue_free()
 	await get_tree().process_frame

@@ -829,12 +829,46 @@ func _apply_collider(from: DotFpsState) -> void:
 ## state directly quantises all motion to the tick rate — visible as stutter at any
 ## tick rate a game can afford. Purely cosmetic: the returned state is a copy and
 ## nothing writes it back.
-func render_state() -> DotFpsState:
-	if drive != Drive.LOCAL or tick_rate <= 0:
+##
+## [b]This used to refuse every drive but [constant Drive.LOCAL], which is the one no
+## networked game uses.[/b] Under dot-net a controller is [constant Drive.EXTERNAL] —
+## the netcode owns the tick — so the guard turned the whole function into a return of
+## the raw tick state for every client anybody has ever connected to a server, and
+## [member _accumulator] is never advanced in that mode either, so the alpha it derived
+## would have been a constant zero. The family's own recurring shape, twice over: the
+## cure for a stutter, written and documented, reachable only from the one deployment
+## shape that does not stutter enough to notice.
+##
+## [param alpha] is how far this frame sits between the last two ticks. Left at -1 it
+## is derived, and where it comes from depends on who drives:
+##
+## - [constant Drive.LOCAL] ticks itself out of its own accumulator, so that is the
+##   fraction.
+## - [constant Drive.EXTERNAL] is stepped once per physics frame by its host, so the
+##   engine's own physics interpolation fraction is exactly it. [b]That is only true
+##   while the engine's physics rate equals the tick rate[/b]: with the engine on 60
+##   against a 128-tick server the host runs two ticks on one physics frame and three
+##   on the next, and a fraction through the physics frame does not describe a
+##   fraction through a tick at all. Measured at 60-against-128, the drawn position
+##   still moved 74 mm on six frames out of seven and 112 mm on the seventh — a 47%
+##   change in apparent speed, eight times a second, which is the whole of the jitter.
+##   Putting the engine on the server's rate is [method G2GNetBridge._adopt_tick_rate]'s
+##   job and this is the half that reads it.
+## - [constant Drive.REMOTE] is not simulated here at all. Its position arrives over
+##   the network already interpolated by [DotNetInterpolator] and blending toward a
+##   [member _previous_state] nothing updates would drag it backwards every frame.
+func render_state(alpha: float = -1.0) -> DotFpsState:
+	if drive == Drive.REMOTE or tick_rate <= 0:
 		return state
 
-	var step := 1.0 / float(tick_rate)
-	var alpha := clampf(_accumulator / step, 0.0, 1.0)
+	if alpha < 0.0:
+		alpha = (
+			clampf(_accumulator / (1.0 / float(tick_rate)), 0.0, 1.0)
+			if drive == Drive.LOCAL
+			else Engine.get_physics_interpolation_fraction()
+		)
+
+	alpha = clampf(alpha, 0.0, 1.0)
 
 	var blended := state.duplicate_state()
 	blended.position = _previous_state.position.lerp(state.position, alpha)
