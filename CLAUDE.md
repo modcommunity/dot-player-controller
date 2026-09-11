@@ -1,87 +1,95 @@
-# dot-fps-controller
+# dot-player-controller
 
-First-person movement for Godot 4, written so it can be networked.
+Everything that drives a player: the shared contract, first-person movement, third-person movement.
 
-Read the family-wide conventions in [`../../CLAUDE.md`](../../CLAUDE.md) first — no
-autoloads, `DotNodeRef` instead of scene paths, `DotResult` for anything fallible,
-`Dot`-prefixed class names, layered configuration, `describe()` on anything stateful.
-This file is only what is specific to movement.
+Read the family-wide conventions in [`../../CLAUDE.md`](../../CLAUDE.md) first — no autoloads, `DotNodeRef` instead of scene paths, `DotResult` for anything fallible, `Dot`-prefixed class names, layered configuration, `describe()` on anything stateful. This file is only what is specific to controllers.
 
 ## The one idea
 
-**The simulation is a pure function of (state, command, delta, world).**
+**A switch between two controllers carries position, velocity and view — and nothing else.**
 
-Everything else here follows from that. It is what lets a client apply input
-immediately and a server correct it a round trip later without the two disagreeing —
-and it is a property that has to be designed in, because nothing about GDScript
-enforces it and nothing about a single-player game reveals when it is broken.
+That sentence is the reason this addon exists as something separate from the two controllers that implement it. The alternative — one controller knowing how to become the other — means a first-person motor's state has to be convertible into a third-person motor's, and it is not: the fields have no counterpart and any mapping is a lie. What genuinely survives a view change is where the player is, how fast they are going and where they are looking, and everything else starting fresh is *correct*. Getting out of a vehicle should not restore the air-strafe you were in the middle of.
 
-Concretely:
+## It was three addons
 
-- `DotFpsMotor` never reads the keyboard, the wall clock, an unseeded random stream,
-  the frame rate, or a node's transform. Time comes from `delta`, intent comes from
-  the command, the world comes from `DotFpsBody`.
-- Every timer in `DotFpsState` counts simulated seconds. `Time.get_ticks_msec()`
-  appears nowhere in `motion/`.
-- `DotFpsState` holds *everything* the simulation reads between ticks. A field left
-  on the controller node is not restored by a rewind, so the replay starts from a
-  state the server never computed and the correction is measured against a fiction.
-- Sampling lives in `DotFpsSampler`, separately, so a replay does not accidentally
-  call `Input.is_action_pressed` and get what the player is holding *now*.
+`dot-player-controller-fp` (which was `dot-fps-controller`) and `dot-player-controller-tp` were separate repositories and are now folders. The merge is recorded in the top-level `tmp.md`. The short version: nobody installed either half without the base, the base is useless alone, and the split bought two repositories and two `plugin.cfg` files.
 
-`examples/movement_selftest.gd::_test_replay_determinism` is the test that guards
-this. It runs 400 mixed commands, snapshots at tick 250, replays the last 150 from
-the snapshot, and requires the same endpoint — which is exactly the shape of
-reconciliation. It also runs a negative control, because a test that cannot fail is
-not a test.
+Every `class_name` survived it. `DotFpsController`, `DotFpsMotor`, `DotTpsController`, `DotTpsCameraRig` — all unchanged, because `class_name` is global in Godot and renaming one breaks every project that has the addon installed.
+
+A game may delete `fp/` or `tp/`. `dot_player_controller_plugin.gd` skips a type whose script is absent, so a trimmed install is supported rather than merely tolerated.
 
 ## Layout
 
 ```
-addons/dot_fps_controller/
+addons/dot_player_controller/
   core/
-    dot_fps_command.gd      one tick of intent; the wire format
-    dot_fps_state.gd        everything carried between ticks
-    dot_fps_tunables.gd     every number, as a layered DotConfig
-  motion/
-    dot_fps_body.gd         the collision queries the motor needs (abstract)
-    dot_fps_physics_body.gd against Godot's physics server
-    dot_fps_flat_body.gd    against planes and boxes, for tests
-    dot_fps_motor.gd        the simulation
+    dot_player_intent.gd              one tick of intent, and its wire form
+    dot_player_look.gd                yaw and pitch, accumulated and clamped
   nodes/
-    dot_fps_controller.gd   the component a game adds
-    dot_fps_view.gd         camera, pitch, crouch height, FOV — cosmetic only
-    dot_fps_sampler.gd      devices to commands
-  net/
-    dot_fps_net_sync.gd     what replicates, without importing dot-net
+    dot_player_controller.gd          the abstract base: five methods to override
+    dot_player_controller_switch.gd   exactly one driving, and the handover
+  fp/
+    core/ motion/ nodes/ net/         first-person: see the sections below
+  tp/
+    core/ nodes/                      third-person, and the camera rig
 ```
 
-Additions since the first pass, all of them extension points rather than features:
+Five self-test scenes, one project: `controller_selftest` (the base), `movement_selftest` and `surf_selftest` and `fps_controller_selftest` (first person), `tps_selftest` (third person). **Run all five.** `controller_selftest` is the main scene and is the one a careless check runs alone.
 
-```
-  core/
-    dot_fps_surface.gd      how one kind of ground behaves. Multipliers, not values.
-    dot_fps_surface_set.gd  the table, and how a collider maps to an entry
-    dot_fps_modifier.gd     a temporary change to movement, plus the aggregate
-  motion/
-    dot_fps_move_mode.gd    a movement mode a game adds: ladder, water, grapple
-  nodes/
-    dot_fps_touch_sampler.gd  commands from touch. No art, no layout.
-```
+`fp/motion/` may not reference `fp/nodes/`, and `tp/core/` may not reference `tp/nodes/`. That direction of dependency is what keeps each simulation testable without a scene, and it is the first thing to break when somebody adds a "convenient" reference to the controller.
 
-And, for surf and bunny-hop servers — the movement half of what dot-timer times:
+## Three name collisions already paid for here
 
-```
-  core/
-    dot_fps_style.gd        a named variation on the movement — a "style".
-    dot_fps_stats.gd        jumps, strafes, sync, perfect hops, speed. Per tick.
-```
+**`Btn`, not `Button`.** `Button` is a native class — the `Control` — and GDScript refuses the shadowing outright. Caught here rather than in a subclass, where the error would have been reported against the file that *used* it.
 
-`motion/` may not reference `nodes/`. That direction of dependency is what keeps the
-simulation testable without a scene, and it is the first thing to break if a
-"convenient" reference to the controller is added to the motor.
+**`CONTROLLER_CHANNEL`, not `CHANNEL`.** `DotPlayerComponent` already declares `CHANNEL`, and a constant that shadows a parent's is a parse error.
 
-## Surf, bunny-hopping and what they needed
+**`transform_3d()`, not `transform()`.** `DotPlayerComponent extends Node`, so `transform` is free today — and would not be the moment anybody made a controller extend `Node3D`. See `docs/gdscript-hazards.md` on properties that shadow inherited methods: the error is reported against the *using* file and `--check-only` on the declaring one says nothing.
+
+## The two orderings that matter
+
+**Activate, then hand over.** A real controller resets its motor in `_on_activated`. Passing the state first means the reset wipes it, and the symptom is a player who stops dead every time they change view — which reads as a physics bug. The switch does `incoming.activate()` and *then* `incoming.adopt_state(...)`, and the suite checks `resets == 1` at the point the state has landed.
+
+**The default is activated deferred.** A switch's `_ready` can run before its siblings', so their `controller_id` may still be whatever the scene had. `call_deferred("_activate_default")` is one frame later, when every node in the subtree has read its own exports.
+
+## A frozen controller still ticks
+
+`drive()` with `input_enabled = false` applies an *empty* intent rather than returning early. Gravity, friction and world forces are all things a frozen player should still be subject to; a controller that skipped the tick leaves them hanging in mid-air, which is the warm-up-freeze bug every game ships once.
+
+The return value distinguishes "frozen" from "moved nowhere", so a caller can tell them apart without reading a flag it would have to know about.
+
+## `input_enabled` and `active` are different things
+
+A player frozen during a countdown is still on their own controller and still has their camera. A controller that deactivated instead would hand the player to nothing, and the switch would have no one driving. Freezing is a level; activity is an identity.
+
+## What does not go on the wire
+
+`DotPlayerIntent.to_dict` sends the accumulated angles and *not* the look delta, and does not send an empty `look` key either — a field sent and ignored is a field somebody will eventually start reading. The reasoning is in the class documentation and is worth repeating: a server integrating deltas reconstructs an angle the client already knows, and one lost packet makes them disagree about it permanently.
+
+## What this does not do
+
+It does not sample input. A sampler belongs with the controller that knows what its own actions are called, and dot-ui owns rebinding. It does not own a camera. It does not know what a body is beyond the default read/write pair, which handles a `CharacterBody3D` or a `CharacterBody2D` and is overridable precisely because most controllers have their own idea.
+
+## The first-person half
+
+What follows is `dot-fps-controller`'s own CLAUDE.md, kept whole. It is the reasoning behind a movement model that has been paid for in bugs, and the merge is not a reason to lose it. Paths have been re-rooted under `fp/`; nothing else was changed.
+
+### The one idea
+
+**The simulation is a pure function of (state, command, delta, world).**
+
+Everything else here follows from that. It is what lets a client apply input immediately and a server correct it a round trip later without the two disagreeing — and it is a property that has to be designed in, because nothing about GDScript enforces it and nothing about a single-player game reveals when it is broken.
+
+Concretely:
+
+- `DotFpsMotor` never reads the keyboard, the wall clock, an unseeded random stream, the frame rate, or a node's transform. Time comes from `delta`, intent comes from the command, the world comes from `DotFpsBody`.
+- Every timer in `DotFpsState` counts simulated seconds. `Time.get_ticks_msec()` appears nowhere in `fp/motion/`.
+- `DotFpsState` holds *everything* the simulation reads between ticks. A field left on the controller node is not restored by a rewind, so the replay starts from a state the server never computed and the correction is measured against a fiction.
+- Sampling lives in `DotFpsSampler`, separately, so a replay does not accidentally call `Input.is_action_pressed` and get what the player is holding *now*.
+
+`examples/movement_selftest.gd::_test_replay_determinism` is the test that guards this. It runs 400 mixed commands, snapshots at tick 250, replays the last 150 from the snapshot, and requires the same endpoint — which is exactly the shape of reconciliation. It also runs a negative control, because a test that cannot fail is not a test.
+
+### Surf, bunny-hopping and what they needed
 
 Surf is not a feature. It is what this movement model does on a face too steep to
 stand on,
@@ -161,7 +169,7 @@ timer scores the same run differently at 64 Hz and at 128 Hz.
 `DotFpsFlatBody` grew half-space planes and `add_ramp` so all of this is testable
 without a physics world — a surf ramp is one large sloped face and needs nothing else.
 
-## Why the collision goes through DotFpsBody
+### Why the collision goes through DotFpsBody
 
 Three reasons, and the second and third were both found the hard way:
 
@@ -207,7 +215,7 @@ not an optimisation. Running the longest, least precise query in the tick on a p
 who is already standing still re-derived a correct position from the worst available
 measurement, and moved them a fraction of a millimetre down each time.
 
-## What the rewrite changed, and why
+### What the rewrite changed, and why
 
 The original was a single-player controller. The problems were not style:
 
@@ -227,10 +235,10 @@ The original was a single-player controller. The problems were not style:
 | Yaw applied to the camera, so the body never turned | Yaw on the body, pitch on the camera |
 | States loaded by `load(base_dir + "/states/" + name + ".gd")` | Direct references; no runtime path construction |
 | `class_name Player`, `Player_Input` — global names | `Dot`-prefixed throughout |
-| Not an addon | `addons/dot_fps_controller/` with a `plugin.cfg` |
+| Not an addon | `addons/dot_player_controller/fp/` with a `plugin.cfg` |
 | README documented `player_shift`; the project defined `player_sprint` | One set of names, registered at runtime, overridable |
 
-## The three extension systems, and the rule they share
+### The three extension systems, and the rule they share
 
 Surfaces, modifiers and custom modes all change the simulation, so all three are
 bound by the same constraint as everything else here: **a client and a server must
@@ -301,7 +309,7 @@ and step handling as the built-ins, which is where all the collision bugs were.
 **Nothing may be stored on the mode object.** One mode instance serves every player
 using it, and a rewind does not restore it. State goes in `DotFpsState`.
 
-## Wiring it to dot-net
+### Wiring it to dot-net
 
 dot-net is **not** a dependency and is **not** imported. That is the family rule, and
 in GDScript it is not merely a preference: a script that *mentions* a `class_name` the
@@ -389,7 +397,7 @@ Three things that are easy to get wrong:
   movement values diverges every tick and it looks exactly like packet loss.
   `DotFpsNetSync.differences()` names the property that differs.
 
-## Where a game plugs in
+### Where a game plugs in
 
 Nothing here should require a fork.
 
@@ -414,7 +422,7 @@ Nothing here should require a fork.
 in tick order with movement, rather than in a second message that has to be
 correlated with it.
 
-## Validating
+### Validating
 
 ```bash
 godot --headless --path . --import
@@ -439,7 +447,7 @@ both hit again:
   handler stays zero outside it, so a test asserting on the count reports a failure
   for a signal that fired perfectly. Capture an `Array` instead.
 
-## Things deliberately not here
+### Things deliberately not here
 
 - **Ladders, swimming, vehicles.** `DotFpsMoveMode` is the hook; the modes
   themselves are a game's own decision about feel. The self-test ships a ladder as a
@@ -456,3 +464,4 @@ both hit again:
   replicated simulation — which is dot-net's problem, not this one's.
 - **A character mesh or animation.** `DotFpsController` publishes position, yaw, pitch
   and crouch; driving an `AnimationTree` from those is a game's own layer.
+

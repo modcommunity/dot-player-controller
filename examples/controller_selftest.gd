@@ -1,738 +1,572 @@
 extends Node
 
-## Exercises [DotFpsController] as a node in a real scene tree.
+## Exercises dot-player-controller with a stub controller, no physics and no input.
+##
+## The addon is abstract, so what is checkable is the part that is not: intent edges,
+## the look arithmetic every project rewrites, and the switch — including the handover,
+## which is the thing that is wrong in a way nobody reports as a handover bug. A stub
+## controller stands in for a real one, which is also a worked example of the five
+## methods a subclass overrides.
 ##
 ## [codeblock]
 ## godot --headless --path . res://examples/controller_selftest.tscn
 ## [/codeblock]
-##
-## [method movement_selftest] tests the simulation. This tests the wiring around it:
-## reference resolution, the collider following the crouch, the fixed-step
-## accumulator, the three drive modes, the registry, and the safety gate on noclip.
-## None of that is reachable from the motor alone, and all of it is the part a host
-## game touches first.
-##
-## The scenes are built in code rather than loaded from [code].tscn[/code] files so
-## that a failure names a line rather than a resource, and so the test does not
-## silently pass when someone edits a scene in the editor.
 
-const STEP := 1.0 / 60.0
+const SECTIONS := 6
+const CHECKS := 106
 
 var _passed := 0
 var _failed := 0
-var _failures := PackedStringArray()
+var _section_count := 0
 
 
 func _ready() -> void:
 	DotLog.set_level(DotLog.Level.ERROR)
-	_run.call_deferred()
+	_run()
 
 
 func _run() -> void:
-	print("dot-fps-controller controller self-test")
-	print("")
+	_line("dot-player-controller self-test")
+	_line("")
 
-	await _test_zero_configuration()
-	await _test_external_drive()
-	await _test_collider_follows_crouch()
-	await _test_noclip_gate()
-	await _test_teleport_and_signals()
-	await _test_registry_and_describe()
-	await _test_local_drive_accumulator()
-	await _test_surfaces_from_scene()
-	await _test_change_signals()
-	await _test_command_veto()
+	_test_intent()
+	_test_wire()
+	_test_look()
+	await _test_controller()
+	await _test_switch()
+	await _test_handover()
 
-	print("")
-	print("%d passed, %d failed" % [_passed, _failed])
+	_line("")
+	_line("%d sections, %d passed, %d failed" % [_section_count, _passed, _failed])
 
-	for line in _failures:
-		print("  FAIL  %s" % line)
+	if _section_count != SECTIONS:
+		_line("ERROR: %d of %d sections ran." % [_section_count, SECTIONS])
+		get_tree().quit(1)
+		return
+
+	if _passed + _failed != CHECKS:
+		_line(
+			"ERROR: %d checks ran, %d expected. A section aborted part-way."
+			% [_passed + _failed, CHECKS]
+		)
+		get_tree().quit(1)
+		return
 
 	get_tree().quit(1 if _failed > 0 else 0)
 
 
-## A controller that refuses input, of the kind a respawn freeze would use.
-class FrozenController extends DotFpsController:
-	var frozen := true
-	var registered := 0
+## A worked example of what a controller subclass implements: five methods.
+class StubController extends DotPlayerController:
+	var position: Vector3 = Vector3.ZERO
+	var vel: Vector3 = Vector3.ZERO
+	var yaw: float = 0.0
+	var pitch: float = 0.0
+	var ticks: int = 0
+	var resets: int = 0
 
-	func _register_extensions() -> void:
-		registered += 1
+	func _apply_intent(intent: DotPlayerIntent, delta: float) -> void:
+		ticks += 1
+		vel = Vector3(intent.move.x, 0.0, -intent.move.y) * 10.0 * speed_scale
+		position += vel * delta
+		yaw = intent.view_yaw
+		pitch = intent.view_pitch
 
-		var slow := DotFpsModifier.make(&"slow")
-		slow.max_speed_scale = 0.25
-		motor.register_modifier(slow)
+	func _read_transform() -> Transform3D:
+		return Transform3D(Basis(Vector3.UP, yaw), position)
 
-	func _accept_command(_command: DotFpsCommand) -> bool:
-		return not frozen
+	func _write_transform(to: Transform3D) -> void:
+		position = to.origin
+		yaw = to.basis.get_euler().y
 
+	func _read_velocity() -> Vector3:
+		return vel
 
-# --- Assertions ------------------------------------------------------------
+	func _write_velocity(v: Vector3) -> void:
+		vel = v
 
-func _check(condition: bool, what: String, detail: String = "") -> bool:
-	if condition:
-		_passed += 1
-		print("  ok    %s" % what)
-	else:
-		_failed += 1
-		_failures.append(what if detail == "" else "%s — %s" % [what, detail])
-		print("  FAIL  %s%s" % [what, "" if detail == "" else " — " + detail])
-	return condition
+	func _read_yaw() -> float:
+		return yaw
 
+	func _read_pitch() -> float:
+		return pitch
 
-func _check_near(v: float, expected: float, tol: float, what: String) -> bool:
-	return _check(
-		absf(v - expected) <= tol,
-		what,
-		"got %.4f, expected %.4f ±%.4f" % [v, expected, tol]
-	)
+	func _write_angles(p_yaw: float, p_pitch: float) -> void:
+		yaw = p_yaw
+		pitch = p_pitch
 
-
-# --- Fixtures --------------------------------------------------------------
-
-## Builds a world with a floor and returns its root.
-func _make_world() -> Node3D:
-	var world := Node3D.new()
-	add_child(world)
-
-	var ground := StaticBody3D.new()
-	var shape := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = Vector3(60.0, 1.0, 60.0)
-	shape.shape = box
-	ground.add_child(shape)
-	ground.position = Vector3(0.0, -0.5, 0.0)
-	world.add_child(ground)
-
-	return world
+	func _on_activated() -> void:
+		# A real controller resets its motor here. The test checks the switch hands the
+		# state over AFTER this runs, or the reset would wipe it.
+		resets += 1
+		vel = Vector3.ZERO
 
 
-## The conventional player layout, with nothing wired by hand.
-##
-## Player (CharacterBody3D) / Collision, Head / Camera, View, Controller.
-## [param configure] runs before the controller enters the tree.
-##
-## [b]It has to.[/b] A Node's _ready() fires on add_child, and DotFpsController does
-## all of its wiring there — so a test that assigns tunables or register_service
-## afterwards is configuring an object that has already finished setting itself up,
-## and silently tests the defaults instead. Caught here, but it is exactly the
-## mistake a host game makes when it builds a player from code.
-func _make_player(
-	world: Node3D,
-	drive: DotFpsController.Drive,
-	configure: Callable = Callable()
-) -> DotFpsController:
-	var player := CharacterBody3D.new()
-	player.name = "Player"
-	world.add_child(player)
-
-	var collision := CollisionShape3D.new()
-	collision.name = "Collision"
-	collision.shape = CapsuleShape3D.new()
-	player.add_child(collision)
-
-	var head := Node3D.new()
-	head.name = "Head"
-	player.add_child(head)
-
-	var camera := Camera3D.new()
-	camera.name = "Camera"
-	head.add_child(camera)
-
-	var view := DotFpsView.new()
-	view.name = "View"
-	player.add_child(view)
-
-	var controller := DotFpsController.new()
-	controller.name = "Controller"
-	controller.drive = drive
-	controller.register_default_actions = false
-
-	if configure.is_valid():
-		configure.call(controller)
-
-	player.add_child(controller)
-
-	return controller
+func _player() -> DotPlayer:
+	var p := DotPlayer.new()
+	p.is_local = true
+	add_child(p)
+	return p
 
 
-func _command(
-	forward: float = 0.0,
-	strafe: float = 0.0,
-	yaw: float = 0.0,
-	buttons: int = 0
-) -> DotFpsCommand:
-	var c := DotFpsCommand.new()
-	c.move = Vector2(strafe, forward)
-	c.yaw = yaw
-	c.buttons = buttons
+func _stub(id: StringName, under: Node) -> StubController:
+	var c := StubController.new()
+	c.controller_id = id
+	under.add_child(c)
 	return c
 
 
-# --- Tests -----------------------------------------------------------------
+# --- Intent -----------------------------------------------------------------
 
-func _test_surfaces_from_scene() -> void:
-	print("surfaces from the scene")
+func _test_intent() -> void:
+	_section("intent")
 
-	var world := _make_world()
-
-	# Mark the floor the way a level designer would, and check the controller
-	# resolves it without being told anything about that particular collider.
-	var ground := world.get_child(0)
-	ground.set_meta(&"dot_fps_surface", "ice")
-
-	var ice := DotFpsSurface.make(&"ice")
-	ice.friction_scale = 0.02
-	ice.accelerate_scale = 0.1
-
-	var set := DotFpsSurfaceSet.new()
-	set.add(ice)
-
-	var controller := _make_player(
-		world,
-		DotFpsController.Drive.EXTERNAL,
-		func(c: DotFpsController) -> void: c.surfaces = set
-	)
-
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-
-	controller.teleport(Vector3(0.0, 0.5, 0.0))
-
-	for i in range(120):
-		controller.apply_command(_command())
-		controller.simulate_tick(i + 1, STEP)
-
+	var i := DotPlayerIntent.make(Vector2(1, 1), DotPlayerIntent.Btn.JUMP, 7)
+	_check(i.tick == 7, "carries a tick")
+	_check(i.holding(DotPlayerIntent.Btn.JUMP), "and what is held")
+	_check(not i.holding(DotPlayerIntent.Btn.CROUCH), "and what is not")
 	_check(
-		controller.state.surface == &"ice",
-		"the surface resolves from node metadata, with nothing wired by hand",
-		"got '%s'" % controller.state.surface
+		i.move == Vector2(1, 1),
+		"and does not normalise the move vector — some movement models want the raw "
+		+ "one, so the decision belongs to the controller"
 	)
+	_check(not i.is_idle(), "and is not idle")
+	_check(DotPlayerIntent.new().is_idle(), "while an empty one is")
 
-	# The resolver runs inside the simulation and must not do a scene lookup per
-	# tick — the cache is what makes surfaces affordable on a 32-slot server.
-	controller.state.velocity = Vector3(8.0, 0.0, 0.0)
+	i.diff_from(0)
+	_check(i.just_pressed(DotPlayerIntent.Btn.JUMP), "a new button reads as pressed")
+	_check(not i.just_released(DotPlayerIntent.Btn.JUMP), "and not as released")
 
-	for i in range(120):
-		controller.apply_command(_command())
-		controller.simulate_tick(200 + i, STEP)
-
+	i.diff_from(DotPlayerIntent.Btn.JUMP)
 	_check(
-		controller.state.horizontal_speed() > 6.0,
-		"and ice actually applies to the simulation",
-		"%.2f m/s from 8.00" % controller.state.horizontal_speed()
+		not i.just_pressed(DotPlayerIntent.Btn.JUMP),
+		"a held button is not pressed again — a jump is an edge and a sprint is a level"
 	)
 
-	world.queue_free()
+	var released := DotPlayerIntent.make(Vector2.ZERO, 0, 8)
+	released.diff_from(DotPlayerIntent.Btn.JUMP)
+	_check(released.just_released(DotPlayerIntent.Btn.JUMP), "and letting go reads as released")
+	_check(not released.just_pressed(DotPlayerIntent.Btn.JUMP), "and not as pressed")
+
+	i.buttons = DotPlayerIntent.Btn.ATTACK | DotPlayerIntent.Btn.SPRINT
+	var names := i.button_names()
+	_check(names.size() == 2, "the held buttons have names")
+	_check(names.has("attack") and names.has("sprint"), "which are the right ones")
+	_check(
+		DotPlayerIntent.button_of("reload") == DotPlayerIntent.Btn.RELOAD,
+		"and a name resolves back to a bit, which is what a rebinder needs"
+	)
+	_check(DotPlayerIntent.button_of("nonsense") == 0, "an unknown name resolves to none")
+
+	var copy := i.copy_intent()
+	copy.buttons = 0
+	_check(i.buttons != 0, "a copy is a copy")
+	_check(i.describe().contains("t"), "and an intent describes itself")
+
+
+func _test_wire() -> void:
+	_section("the wire form")
+
+	var i := DotPlayerIntent.make(Vector2(0.5, -0.25), DotPlayerIntent.Btn.ATTACK, 99)
+	i.view_yaw = 1.0
+	i.view_pitch = -0.5
+	i.look = Vector2(0.01, 0.02)
+
+	var d := i.to_dict()
+	var back := DotPlayerIntent.from_dict(d)
+
+	_check(back.tick == 99, "a tick survives the wire")
+	_check(back.move.is_equal_approx(i.move), "and the move vector")
+	_check(back.buttons == i.buttons, "and the buttons")
+	_check(is_equal_approx(back.view_yaw, 1.0), "and the view angles")
+	_check(
+		back.look.is_zero_approx(),
+		"but not the look DELTA — a server that integrated a client's deltas would be "
+		+ "reconstructing an angle the client already knows, one lost packet away from "
+		+ "disagreeing about it forever"
+	)
+	_check(
+		not d.has("look"),
+		"so the delta is not even sent, rather than being sent and ignored"
+	)
+	_check(DotPlayerIntent.from_dict({}).tick == 0, "and an empty payload decodes to nothing")
+
+
+# --- Look -------------------------------------------------------------------
+
+func _test_look() -> void:
+	_section("looking")
+
+	var look := DotPlayerLook.new(1.0)
+	_check(is_zero_approx(look.yaw), "starts level")
+
+	look.apply(Vector2(0.0, 10.0))
+	_check(
+		look.pitch <= look.pitch_min + 0.001,
+		"pitch clamps rather than wrapping — wrapping lets a player look through their "
+		+ "own feet and come out of the top of their head"
+	)
+
+	look.apply(Vector2(0.0, -20.0))
+	_check(look.pitch >= look.pitch_max - 0.001, "and clamps at the other end")
+
+	look.set_angles(0.0, 0.0)
+	look.apply(Vector2(100.0, 0.0))
+	_check(
+		look.yaw >= -PI and look.yaw <= PI,
+		"yaw wraps rather than clamping — a clamped yaw stops the player turning round, "
+		+ "and an unbounded one loses float precision over a long session"
+	)
+
+	look.set_angles(0.0, 0.0)
+	look.sensitivity = 2.0
+	look.apply(Vector2(0.1, 0.0))
+	var fast := look.yaw
+	look.set_angles(0.0, 0.0)
+	look.sensitivity = 1.0
+	look.apply(Vector2(0.1, 0.0))
+	_check(
+		absf(fast) > absf(look.yaw),
+		"sensitivity multiplies the delta, not the angle — multiplying the angle snaps "
+		+ "the view every time the setting changes"
+	)
+
+	look.set_angles(0.0, 0.0)
+	look.zoomed = true
+	look.apply(Vector2(0.1, 0.0))
+	_check(absf(look.yaw) < absf(fast), "and zooming slows it further")
+	look.zoomed = false
+
+	look.set_angles(0.0, 0.0)
+	look.apply(Vector2(0.0, 0.1))
+	var normal_pitch := look.pitch
+	look.set_angles(0.0, 0.0)
+	look.invert_pitch = true
+	look.apply(Vector2(0.0, 0.1))
+	_check(
+		signf(look.pitch) != signf(normal_pitch),
+		"and inverting pitch inverts it"
+	)
+	look.invert_pitch = false
+
+	look.set_angles(0.0, 0.0)
+	_check(
+		look.forward().is_equal_approx(Vector3(0, 0, -1)),
+		"looking along zero is looking down -Z, which is Godot's forward"
+	)
+	_check(look.forward_flat().is_equal_approx(Vector3(0, 0, -1)), "flattened too")
+
+	look.set_angles(0.0, -1.0)
+	_check(
+		look.forward().y < 0.0,
+		"looking down points down"
+	)
+	_check(
+		is_zero_approx(look.forward_flat().y),
+		"but the flat forward stays flat, so a player looking at the floor still walks "
+		+ "forwards rather than into it"
+	)
+
+	look.set_angles(PI * 0.5, 0.0)
+	_check(
+		look.forward_flat().is_equal_approx(Vector3(-1, 0, 0)),
+		"a quarter turn faces -X"
+	)
+	_check(look.right_flat().is_equal_approx(Vector3(0, 0, -1)), "with right a quarter behind")
+
+	look.set_angles(0.0, 0.0)
+	var dir := look.move_direction(Vector2(0, 1))
+	_check(
+		dir.is_equal_approx(Vector3(0, 0, -1)),
+		"forward intent goes forward — this arithmetic is here rather than in each "
+		+ "controller precisely so the two cannot disagree about which is X"
+	)
+	_check(
+		look.move_direction(Vector2(1, 0)).is_equal_approx(Vector3(1, 0, 0)),
+		"and right intent goes right"
+	)
+
+	look.set_angles(0.0, 0.5)
+	_check(
+		look.basis().get_euler().x != 0.0,
+		"the camera basis carries the pitch"
+	)
+	_check(
+		is_zero_approx(look.body_basis().get_euler().x),
+		"and the body basis does not, because a body that pitched would fall over"
+	)
+
+	look.set_angles(0.0, 0.0)
+	_check(look.direction_2d().is_equal_approx(Vector2(1, 0)), "and 2D has its own direction")
+	_check(
+		is_equal_approx(DotPlayerLook.angle_to(Vector2.ZERO, Vector2(0, 1)), PI * 0.5),
+		"with an angle-to helper that wraps to the same range a 3D yaw does"
+	)
+
+	var copy := look.copy_look()
+	copy.yaw = 3.0
+	_check(is_zero_approx(look.yaw), "a copy is a copy")
+	_check(look.describe().contains("yaw"), "and it describes itself")
+
+
+# --- The controller ---------------------------------------------------------
+
+func _test_controller() -> void:
+	_section("a controller")
+
+	var player := _player()
+	var c := _stub(&"fp", player)
 	await get_tree().process_frame
 
+	_check(c.is_bound(), "a controller is a component and binds by walking up")
+	_check(not c.is_active(), "and starts idle")
 
-func _test_change_signals() -> void:
-	print("change signals")
+	var driven := c.simulate(DotPlayerIntent.make(Vector2(0, 1), 0, 1), 0.1)
+	_check(not driven, "an idle controller ignores intent")
+	_check(c.ticks == 0, "entirely")
 
-	var world := _make_world()
+	c.activate()
+	_check(c.is_active(), "activating takes over")
+	_check(c.resets == 1, "and the subclass is told")
 
-	var step := StaticBody3D.new()
-	var step_shape := CollisionShape3D.new()
-	var step_box := BoxShape3D.new()
-	step_box.size = Vector3(8.0, 0.3, 4.0)
-	step_shape.shape = step_box
-	step.add_child(step_shape)
-	step.position = Vector3(0.0, 0.15, -6.0)
-	world.add_child(step)
+	_check(c.simulate(DotPlayerIntent.make(Vector2(0, 1), 0, 2), 0.1), "and then it drives")
+	_check(c.ticks == 1, "one tick at a time")
+	_check(c.position.z < 0.0, "moving the player forward")
 
-	var boost := DotFpsModifier.make(&"boost")
-	boost.max_speed_scale = 1.5
-	boost.duration_sec = 0.25
-
-	var controller := _make_player(world, DotFpsController.Drive.EXTERNAL)
-
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-
-	controller.motor.register_modifier(boost)
-
-	# Arrays, not ints: a GDScript lambda captures locals by value, so a counter
-	# incremented in a handler stays zero outside it.
-	var crouches: Array[bool] = []
-	var steps: Array[float] = []
-	var added: Array[StringName] = []
-	var removed: Array[StringName] = []
-
-	controller.crouch_changed.connect(
-		func(c: bool) -> void: crouches.append(c))
-	controller.stepped_up.connect(
-		func(h: float) -> void: steps.append(h))
-	controller.modifier_added.connect(
-		func(id: StringName) -> void: added.append(id))
-	controller.modifier_removed.connect(
-		func(id: StringName) -> void: removed.append(id))
-
-	controller.teleport(Vector3(0.0, 0.5, 0.0))
-
-	for i in range(60):
-		controller.apply_command(_command())
-		controller.simulate_tick(i + 1, STEP)
-
-	# Crouch, then release. One edge each, not one per tick held.
-	for i in range(60):
-		controller.apply_command(
-			_command(0.0, 0.0, 0.0, DotFpsCommand.BUTTON_CROUCH))
-		controller.simulate_tick(100 + i, STEP)
-
-	for i in range(60):
-		controller.apply_command(_command())
-		controller.simulate_tick(200 + i, STEP)
-
+	var before := c.position
+	c.input_enabled = false
+	var frozen := c.simulate(DotPlayerIntent.make(Vector2(0, 1), 0, 3), 0.1)
+	_check(not frozen, "a frozen controller reports that it did not apply the intent")
 	_check(
-		crouches.size() == 2 and crouches[0] and not crouches[1],
-		"crouching reports one edge down and one up",
-		str(crouches)
+		c.ticks == 2,
+		"but still ticks, so a frozen player keeps falling and keeps being pushed — a "
+		+ "controller that skipped the tick would leave them hanging in mid-air"
+	)
+	_check(c.position.is_equal_approx(before), "without going anywhere")
+	c.input_enabled = true
+
+	c.speed_scale = 2.0
+	c.position = Vector3.ZERO
+	var _d := c.simulate(DotPlayerIntent.make(Vector2(0, 1), 0, 4), 0.1)
+	_check(
+		c.position.z < -0.19,
+		"a speed multiplier reaches the movement, which is how a class changes it"
+	)
+	c.speed_scale = 1.0
+
+	c.vel = Vector3(0, 0, -50)
+	c.place(Transform3D(Basis.IDENTITY, Vector3(10, 0, 10)))
+	_check(c.position.is_equal_approx(Vector3(10, 0, 10)), "a teleport puts the player there")
+	_check(
+		c.vel.is_zero_approx(),
+		"and stops them, because a teleport that kept a velocity is a teleport that "
+		+ "launches — which only shows up on the one map with a teleporter"
 	)
 
-	# Walk into the step.
-	for i in range(240):
-		controller.apply_command(_command(1.0))
-		controller.simulate_tick(300 + i, STEP)
+	c.vel = Vector3(0, 0, -50)
+	c.place(Transform3D(Basis.IDENTITY, Vector3.ZERO), true)
+	_check(not c.vel.is_zero_approx(), "unless the caller wants the velocity kept")
 
-	_check(steps.size() > 0, "stepping up is reported", "%d" % steps.size())
-	_check(
-		steps.size() == 0 or steps[0] <= controller.tunables.step_height + 0.01,
-		"with a height no larger than step_height"
-	)
+	_check(c.transform_3d().origin.is_equal_approx(Vector3.ZERO), "a controller reports where")
+	_check(c.speed() > 0.0, "and how fast")
+	_check(c.eye_transform().origin.is_equal_approx(c.transform_3d().origin),
+		"with an eye transform that defaults to the body")
+	_check(c.last_intent() != null, "it remembers the last intent")
+	_check(c.describe_lines().size() >= 2, "and describes itself")
 
-	# A modifier that expires reports both edges, from the same diff.
-	_check(controller.add_modifier(&"boost"), "a modifier applies through the controller")
+	c.deactivate()
+	_check(not c.is_active(), "and hands back")
+	_check(not c.simulate(DotPlayerIntent.new(), 0.1), "driving nothing afterwards")
 
-	for i in range(60):
-		controller.apply_command(_command())
-		controller.simulate_tick(600 + i, STEP)
+	player.queue_free()
 
-	_check(added.size() == 1 and added[0] == &"boost", "and is reported once", str(added))
-	_check(
-		removed.size() == 1 and removed[0] == &"boost",
-		"and its expiry is reported once",
-		str(removed)
-	)
-	_check(
-		not controller.has_modifier(&"boost"),
-		"after which the controller agrees it is gone"
-	)
 
-	world.queue_free()
+# --- The switch -------------------------------------------------------------
+
+func _test_switch() -> void:
+	_section("the switch")
+
+	var player := _player()
+	var fp := _stub(&"fp", player)
+	var tp := _stub(&"tp", player)
+	var sw := DotPlayerControllerSwitch.new()
+	sw.default_controller = &"fp"
+	player.add_child(sw)
+
+	await get_tree().process_frame
 	await get_tree().process_frame
 
-
-func _test_command_veto() -> void:
-	print("command veto and extension registration")
-
-	var world := _make_world()
-
-	var player := CharacterBody3D.new()
-	world.add_child(player)
-
-	var collision := CollisionShape3D.new()
-	collision.shape = CapsuleShape3D.new()
-	player.add_child(collision)
-
-	var controller := FrozenController.new()
-	controller.drive = DotFpsController.Drive.EXTERNAL
-	controller.register_default_actions = false
-	player.add_child(controller)
-
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-
+	_check(sw.count() == 2, "a switch finds the controllers beside it")
+	_check(sw.has_controller(&"tp"), "by name")
 	_check(
-		controller.registered == 1,
-		"_register_extensions runs exactly once, before the first tick",
-		"%d" % controller.registered
+		sw.active_id() == &"fp",
+		"and starts on the declared default, one frame later — the siblings' own "
+		+ "_ready has not run when the switch's does"
 	)
-	_check(
-		controller.motor.modifier_index(&"slow") == 0,
-		"and what it registered is there"
+	_check(fp.is_active() and not tp.is_active(), "with exactly one driving")
+
+	var changes: Array = []
+	sw.controller_changed.connect(func(from: StringName, to: StringName) -> void:
+		changes.append([String(from), String(to)])
 	)
 
-	controller.teleport(Vector3(0.0, 0.5, 0.0))
-
-	for i in range(120):
-		controller.apply_command(_command(1.0))
-		controller.simulate_tick(i + 1, STEP)
-
+	_check(sw.activate(&"tp").ok, "switching works")
+	_check(tp.is_active(), "the new one drives")
 	_check(
-		controller.state.horizontal_speed() < 0.1,
-		"a vetoed command does not move the player",
-		"%.3f m/s" % controller.state.horizontal_speed()
+		not fp.is_active(),
+		"and the old one stops — two controllers both writing the body's transform "
+		+ "resolve by child order, which nobody would ever guess from the symptom"
+	)
+	_check(changes.size() == 1, "with a signal")
+
+	_check(sw.activate(&"tp").ok, "switching to the current one is a no-op")
+	_check(changes.size() == 1, "and fires nothing")
+
+	var bad := sw.activate(&"nope")
+	_check(not bad.ok, "an unknown controller is refused")
+	_check(bad.error.message.contains("fp"), "listing the ones there are")
+
+	_check(sw.cycle().ok, "cycling moves on")
+	_check(sw.active_id() == &"fp", "to the next in declared order")
+	_check(sw.cycle().ok, "and round")
+	_check(sw.active_id() == &"tp", "again")
+
+	sw.simulate(DotPlayerIntent.make(Vector2(0, 1), 0, 1), 0.1)
+	_check(tp.ticks > 0, "the switch drives the active controller")
+	_check(fp.ticks == 0, "and only that one")
+
+	sw.set_input_enabled(false)
+	_check(
+		not fp.input_enabled and not tp.input_enabled,
+		"freezing freezes every controller, not just the active one — a player who "
+		+ "switches view while frozen must stay frozen"
+	)
+	sw.set_input_enabled(true)
+
+	sw.set_scales(1.5, 2.0)
+	_check(
+		is_equal_approx(fp.speed_scale, 1.5) and is_equal_approx(tp.jump_scale, 2.0),
+		"and a class's multipliers reach all of them"
 	)
 
-	# Vetoed, not skipped: the tick still ran, so gravity applied and the tick
-	# counter kept up with the server's.
+	sw.place(Transform3D(Basis.IDENTITY, Vector3(5, 0, 5)))
+	_check(tp.position.is_equal_approx(Vector3(5, 0, 5)), "a teleport goes through the active one")
+
+	_check(sw.controller(&"fp") == fp, "a controller can be fetched by name")
+	_check(sw.available().size() == 2, "and they can all be listed")
+	_check(sw.describe_lines().size() >= 3, "and the switch describes itself")
+
+	var lone := _player()
+	var only := _stub(&"only", lone)
+	var sw2 := DotPlayerControllerSwitch.new()
+	lone.add_child(sw2)
+	await get_tree().process_frame
+	await get_tree().process_frame
 	_check(
-		controller.state.is_grounded(),
-		"but the tick still ran, so the player still fell and landed"
+		sw2.active_id() == &"only",
+		"a switch with no declared default takes the first it finds, rather than "
+		+ "leaving the player driving nothing"
 	)
+	_check(not sw2.cycle().ok, "and one controller has nothing to cycle to")
+	_check(only.is_active(), "while still driving")
 
-	controller.frozen = false
+	player.queue_free()
+	lone.queue_free()
 
-	for i in range(120):
-		controller.apply_command(_command(1.0))
-		controller.simulate_tick(200 + i, STEP)
 
-	_check(
-		controller.state.horizontal_speed() > 5.0,
-		"and lifting the veto restores control",
-		"%.2f m/s" % controller.state.horizontal_speed()
-	)
+func _test_handover() -> void:
+	_section("the handover")
 
-	world.queue_free()
+	var player := _player()
+	var fp := _stub(&"fp", player)
+	var tp := _stub(&"tp", player)
+	var sw := DotPlayerControllerSwitch.new()
+	sw.default_controller = &"fp"
+	player.add_child(sw)
+
+	await get_tree().process_frame
 	await get_tree().process_frame
 
+	fp.position = Vector3(12, 3, -4)
+	fp.vel = Vector3(0, 8, -20)
+	fp.yaw = 1.25
+	fp.pitch = -0.4
 
-func _test_zero_configuration() -> void:
-	print("zero-configuration wiring")
-
-	var world := _make_world()
-	var controller := _make_player(world, DotFpsController.Drive.EXTERNAL)
-
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-
-	_check(controller.motor != null, "the motor is built")
-	_check(controller.body is DotFpsPhysicsBody, "against the physics body")
-	_check(
-		controller.view != null,
-		"the view is found without a view_ref being set"
-	)
-	_check(
-		controller.tunables != null and controller.tunables.validate().ok,
-		"default tunables are created and valid"
-	)
-
-	# The one thing the whole family exists to avoid: a hardcoded path. Every
-	# reference above was resolved by type, from the body, with nothing configured.
-	_check(
-		controller.view.camera() != null,
-		"the view finds the camera without a camera_ref being set"
-	)
-
-	world.queue_free()
-	await get_tree().process_frame
-
-
-func _test_external_drive() -> void:
-	print("external drive")
-
-	var world := _make_world()
-	var controller := _make_player(world, DotFpsController.Drive.EXTERNAL)
-
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-
-	var player := controller.get_parent() as Node3D
-	controller.teleport(Vector3(0.0, 2.0, 0.0))
-
-	for i in range(180):
-		controller.apply_command(_command(1.0))
-		controller.simulate_tick(i + 1, STEP)
+	var _res := sw.activate(&"tp")
 
 	_check(
-		controller.state.is_grounded(),
-		"the player lands under external drive",
-		"mode %s at %s" % [
-			DotFpsState.Mode.keys()[controller.state.mode],
-			controller.state.position,
-		]
+		tp.position.is_equal_approx(Vector3(12, 3, -4)),
+		"position survives a switch — a view change that teleported the player would "
+		+ "be reported as a netcode bug"
 	)
 	_check(
-		controller.state.position.z < -5.0,
-		"and moves in the commanded direction",
-		"z = %.2f" % controller.state.position.z
+		tp.vel.is_equal_approx(Vector3(0, 8, -20)),
+		"and so does velocity, so switching mid-jump does not stop the player dead in "
+		+ "the air"
 	)
-
-	# The simulated position has to reach the scene, or nothing else in the game can
-	# see where the player is.
+	_check(is_equal_approx(tp.yaw, 1.25), "and the view angles")
+	_check(is_equal_approx(tp.pitch, -0.4), "both of them")
 	_check(
-		player.global_position.distance_to(controller.state.position) < 0.001,
-		"the body node follows the simulated position",
-		"node %s vs state %s" % [player.global_position, controller.state.position]
+		tp.resets == 1,
+		"and the incoming controller reset itself first — the state is handed over "
+		+ "AFTER _on_activated, or the reset would wipe it"
 	)
 
-	# A tick with no fresh command must not stop the player dead — it repeats.
-	var before := controller.state.position.z
-	controller.current_command = null
-	controller.simulate_tick(200, STEP)
-
+	sw.carry_velocity = false
+	fp.vel = Vector3.ZERO
+	tp.vel = Vector3(0, 0, -99)
+	var _res2 := sw.activate(&"fp")
 	_check(
-		controller.state.position.z < before,
-		"a starved tick keeps the player moving rather than stopping dead"
+		fp.vel.is_zero_approx(),
+		"a game that would rather not carry velocity can say so"
 	)
 
-	world.queue_free()
-	await get_tree().process_frame
+	# Pitch rather than yaw: a body's yaw travels inside the transform, which is
+	# carried regardless, so turning carry_look off can only withhold the pitch. That
+	# is the honest behaviour — a handover that moved the player without their body
+	# facing the same way would be a spin, not a view change — and asserting on yaw
+	# here would be asserting on something the flag was never going to control.
+	sw.carry_look = false
+	tp.pitch = 0.0
+	fp.pitch = 1.0
+	var _res3 := sw.activate(&"tp")
+	_check(is_zero_approx(tp.pitch), "and the same for the pitch")
 
-
-func _test_collider_follows_crouch() -> void:
-	print("collider follows the crouch")
-
-	var world := _make_world()
-	var controller := _make_player(world, DotFpsController.Drive.EXTERNAL)
-
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-
-	var collision := controller.get_parent().get_node("Collision") as CollisionShape3D
-	var capsule := collision.shape as CapsuleShape3D
-
-	if not _check(capsule != null, "the collider carries a capsule"):
-		world.queue_free()
-		return
-
-	# Not the shape the scene supplied. A CapsuleShape3D loaded from a .tscn is
-	# shared between every instance of that scene, so resizing one player's collider
-	# on crouch would resize every player's — a bug that only appears with more than
-	# one player in the level.
+	# The state a handover deliberately does not carry.
+	var state := fp.handover_state()
+	_check(state.size() == 4, "the handover carries exactly four things")
 	_check(
-		capsule != null and capsule.resource_path == "",
-		"with a private shape, not one shared across instances"
+		state.has("transform") and state.has("velocity")
+		and state.has("yaw") and state.has("pitch"),
+		"and they are where, how fast and where you are looking — a motor's own state "
+		+ "has no counterpart in another motor, and converting one would be a lie"
 	)
 
-	controller.teleport(Vector3(0.0, 1.0, 0.0))
+	var fresh := _stub(&"fresh", player)
+	fresh.adopt_state(state)
+	_check(fresh.position.is_equal_approx(fp.position), "a state can be adopted directly")
+	var untouched := fresh.position
+	fresh.adopt_state({})
+	_check(fresh.position.is_equal_approx(untouched), "and an empty one changes nothing")
 
-	for i in range(120):
-		controller.apply_command(_command())
-		controller.simulate_tick(i + 1, STEP)
-
-	_check_near(
-		capsule.height, controller.tunables.stand_height, 0.01,
-		"standing height matches the tunables"
-	)
-
-	for i in range(120):
-		controller.apply_command(_command(0.0, 0.0, 0.0, DotFpsCommand.BUTTON_CROUCH))
-		controller.simulate_tick(200 + i, STEP)
-
-	_check_near(
-		capsule.height, controller.tunables.crouch_height, 0.01,
-		"and the collider shrinks with the crouch"
-	)
-	_check_near(
-		collision.position.y, controller.tunables.crouch_height * 0.5, 0.01,
-		"and stays centred on the body, whose origin is at the feet"
-	)
-
-	world.queue_free()
-	await get_tree().process_frame
+	player.queue_free()
 
 
-func _test_noclip_gate() -> void:
-	print("noclip gate")
+# --- Harness ---------------------------------------------------------------
 
-	var world := _make_world()
-	var controller := _make_player(
-		world,
-		DotFpsController.Drive.EXTERNAL,
-		func(c: DotFpsController) -> void:
-			c.tunables = DotFpsTunables.new()
-			c.tunables.can_noclip = true
-			c.allow_noclip = false
-	)
-
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-
-	# The tunables say yes and the instance says no. The instance wins: the tunables
-	# are shared configuration a client also holds a copy of, and the command's
-	# noclip bit is set by the client. Only a server-side property can gate this.
-	_check(
-		not controller.tunables.can_noclip,
-		"allow_noclip false overrides can_noclip true"
-	)
-
-	controller.teleport(Vector3(0.0, 1.0, 0.0))
-
-	for i in range(60):
-		controller.apply_command(_command(0.0, 0.0, 0.0, DotFpsCommand.BUTTON_NOCLIP))
-		controller.simulate_tick(i + 1, STEP)
-
-	_check(
-		controller.state.mode != DotFpsState.Mode.NOCLIP,
-		"and a client asking for noclip does not get it"
-	)
-
-	world.queue_free()
-	await get_tree().process_frame
-
-	var allowed_world := _make_world()
-	var allowed := _make_player(
-		allowed_world,
-		DotFpsController.Drive.EXTERNAL,
-		func(c: DotFpsController) -> void:
-			c.tunables = DotFpsTunables.new()
-			c.tunables.can_noclip = true
-			c.allow_noclip = true
-	)
-
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-
-	allowed.teleport(Vector3(0.0, 1.0, 0.0))
-	allowed.apply_command(_command(0.0, 0.0, 0.0, DotFpsCommand.BUTTON_NOCLIP))
-	allowed.simulate_tick(1, STEP)
-
-	_check(
-		allowed.state.mode == DotFpsState.Mode.NOCLIP,
-		"and does get it when the server allows it"
-	)
-
-	allowed_world.queue_free()
-	await get_tree().process_frame
+func _section(title: String) -> void:
+	_section_count += 1
+	_line("")
+	_line("-- %s" % title)
 
 
-func _test_teleport_and_signals() -> void:
-	print("teleport and signals")
-
-	var world := _make_world()
-	var controller := _make_player(world, DotFpsController.Drive.EXTERNAL)
-
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-
-	var landings: Array[float] = []
-	# Arrays, not ints. A GDScript lambda captures locals by value, so `jumps += 1`
-	# inside a handler increments the lambda's own copy and the test reads zero for
-	# a signal that fired perfectly. An Array is captured by reference.
-	var jumps: Array[int] = []
-	var modes: Array[int] = []
-
-	controller.landed.connect(func(impact: float) -> void: landings.append(impact))
-	controller.jumped.connect(func() -> void: jumps.append(1))
-	controller.mode_changed.connect(
-		func(_a: DotFpsState.Mode, _b: DotFpsState.Mode) -> void: modes.append(1)
-	)
-
-	controller.teleport(Vector3(0.0, 4.0, 0.0), 45.0, -10.0)
-
-	_check_near(controller.state.yaw, 45.0, 0.001, "teleport sets the view angles")
-	_check(
-		controller.state.velocity == Vector3.ZERO,
-		"and discards velocity, so a fall does not carry through it"
-	)
-	_check(
-		(controller.get_parent() as Node3D).global_position.y == 4.0,
-		"and moves the node immediately, not on the next tick"
-	)
-
-	for i in range(240):
-		controller.apply_command(_command())
-		controller.simulate_tick(i + 1, STEP)
-
-	_check(landings.size() == 1, "landing is reported once", "%d" % landings.size())
-	_check(
-		landings.size() == 1 and landings[0] > 5.0,
-		"with the impact speed",
-		"%.2f m/s" % (landings[0] if landings.size() > 0 else 0.0)
-	)
-
-	for i in range(60):
-		controller.apply_command(
-			_command(0.0, 0.0, 0.0, DotFpsCommand.BUTTON_JUMP if i == 0 else 0)
-		)
-		controller.simulate_tick(300 + i, STEP)
-
-	_check(jumps.size() == 1, "a jump is reported once", "%d" % jumps.size())
-	_check(modes.size() >= 3, "mode changes are reported", "%d" % modes.size())
-
-	world.queue_free()
-	await get_tree().process_frame
+func _check(condition: bool, what: String) -> void:
+	if condition:
+		_passed += 1
+		_line("   ok   %s" % what)
+	else:
+		_failed += 1
+		_line("  FAIL  %s" % what)
 
 
-func _test_registry_and_describe() -> void:
-	print("registry and diagnostics")
-
-	var world := _make_world()
-	var controller := _make_player(
-		world,
-		DotFpsController.Drive.EXTERNAL,
-		func(c: DotFpsController) -> void:
-			c.register_service = true
-			c.service_scope = &"p1"
-	)
-
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-
-	var scoped := DotRegistry.scoped_name(DotFpsController.SERVICE, &"p1")
-
-	_check(
-		DotRegistry.get_service(scoped) == controller,
-		"a scoped controller registers under its scope"
-	)
-
-	# Scoped rather than global by default: two players in one scene would otherwise
-	# overwrite each other's registration, which is the configuration split-screen
-	# and a listen server both need.
-	var lines := controller.describe_lines()
-	_check(lines.size() > 4, "describe_lines produces something to paste in a report")
-
-	var described := controller.describe()
-	_check(
-		described.has("state") and described.has("motor"),
-		"describe covers the state and the motor"
-	)
-
-	world.queue_free()
-	await get_tree().process_frame
-
-	_check(
-		not DotRegistry.has(scoped),
-		"and unregisters when it leaves the tree"
-	)
-
-
-func _test_local_drive_accumulator() -> void:
-	print("local drive")
-
-	var world := _make_world()
-	var controller := _make_player(
-		world,
-		DotFpsController.Drive.LOCAL,
-		func(c: DotFpsController) -> void: c.tick_rate = 60
-	)
-
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-
-	controller.teleport(Vector3(0.0, 1.0, 0.0))
-
-	var ticks: Array[int] = []
-	controller.simulated.connect(
-		func(_t: int, _s: DotFpsState) -> void: ticks.append(1)
-	)
-
-	# A frame's worth of time at exactly the tick rate is one tick.
-	controller._physics_process(STEP)
-	_check(ticks.size() == 1, "one tick per frame at the tick rate", "%d" % ticks.size())
-
-	# Three ticks' worth in one frame is three ticks, not one — otherwise a slow
-	# frame silently loses simulation time and the player's movement depends on the
-	# frame rate.
-	ticks.clear()
-	controller._physics_process(STEP * 3.0)
-	_check(ticks.size() == 3, "and catches up after a slow frame", "%d" % ticks.size())
-
-	# A very long stall is dropped rather than simulated, so a level load does not
-	# spend the next frame running a thousand ticks and make the stall worse.
-	ticks.clear()
-	controller._physics_process(10.0)
-	_check(ticks.size() <= 8, "but a long stall is bounded", "%d ticks" % ticks.size())
-
-	# Rendering interpolates between ticks; the simulation does not.
-	var rendered := controller.render_state()
-	_check(
-		rendered != controller.state,
-		"render_state is a copy, so nothing can write back through it"
-	)
-
-	world.queue_free()
-	await get_tree().process_frame
+func _line(text: String) -> void:
+	print(text)

@@ -35,7 +35,7 @@ func _ready() -> void:
 
 
 func _run() -> void:
-	print("dot-fps-controller surf and bunny-hop self-test")
+	print("dot-player-controller surf and bunny-hop self-test")
 	print("")
 
 	_test_ramp_is_not_ground()

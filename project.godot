@@ -10,8 +10,9 @@ config_version=5
 
 [application]
 
-config/name="dot-fps-controller"
-run/main_scene="res://examples/sandbox.tscn"
+config/name="dot-player-controller"
+config/description="Everything that drives a player: intent, look accumulation, the switch that hands one controller to the next, first-person movement, and third-person movement with a camera rig."
+run/main_scene="res://examples/controller_selftest.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 
@@ -20,7 +21,6 @@ config/icon="res://icon.svg"
 window/size/viewport_width=1600
 window/size/viewport_height=900
 
-
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
@@ -28,4 +28,4 @@ renderer/rendering_method.mobile="gl_compatibility"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/dot_fps_controller/plugin.cfg")
+enabled=PackedStringArray("res://addons/dot_player_controller/plugin.cfg")

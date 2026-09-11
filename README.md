@@ -1,4 +1,4 @@
-This is the **first-person movement** asset for TMC's **Dot** collection. It is the feel of the game, and it is written to be predicted on a client and reconciled on a server rather than bolted onto netcode later.
+This is the **player controller** asset for TMC's **Dot** collection. It is everything that drives a player: the part every controller has in common, a first-person movement model written to be predicted and reconciled, and a third-person one with the camera rig that makes third person work.
 
 This collection of assets provides modular building blocks for creating games and applications within the TMC ecosystem, ensuring consistency and interoperability across all `dot-*` assets. This includes core functionality, networking, authentication, cloud integration, and more.
 
@@ -11,48 +11,94 @@ This asset, along with all the others, was built initially with **Claude Code** 
 
 I intend on reviewing code, testing, and editing documentation regularly. If you're interested in helping out, please let me know!
 
-## First-Person Movement, Built to be Networked
-A first-person movement controller for Godot 4, built to be **networked**.
+## Three halves
 
-Classic strafe acceleration — air-strafing, bunny-hopping, surf ramps — with
-stair stepping, crouching that checks for headroom, coyote time and jump buffering.
-The simulation is deterministic and driven entirely by explicit commands, so a client
-can predict it and a server can reconcile it.
+```
+addons/dot_player_controller/
+  core/   nodes/    the contract: intent, look, the abstract base, the switch
+  fp/               first-person movement — the one that was dot-fps-controller
+  tp/               third-person movement, and the camera rig
+```
 
-Part of the [dot-\*](https://github.com/modcommunity) family. Requires [dot-core](https://github.com/modcommunity/dot-core). Works with
-[dot-net](https://github.com/modcommunity/dot-net) and [dot-server](https://github.com/modcommunity/dot-server), and requires neither.
+The base moves nothing. `fp/` and `tp/` are the two shipped implementations, and a vehicle, a ladder, a spectator camera and a cutscene rail are the same shape.
+
+**`fp/` was `dot-fps-controller`.** Every `class_name` is unchanged — `DotFpsController`, `DotFpsMotor`, `DotFpsTunables` and the rest — because `class_name` is global in Godot and renaming one is a breaking change for every project that has it installed, to gain nothing: `DotFps` still says exactly what it is. Its documentation is kept whole, further down and in `CLAUDE.md`.
+
+A game that wants only one half can delete the other folder; the plugin skips a node type whose script is not there, so a trimmed install is a supported shape rather than a broken one.
 
 ## Install
 
-Copy `addons/dot_fps_controller/` and `addons/dot_core/` into your project and enable
-both in *Project → Project Settings → Plugins*.
+Copy `addons/dot_player_controller/`, `addons/dot_player/` and `addons/dot_core/` into your project and enable all three in *Project → Project Settings → Plugins*.
 
-## Use
+`addons/dot_net/` is optional and is only used by the first-person half's `DotFpsNetSync`, which does not import it.
 
-```
-Player (CharacterBody3D)
- ├── Collision   (CollisionShape3D)
- ├── Head        (Node3D)
- │    └── Camera (Camera3D)
- ├── View        (DotFpsView)
- └── Controller  (DotFpsController)
-```
+Requires Godot 4.7 or newer.
 
-That is the whole setup. Nothing is wired by hand: the view finds the camera by type
-and the controller finds the collider and the view the same way. Every one of those
-is a `DotNodeRef` you can override in the inspector when your scene looks different.
+## What the base provides
 
-Input actions are registered at runtime if your project has none — WASD, space, ctrl,
-shift, alt, V. Existing actions are never touched; point `DotFpsSampler.actions` at
-your own names to use them instead.
+The three things every controller needs and nobody wants to write twice.
 
-Try it:
+## 1. Intent, which is not input and not movement
 
-```bash
-godot --path . res://examples/sandbox.tscn
+```gdscript
+var intent := DotPlayerIntent.make(Vector2(0, 1), DotPlayerIntent.Btn.JUMP, tick)
+intent.view_yaw = look.yaw
+controller.drive(intent, delta)
 ```
 
-## What is in the box
+It says *"forward, holding jump, looking here"*. It does not say which key that was, and it does not say what happens. A sampler makes them, a controller consumes them, a replay hands the same ones back, and a server receives them over a wire and never sees a keyboard.
+
+`diff_from(previous_buttons)` fills in `pressed` and `released`, because **a jump is an edge and a sprint is a level** — and a controller computing edges itself would need the previous command, which a stateless replay does not have.
+
+The **look delta is not on the wire**. A server that integrated a client's deltas would be reconstructing an angle the client already knows, one lost packet away from disagreeing about it forever. The client sends where it is looking; the server clamps and accepts.
+
+## 2. `DotPlayerLook`, the forty lines everybody rewrites
+
+```gdscript
+look.apply(mouse_delta)          # sensitivity, inversion, zoom
+camera.basis = look.basis()      # yaw then pitch
+body.basis   = look.body_basis() # yaw only
+velocity     = look.move_direction(intent.move) * speed
+```
+
+Three mistakes it exists to stop:
+
+1. **Pitch clamps; yaw wraps.** Clamping yaw stops the player turning round. Wrapping pitch lets them look through their own feet and come out the top.
+2. **The wrap must be bounded.** A yaw that only accumulates is a float losing precision over a long session, and the symptom is a mouse that gets less accurate the longer the server has been up.
+3. **Sensitivity multiplies the delta, not the angle.** Applied to the angle it snaps the view every time the setting changes.
+
+`forward_flat()` is separate from `forward()` so a player looking at the floor still walks forwards rather than into it. `move_direction` is here rather than in each controller specifically so the two cannot disagree about which component is X.
+
+## 3. The switch, and the handover
+
+```
+DotPlayer
+  DotPlayerControllerSwitch    default_controller = &"fp"
+  DotFpsController             controller_id = &"fp"
+  DotTpsController             controller_id = &"tp"
+```
+
+Without it, two controllers both read input and both write the body's transform, and which one wins depends on child order — a result nobody will ever guess from the symptom.
+
+**The handover carries exactly four things: position, velocity, yaw and pitch.** Not the controller's state, and that is deliberate: a first-person motor's state and a third-person motor's have nothing in common, and converting one into the other would be a lie. Getting out of a vehicle should not restore the air-strafe you were in the middle of.
+
+It happens **after** the incoming controller's `_on_activated`, because that is where a real controller resets its motor — hand the state over first and the reset wipes it.
+
+`set_input_enabled(false)` freezes *every* controller, not just the active one: a player who switches view while frozen must stay frozen.
+
+## A frozen controller still ticks
+
+`drive()` with `input_enabled = false` applies an **empty** intent rather than skipping the tick. A frozen player keeps falling, keeps sliding to a stop and keeps being pushed by the world; a controller that skipped would leave them hanging in mid-air, which is the classic warm-up-freeze bug.
+
+## The first-person half
+
+**The simulation is a pure function of (state, command, delta, world)**, which is what lets a client apply input immediately and a server correct it a round trip later without the two disagreeing. It is a property that has to be designed in: nothing about GDScript enforces it, and nothing about a single-player game reveals when it is broken.
+
+`examples/movement_selftest.tscn` runs 400 mixed commands, snapshots at tick 250, replays the last 150 from the snapshot, and requires the same endpoint — the shape of reconciliation — with a negative control, because a test that cannot fail is not a test. `examples/surf_selftest.tscn` is the ramp behaviour on its own.
+
+It does its own collide-and-slide, deliberately: bunny-hopping and surfing are consequences of exactly how the sliding works.
+
+### What is in the box
 
 | | |
 | --- | --- |
@@ -70,7 +116,7 @@ godot --path . res://examples/sandbox.tscn
 | `DotFpsMoveMode` | A movement mode your game adds — ladder, water, grapple — without forking the motor. |
 | `DotFpsTouchSampler` | Commands from touch, for phones and the browser. No art, no layout. |
 
-## Movement
+### Movement
 
 The model is the classic one, so the behaviours players expect from it are all present and
 all fall out of the same acceleration function rather than being special-cased:
@@ -94,7 +140,7 @@ all fall out of the same acceleration function rather than being special-cased:
 Everything above is a value in `DotFpsTunables`, which a dedicated server can set from
 a JSON file, the environment or the command line without a rebuild.
 
-## Extending it
+### Extending it
 
 Four hooks, and none of them need a fork:
 
@@ -113,7 +159,7 @@ Four hooks, and none of them need a fork:
 All three of the first group are part of the simulation, so all three replicate and
 survive a prediction replay. `CLAUDE.md` explains what that constrained.
 
-## Networking
+### Networking
 
 The controller does not depend on dot-net and does not import it. What it gives you
 instead is the hard part: a simulation that reproduces itself exactly when replayed,
@@ -126,17 +172,7 @@ Joining the two is about thirty lines in your game. `CLAUDE.md` has the whole th
 config differs from the server's diverges every tick, and the symptom is
 indistinguishable from packet loss.
 
-## Validating
-
-```bash
-godot --headless --path . --import
-godot --headless --path . res://examples/movement_selftest.tscn     # 149 checks
-godot --headless --path . res://examples/controller_selftest.tscn   # 46 checks
-```
-
-Both exit non-zero on failure.
-
-## Credits
+### Credits
 
 - [Christian Deacon](https://github.com/gamemann)
 - [BleyChimera](https://github.com/BleyChimera) — the original controller this one
@@ -144,3 +180,28 @@ Both exit non-zero on failure.
 - [Prototype textures](https://www.kenney.nl/assets/prototype-textures) by Kenney.
 
 MIT licensed.
+
+## The third-person half
+
+An orbit rig on a spring arm, a shoulder offset it can swap, camera-relative movement, turn-to-face and strafe-lock, coyote time and a jump buffer.
+
+`DotTpsMotor.step` is pure, but it does **not** do its own collide-and-slide — `move_and_slide` resolves the collisions. So it is deterministic *given the same collision results*: enough for a replay on one machine, not enough for bit-exact rewind against a server that resolved them itself. A third-person shooter that needs the latter drives the first-person motor and uses `tp/` for the camera alone. That is a real limitation, written down rather than discovered.
+
+## Writing a controller
+
+Five methods:
+
+```gdscript
+class MyController extends DotPlayerController:
+    func _apply_intent(intent: DotPlayerIntent, delta: float) -> void: ...
+    func _read_transform() -> Transform3D: ...
+    func _write_transform(to: Transform3D) -> void: ...
+    func _read_velocity() -> Vector3: ...
+    func _write_velocity(v: Vector3) -> void: ...
+```
+
+The base's defaults already read and write a `CharacterBody3D` *or* a `CharacterBody2D` found through the player, so a simple controller can skip four of them. `examples/controller_selftest.gd` has a worked one.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).

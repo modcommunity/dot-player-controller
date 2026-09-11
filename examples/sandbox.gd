@@ -45,7 +45,7 @@ func _ready() -> void:
 	if view != null:
 		view.bob_amount = 0.035
 
-	print("dot-fps-controller sandbox")
+	print("dot-player-controller sandbox")
 	print(_controller.tunables.describe_summary())
 	print("F1 state · F2 speed pad · V noclip · esc mouse")
 

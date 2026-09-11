@@ -35,7 +35,7 @@ func _ready() -> void:
 
 
 func _run() -> void:
-	print("dot-fps-controller movement self-test")
+	print("dot-player-controller movement self-test")
 	print("")
 
 	_test_configuration()

@@ -1,7 +1,7 @@
 [gd_scene load_steps=4 format=3 uid="uid://qsutnn61opbk"]
 
-[ext_resource type="Script" path="res://addons/dot_fps_controller/nodes/dot_fps_view.gd" id="1_view"]
-[ext_resource type="Script" path="res://addons/dot_fps_controller/nodes/dot_fps_controller.gd" id="2_ctrl"]
+[ext_resource type="Script" path="res://addons/dot_player_controller/fp/nodes/dot_fps_view.gd" id="1_view"]
+[ext_resource type="Script" path="res://addons/dot_player_controller/fp/nodes/dot_fps_controller.gd" id="2_ctrl"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.35
