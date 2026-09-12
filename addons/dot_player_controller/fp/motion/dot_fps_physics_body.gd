@@ -138,7 +138,7 @@ func sweep(
 	var unsafe: float = fractions[1]
 
 	if safe >= 1.0:
-		return result
+		return _downward_ray_fallback(from, motion, height)
 
 	result.hit = true
 	result.fraction = clampf(safe, 0.0, 1.0)
@@ -168,6 +168,76 @@ func sweep(
 	# replicated transform. Cheaper to check here than to find later.
 	if not result.normal.is_normalized():
 		result.normal = -motion.normalized()
+
+	return result
+
+
+## A ray down the capsule's own axis, for when [method PhysicsDirectSpaceState3D.cast_motion]
+## refuses to see the floor.
+##
+## [b]cast_motion skips any collider it believes the shape already overlaps at the
+## start of the sweep[/b] — "ignore objects it's inside of", in the engine's own words
+## — and that judgement comes out of the GJK distance solver. Against a very large
+## convex it is not reliable: measured on 4.7.2 against a 164 m plate, a capsule
+## resting 4.5 mm above the floor was reported as free space by a 22 mm downward
+## sweep, while a ray through the same gap on the same tick found the floor at y = 0.
+## Lifting the start of the sweep does not fix it — the answer flips between hit and
+## miss with no threshold, because it is a convergence failure rather than a margin.
+##
+## The consequence is the worst one this code has: the ground probe misses, the player
+## is declared airborne on a floor they are standing on, they sink, and once they are
+## inside the geometry every subsequent query starts embedded and answers nothing. They
+## leave the level at a constant rate. That is exactly how [code]pg_lobby[/code]'s 164 m
+## plate behaved in game-playground.
+##
+## A ray is analytic against every primitive and has no such failure mode. It is used
+## only as a second opinion when the sweep saw nothing at all, so it can never make the
+## motor collide with less than it did before.
+##
+## [b]Downward motion only, and the restriction is not laziness.[/b] The ray runs down
+## the capsule's axis from its lowest point, so on a floor the distance it reports IS
+## the capsule's contact distance. Sideways, the axis is [member DotFpsTunables.radius]
+## behind the leading edge, so the same trick would report a wall late and embed the
+## player in it. A wall a sweep cannot see is a real gap and it is written down in the
+## to-do list rather than papered over here.
+func _downward_ray_fallback(
+	from: Vector3, motion: Vector3, height: float
+) -> Hit:
+	var result := Hit.miss()
+	var length := motion.length()
+
+	if length <= 0.0 or _space == null:
+		return result
+
+	var direction := motion / length
+
+	if direction.dot(Vector3.DOWN) < 0.7:
+		return result
+
+	# The capsule's lowest point, which is what a downward sweep is asking about.
+	var foot := from - Vector3.UP * (height * 0.5)
+
+	var query := PhysicsRayQueryParameters3D.create(foot, foot + motion)
+	query.collision_mask = collision_mask
+	query.exclude = exclude
+	query.collide_with_areas = false
+	query_count += 1
+
+	var contact: Dictionary = _space.intersect_ray(query)
+
+	if contact.is_empty():
+		return result
+
+	var point: Vector3 = contact.get("position", foot)
+
+	result.hit = true
+	result.fraction = clampf(foot.distance_to(point) / length, 0.0, 1.0)
+	result.normal = contact.get("normal", Vector3.UP)
+	result.point = point
+	result.collider_id = int(contact.get("collider_id", 0))
+
+	if not result.normal.is_normalized():
+		result.normal = Vector3.UP
 
 	return result
 
