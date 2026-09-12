@@ -56,6 +56,8 @@ func _build() -> void:
 	arm.margin = 0.2
 	add_child(arm)
 
+	exclude_own_body()
+
 	pivot = Marker3D.new()
 	pivot.name = "Shoulder"
 	arm.add_child(pivot)
@@ -104,6 +106,40 @@ func _blend_aim(state: DotTpsState, delta: float) -> void:
 
 	if camera != null:
 		camera.fov = lerpf(_base_fov, _base_fov * tunables.aim_fov_scale, _aim)
+
+
+## Keeps the arm from colliding with the player it is attached to.
+##
+## [b]The rig hangs off the player, so the arm's cast STARTS inside the player's own
+## collider.[/b] `SpringArm3D` does not exclude its own ancestors — it excludes nothing
+## unless told — so on a third-person game where the player is a `CharacterBody3D` (which
+## is every third-person game, and is what [DotTpsController] requires) the arm collides
+## on its first millimetre and collapses to the margin. The camera then sits at the
+## shoulder pivot: inside the character, looking at the inside of its own head, at every
+## distance and every angle, with `camera_distance` and every other tunable reading
+## exactly as configured.
+##
+## It went unnoticed because nothing in this family had a player body that was a collision
+## object until game-playground's became one. `tps_selftest` builds no physics world, so
+## its arm collides with nothing and reports the full length — the check passed for the
+## one reason it could not fail.
+##
+## Walks up rather than taking the body as an argument, because the rig is built before
+## the controller has resolved its player and the body can arrive later. Safe to call
+## again; `SpringArm3D` ignores a duplicate exclusion.
+func exclude_own_body() -> void:
+	if arm == null:
+		return
+
+	var node: Node = get_parent()
+
+	while node != null:
+		var body := node as CollisionObject3D
+
+		if body != null:
+			arm.add_excluded_object(body.get_rid())
+
+		node = node.get_parent()
 
 
 ## Swaps the shoulder the camera sits over.

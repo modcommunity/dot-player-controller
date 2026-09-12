@@ -4,6 +4,18 @@ Everything that drives a player: the shared contract, first-person movement, thi
 
 Read the family-wide conventions in [`../../CLAUDE.md`](../../CLAUDE.md) first — no autoloads, `DotNodeRef` instead of scene paths, `DotResult` for anything fallible, `Dot`-prefixed class names, layered configuration, `describe()` on anything stateful. This file is only what is specific to controllers.
 
+
+## A recovery that detects the problem and then guarantees it
+
+`_categorise_ground` has a branch for a player who is inside geometry: a swept query cannot report anything useful about a shape that starts in solid — Godot's answers "no collision", which reads as "nothing below me" — so a player embedded by a fraction of a millimetre looks airborne, falls, embeds further, and leaves the level. The branch asks the one question a sweep cannot (`body.overlaps`) and keeps them grounded.
+
+**It was half a recovery, and the missing half is why anybody noticed.** Staying grounded stops the fall out of the world and does nothing about being inside the floor. The probe still starts in geometry next tick, still reports nothing, and still arrives at the same branch — so it answers GROUND for ever, keeps a stale `ground_normal`, and skips the one call that could have lifted the player out, because `_move` runs `_snap_to_ground` **only when this function says they are not grounded**. An absorbing state: every route in is a bug somewhere else, and there was no route out at all. Reported as "I bhop and go through the floor and then get stuck".
+
+`_lift_clear` is the other half. Straight up, never further than a step, doubling the lift each try so it is about nine overlap queries rather than several hundred; if it clears, the ordinary probe finds the floor again on the same tick, and if it does not, the old answer stands. It cannot affect a player who is not already embedded, which today means a player who is already permanently stuck.
+
+**`embedded_ticks` and `lifted_ticks` exist because nothing outside the simulation can count this.** An overlap test from a probe reports 70% of bhopping players "inside solid" — a capsule resting a millimetre above a floor overlaps it, shapes have margins, and standing on the ground *is* an overlap. The distinction that matters is the one this function already makes and had no way to report: the ground probe found nothing **and** the player is in something. Two probes were written against the outside view and both produced large, plausible, monotonic numbers that measured nothing.
+
+
 ## The one idea
 
 **A switch between two controllers carries position, velocity and view — and nothing else.**
@@ -12,7 +24,7 @@ That sentence is the reason this addon exists as something separate from the two
 
 ## It was three addons
 
-`dot-player-controller-fp` (which was `dot-fps-controller`) and `dot-player-controller-tp` were separate repositories and are now folders. The merge is recorded in the top-level `tmp.md`. The short version: nobody installed either half without the base, the base is useless alone, and the split bought two repositories and two `plugin.cfg` files.
+`dot-player-controller-fp` (which was `dot-fps-controller`) and `dot-player-controller-tp` were separate repositories and are now folders. Neither was ever pushed, so there is nothing to go and read: the reason is that nobody installed either half without the base, the base is useless alone, and the split bought two repositories and two `plugin.cfg` files.
 
 Every `class_name` survived it. `DotFpsController`, `DotFpsMotor`, `DotTpsController`, `DotTpsCameraRig` — all unchanged, because `class_name` is global in Godot and renaming one breaks every project that has the addon installed.
 
@@ -465,3 +477,28 @@ both hit again:
 - **A character mesh or animation.** `DotFpsController` publishes position, yaw, pitch
   and crouch; driving an `AnimationTree` from those is a game's own layer.
 
+## Two things the third-person half got wrong, and neither could fail in its own suite
+
+**`DotTpsCameraRig` never excluded the body it hangs off.** `SpringArm3D` excludes nothing
+unless told, and the rig is a child of the player — so on any game whose player is a
+`CharacterBody3D`, which is every game this controller can drive, the arm collides on its
+first millimetre and collapses to the margin. The camera then sits at the shoulder pivot,
+inside the character, at every distance and every angle, with `camera_distance` and every
+other tunable reading exactly as configured.
+
+`tps_selftest` builds no physics world, so its arm collides with nothing and reports the
+full length: **the check passed for the one reason it could not fail.** What found it was
+a rendered frame — game-playground's `tools/screenshot_views.sh`, on the first game in this
+family whose player body is a collision object.
+
+**A controller's id must be set before the switch enters the tree.**
+`DotPlayerControllerSwitch._ready` defers `_activate_default` deliberately — a sibling's
+`_ready` may not have run yet — but it calls `refresh()` immediately, and a controller
+still carrying an empty `controller_id` at that moment is registered under its class name
+instead. `default_controller` then names something that is not there and the switch falls
+back to whatever it found first. The consuming game opened in the wrong view and the only
+symptom was the camera.
+
+A consumer also has to **wait one frame** before reading `active_id()`: the default is
+activated deferred, so on the frame the switch is built the active id is still empty, which
+is neither controller.

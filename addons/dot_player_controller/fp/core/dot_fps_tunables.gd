@@ -165,7 +165,8 @@ extends DotConfig
 ##
 ## [b]It is off here and on in those shooters[/b] because this addon's defaults are
 ## a movement shooter's, and a movement shooter that caps hop speed has no
-## bunny-hopping. Set it to 1.104 to reproduce retail CS:S.
+## bunny-hopping. Set it to 1.104 to reproduce the retail behaviour of the round-based
+## competitive shooters this genre came from.
 @export_range(0.0, 10.0, 0.001) var bhop_speed_cap_scale: float = 0.0
 
 ## Extra friction while standing near a ledge, as a multiplier. 1 disables it.

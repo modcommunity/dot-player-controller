@@ -91,6 +91,33 @@ var ticks_simulated: int = 0
 var stuck_ticks: int = 0
 
 
+
+
+## Ticks on which a player was found INSIDE geometry with no floor under them.
+##
+## [b]This is "I went through the floor", counted.[/b] It is the one number that says so:
+## an overlap test from outside the simulation cannot, because a capsule resting a
+## millimetre above a floor overlaps it too — shapes have margins — so "is the player in
+## solid" answers yes for everybody standing anywhere. The distinction that matters is
+## the one [method _categorise_ground] already makes and had no way to report: the ground
+## probe found nothing AND the player is in something.
+var embedded_ticks: int = 0
+
+## How many of those were lifted back out. See [method _lift_clear].
+##
+## The two together are the whole measurement: `embedded_ticks` is how often it happens,
+## and the gap between them is how often a player is left under the floor to walk around
+## in the dark until they respawn — which before there was a lift was all of them.
+var lifted_ticks: int = 0
+## Ticks whose move stopped early on a plane it had already resolved against.
+##
+## The intended path rather than a fault, but a tick that ends this way spends only part
+## of its motion — so a high count on a surface a player should be flowing across is
+## worth looking at even though nothing is wrong on any single tick. Close to zero on
+## hand-built geometry; 10% to 14% of ticks on a map imported as one convex hull per
+## brush, where a curved ramp is a fan of faces a degree apart and every one of them is
+## a near-copy of the last.
+var duplicate_plane_ticks: int = 0
 func _init(p_tunables: DotFpsTunables, p_body: DotFpsBody) -> void:
 	tunables = p_tunables
 	body = p_body
@@ -648,11 +675,46 @@ func _categorise_ground(state: DotFpsState) -> void:
 	# the tick a player leaves the ground, which is rare; the alternative is an
 	# occasional, unreproducible fall through the world.
 	if was_grounded and body.overlaps(centre, height, tunables.radius):
-		DotLog.debug(
-			CHANNEL,
-			"ground probe missed while embedded; staying grounded",
-			{"position": str(state.position)}
-		)
+		embedded_ticks += 1
+		# [b]And then get them OUT, which is the half that was missing.[/b] Staying
+		# grounded stops the fall out of the level and does nothing at all about being
+		# inside the floor: the probe above still starts in geometry next tick, still
+		# reports nothing, and still arrives here — so this branch answers GROUND for
+		# ever, keeps a stale [member DotFpsState.ground_normal], and skips the one
+		# call that could have lifted the player out, because [method _move] runs
+		# [method _snap_to_ground] only when this function says they are NOT grounded.
+		#
+		# It is an absorbing state. Every route into it is a bug somewhere else — a
+		# grazing landing at bhop speed leaves about a millimetre of vertical clearance,
+		# and the snap's 35 cm sweep is a 7 mm margin against a backend tolerance nobody
+		# measured — but the reason it is *noticed* is that there is no route out. A
+		# player goes through the floor and is then stuck under it until they respawn,
+		# which is exactly how it was reported.
+		#
+		# So: lift them clear first, and keep the old answer only if that fails. A
+		# player who is not embedded any more is one the ordinary probe can find a floor
+		# for on the very next tick.
+		if _lift_clear(state, height):
+			lifted_ticks += 1
+			DotLog.debug(
+				CHANNEL,
+				"was embedded in geometry; lifted clear",
+				{"position": str(state.position)}
+			)
+			var recovered := _sweep(_capsule_centre(state.position, height), probe, height)
+			if recovered.hit and _is_floor(recovered.normal):
+				state.mode = DotFpsState.Mode.GROUND
+				state.ground_normal = recovered.normal
+				state.ground_id = recovered.collider_id
+				_resolve_surface(state)
+				return
+		else:
+			DotLog.debug(
+				CHANNEL,
+				"ground probe missed while embedded; staying grounded",
+				{"position": str(state.position)}
+			)
+
 		state.mode = DotFpsState.Mode.GROUND
 		return
 
@@ -1010,6 +1072,9 @@ func _move(state: DotFpsState, delta: float, jumped: bool) -> void:
 	if plain.ran_out:
 		stuck_ticks += 1
 
+	if plain.stopped_on_duplicate:
+		duplicate_plane_ticks += 1
+
 	if was_grounded and not jumped and tunables.ground_snap:
 		# Categorise first and snap only if the player actually left the ground.
 		#
@@ -1036,8 +1101,15 @@ class MoveResult extends RefCounted:
 	var velocity: Vector3
 	var travelled: float = 0.0
 	var blocked: bool = false
-	## Iterations were exhausted with motion remaining.
+	## Iterations were exhausted with motion remaining: a wedge the slide gave up on.
 	var ran_out: bool = false
+	## The move stopped early because it met a plane it had already resolved against.
+	##
+	## Not a failure — see the comment on that branch — but the rest of the tick's motion
+	## goes unspent, so a player meeting one every tick keeps their velocity and covers
+	## less ground than it implies. Counted separately because telling the two apart is
+	## the only reason to count either.
+	var stopped_on_duplicate: bool = false
 
 
 ## Collide and slide: move, and on contact continue along the surface.
@@ -1112,6 +1184,7 @@ func _slide(
 			break
 
 		if outcome == PLANE_DUPLICATE:
+			result.stopped_on_duplicate = true
 			# The same plane again. The velocity has already been resolved against
 			# it, so resolving again is a no-op and the loop would spin until it ran
 			# out of iterations. Stop the move and KEEP the velocity.
@@ -1127,9 +1200,20 @@ func _slide(
 		current = _resolve_planes(planes, motion)
 		result.velocity = _resolve_planes(planes, velocity)
 
-	# Motion left over means the iteration budget ran out rather than the move
-	# completing — the player is in a wedge the slide could not resolve.
-	if time_left > 1e-6 and current.length_squared() > 1e-12:
+	# Motion left over means the move did not complete. [b]That is two different things
+	# and this counted them as one.[/b] The duplicate-plane break above leaves exactly
+	# this state on purpose — time left, velocity kept — and is documented twenty lines
+	# up as the correct outcome; running out of iterations is a player wedged in geometry
+	# the slide gave up on. Both set `ran_out`, so [member stuck_ticks] has counted the
+	# intended path as a fault since it was written.
+	#
+	# It matters because that counter is the only instrument anybody would reach for. On
+	# an imported map it reads 10% to 14% of all ticks — which looks like a serious
+	# collision failure, is almost entirely the early-out working as designed, and hid
+	# the genuine figure, which is ONE tick in fifteen thousand. Raising
+	# `max_slide_iterations` from 5 to 20 moved it not at all, and that experiment is
+	# what separates them.
+	if time_left > 1e-6 and current.length_squared() > 1e-12 and not result.stopped_on_duplicate:
 		result.ran_out = true
 
 	result.travelled = Vector3(
@@ -1315,6 +1399,44 @@ func _slide_with_step(
 ## every few. Those ticks get air physics — no friction, no ground acceleration — so
 ## the player accelerates down slopes and skates at the bottom, which reads as the
 ## movement being slippery rather than as a grounding bug.
+## Lifts a player who is inside geometry until they are not, and says whether it worked.
+##
+## Straight up, and never further than a step: the player got here by sinking through a
+## surface they were standing on, so the surface is above them and a step is as far as it
+## can be without this having been something other than a sinking. Lifting further would
+## be a teleport, and teleporting somebody out of a wall they legitimately spawned inside
+## is a different problem with a different answer.
+##
+## [b]The lift doubles each try.[/b] Starting at the skin width and stepping by it would
+## be several hundred overlap queries to cover a step; doubling covers the same distance
+## in about nine, which matters because this runs inside the simulation and the server
+## runs it for everybody. The cost is landing up to twice as high as strictly necessary,
+## and the ground probe on the next tick brings them back down.
+##
+## Deterministic — arithmetic and shape queries, no clock and no RNG — so a client and a
+## server recovering from the same embedded position recover to the same place, which is
+## the whole contract this file is written to.
+func _lift_clear(state: DotFpsState, height: float) -> bool:
+	var lift := maxf(tunables.skin_width * 2.0, 0.0005)
+	var limit := maxf(tunables.step_height, lift)
+	var moved := 0.0
+
+	while moved < limit:
+		moved = minf(moved + lift, limit)
+		var centre := _capsule_centre(state.position + Vector3.UP * moved, height)
+
+		if not body.overlaps(centre, height, tunables.radius):
+			state.position.y += moved
+			return true
+
+		if moved >= limit:
+			break
+
+		lift *= 2.0
+
+	return false
+
+
 func _snap_to_ground(state: DotFpsState, height: float) -> void:
 	if state.velocity.y > 0.1:
 		return
