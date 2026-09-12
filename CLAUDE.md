@@ -442,7 +442,7 @@ find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
 godot --headless --path . res://examples/movement_selftest.tscn     # 149 checks
-godot --headless --path . res://examples/controller_selftest.tscn   # 46 checks
+godot --headless --path . res://examples/controller_selftest.tscn   # 49 checks
 godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks
 ```
 
@@ -458,6 +458,37 @@ both hit again:
 - **Lambdas capture locals by value.** `var n := 0` incremented inside a signal
   handler stays zero outside it, so a test asserting on the count reports a failure
   for a signal that fired perfectly. Capture an `Array` instead.
+
+### Rendering between ticks, and the guard that made it unreachable
+
+`render_state()` interpolates the position and crouch between the last two ticks, so
+motion is smooth at a frame rate that is not the tick rate. It has done that since this
+addon was written, and **its guard was `if drive != Drive.LOCAL: return state`**.
+
+`Drive.LOCAL` is the drive no networked game uses. Under dot-net a controller is
+`Drive.EXTERNAL` — the netcode owns the tick — so for every client of every game in this
+family the function returned the raw tick state, and `_accumulator` is only advanced by
+the LOCAL loop, so even reaching it would have blended at a constant alpha of zero.
+
+Measured in game-g2gfast's browser client at 60 frames against a 128-tick server: the
+drawn position advanced 74 mm on six frames out of seven and 112 mm on the seventh, a
+47% change in apparent speed eight times a second. That was the whole of a "the game is
+very jittery in the browser" report, on a client whose every simulated number was right.
+
+Two things it now needs from a host, and neither is this addon's to enforce:
+
+- **Step the controller once per physics frame.** The derived alpha is
+  `Engine.get_physics_interpolation_fraction()`, which is a fraction through a *physics
+  frame* and only a fraction through a tick while the engine's physics rate equals
+  `tick_rate`. A host that runs two ticks on one physics frame and three on the next
+  gets no benefit at all — measured, not assumed.
+- **Do not call it for a `Drive.REMOTE` player.** Its position arrives already
+  interpolated from the network and its `_previous_state` is never updated, so blending
+  would drag it backwards every frame. `render_state` refuses that drive itself.
+
+Pass an explicit alpha to override the derivation; `examples/fps_controller_selftest.gd`
+does, because the fraction's source is the host's business and the blend is this
+class's.
 
 ### Things deliberately not here
 
