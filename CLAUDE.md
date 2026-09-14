@@ -16,6 +16,22 @@ Read the family-wide conventions in [`../../CLAUDE.md`](../../CLAUDE.md) first �
 **`embedded_ticks` and `lifted_ticks` exist because nothing outside the simulation can count this.** An overlap test from a probe reports 70% of bhopping players "inside solid" — a capsule resting a millimetre above a floor overlaps it, shapes have margins, and standing on the ground *is* an overlap. The distinction that matters is the one this function already makes and had no way to report: the ground probe found nothing **and** the player is in something. Two probes were written against the outside view and both produced large, plausible, monotonic numbers that measured nothing.
 
 
+## The surface a swept query stops being able to see
+
+`_categorise_ground`'s recovery above is about a **floor**. The same engine behaviour on a **ramp** is worse, was invisible for longer, and could not be counted by any of the instruments written for the floor case.
+
+`cast_motion` ignores any collider the shape already overlaps. That is reasonable — a shape starting inside something has no *first* contact to report — and it makes contact with a surf ramp an absorbing state, because surfing **is** a continuous overlap. Measured on 4.7.2 against a 60° face: a capsule 2 cm clear is reported correctly, at the right fraction, with the right normal; the same capsule touching it, or 1 mm, 1 cm, 20 cm or 50 cm inside it, is free space at every one of those depths. The ramp does not become hard to see. It stops existing, and nothing brings it back.
+
+So nothing clips the velocity, gravity keeps pulling, and the player accelerates through the inside of the level: **0.83 m of penetration in 96 ticks and still growing, 20 m over 256.** Through all of it `stuck_ticks`, `duplicate_plane_ticks`, `embedded_ticks` and `lifted_ticks` read **zero**. From the motor's point of view nothing went wrong, and that is not an oversight in the counters — `embedded_ticks` and `_lift_clear` are both reached only from the branch of `_categorise_ground` that requires the player to have been GROUNDED last tick, and **a player on a surf ramp is never grounded, by design, because that is what makes it surf.** The one recovery this motor had could not run on the one surface that needed it.
+
+`DotFpsBody.rest_contact` is the question a sweep cannot answer. `get_rest_info` reports the resting surface's own normal and, measured against its contact point, the exact penetration — verified to four decimal places from 0 to 1 m. `DotFpsPhysicsBody.sweep` consults it when `cast_motion` sees nothing, and returns a fraction-0 hit **only when the motion goes into that surface**: a capsule inside something is usually also trying to leave it — the tick after a push, a step up, a crouch under a lip — and blocking the way out pins a player against the thing they are escaping.
+
+`_depenetrate` is the other half, and it is `_lift_clear` generalised. Lifting straight up is right for a floor and wrong for a ramp, where the shortest way out is mostly sideways and pushing up climbs along the inside of the face instead of leaving it. It pushes along the contact normal by the measured depth plus a skin, clamped to a step per tick — the clamp is what makes a wrong answer survivable, since a bad normal that moves a player a centimetre is a glitch and the same normal unclamped against a deep embed throws them across the level. A genuine deep embed takes a few ticks and converges, because each one is measured afresh. It costs one query per tick per player, which is real on a full server and is worth it: the cheaper question (`overlaps`) cannot tell a player resting on a floor from one buried in it, so it answers yes for almost everybody and buys nothing. `depenetrated_ticks` counts it.
+
+**`surf_selftest` could not have caught any of this, by construction.** It runs against `DotFpsFlatBody` — analytic geometry, one possible cause per failure, no scene, no physics step — and every one of those reasons is still good. It proved every surf property this motor has, 52 checks green, while the game was visibly broken, because the bug was never in the motor: it was in the one component that suite *replaces*. A suite that substitutes the component under suspicion cannot see a bug in it, and nothing about a green run tells you which component that is. `surf_physics_selftest` is the same properties against real `StaticBody3D` geometry and `DotFpsPhysicsBody`; revert the fix and it fails six checks with the player 20 m inside the ramp. **Run both.**
+
+And the measurement is **penetration, not speed.** A player sinking through a ramp has a plausible speed, a plausible position and a clean stuck count. The only thing they do not have is clearance, and nothing but a geometric test of the capsule against the face it is on can say so.
+
 ## The one idea
 
 **A switch between two controllers carries position, velocity and view — and nothing else.**
@@ -46,7 +62,7 @@ addons/dot_player_controller/
     core/ nodes/                      third-person, and the camera rig
 ```
 
-Five self-test scenes, one project: `controller_selftest` (the base), `movement_selftest` and `surf_selftest` and `fps_controller_selftest` (first person), `tps_selftest` (third person). **Run all five.** `controller_selftest` is the main scene and is the one a careless check runs alone.
+Six self-test scenes, one project: `controller_selftest` (the base), `movement_selftest` and `surf_selftest` and `surf_physics_selftest` and `fps_controller_selftest` (first person), `tps_selftest` (third person). **Run all six.** `controller_selftest` is the main scene and is the one a careless check runs alone.
 
 `fp/motion/` may not reference `fp/nodes/`, and `tp/core/` may not reference `tp/nodes/`. That direction of dependency is what keeps each simulation testable without a scene, and it is the first thing to break when somebody adds a "convenient" reference to the controller.
 
@@ -444,9 +460,10 @@ done
 godot --headless --path . res://examples/movement_selftest.tscn     # 149 checks
 godot --headless --path . res://examples/controller_selftest.tscn   # 49 checks
 godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks
+godot --headless --path . res://examples/surf_physics_selftest.tscn # 24 checks
 ```
 
-All three exit non-zero on failure. **Run the check-only pass before the scenes**:
+All four exit non-zero on failure. **`surf_selftest` and `surf_physics_selftest` are not alternatives** — the first is the motor against geometry whose answer is known, the second is the same properties against the collision backend the games actually run on, and the bug that made the second necessary was invisible to the first for as long as it existed. **Run the check-only pass before the scenes**:
 a script that fails to parse makes the scene fail to load, and the process then hangs
 rather than exiting, because nothing ever reaches `get_tree().quit()`.
 
