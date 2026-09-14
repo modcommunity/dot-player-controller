@@ -44,6 +44,14 @@ class Hit extends RefCounted:
 	## Instance id of what was hit, or 0.
 	var collider_id: int = 0
 
+	## Metres the collider is ALREADY past this surface at the start of the sweep.
+	##
+	## Zero for every ordinary swept contact, which is the only kind that existed when
+	## this class was written. Non-zero only for a [method DotFpsBody.rest_contact],
+	## where it is the exact distance the motor has to push back along
+	## [member normal] to be clear — see [method DotFpsMotor._depenetrate].
+	var depth: float = 0.0
+
 	static func miss() -> Hit:
 		return Hit.new()
 
@@ -83,6 +91,43 @@ func sweep(
 func overlaps(_at: Vector3, _height: float, _radius: float) -> bool:
 	push_error("DotFpsBody.overlaps() was not overridden.")
 	return false
+
+
+## The surface a capsule at [param at] is ALREADY inside, with how far inside it is.
+##
+## [b]A swept query cannot answer this, and the reason is the worst bug in this
+## file's history.[/b] Godot's [method PhysicsDirectSpaceState3D.cast_motion] ignores
+## any collider the shape already overlaps — reasonably, since there is no first
+## contact to report — and returns "nothing there". Measured on 4.7.2 against a surf
+## ramp: a capsule 2 cm clear of the face is reported correctly, and a capsule
+## touching it, or 1 mm, 1 cm, 20 cm or 50 cm inside it, is reported as free space at
+## every one of those depths. The ramp does not merely become hard to see; it stops
+## existing.
+##
+## Which makes contact an absorbing state. A surfer touches the ramp — that is what
+## surfing is — and from that tick the ramp is invisible, so nothing clips their
+## velocity, gravity keeps pulling them into it, and they accelerate through the
+## inside of the level. [member DotFpsMotor.stuck_ticks] and every other counter read
+## zero throughout, because from the motor's point of view nothing went wrong.
+##
+## [method overlaps] can tell you that you are inside something but not what, or which
+## way is out. This reports both, so there is a route back out of a state the sweep
+## alone can only sink deeper into. The default is a miss: a game with its own body
+## keeps working and simply gets no recovery.
+func rest_contact(_at: Vector3, _height: float, _radius: float) -> Hit:
+	return Hit.miss()
+
+
+## The distance from a Y-aligned capsule's centre to its surface along [param normal].
+##
+## [b]Not the bounding box's.[/b] The box approximation
+## ([code]radius * |n.x| + height/2 * |n.y| + radius * |n.z|[/code]) appears in
+## placement helpers, where erring large is safe. Used as a real support it
+## overestimates by about 10 cm on a 60 degree face for the shipped collider, which is
+## enough to put a de-penetration push in the wrong place and a probe outside the
+## geometry it was meant to find.
+static func capsule_support(normal: Vector3, height: float, radius: float) -> float:
+	return maxf(height * 0.5 - radius, 0.0) * absf(normal.y) + radius
 
 
 ## Which collision layers to test against. Set by the controller from the tunables.

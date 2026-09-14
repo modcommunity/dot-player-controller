@@ -138,6 +138,16 @@ func sweep(
 	var unsafe: float = fractions[1]
 
 	if safe >= 1.0:
+		# Nothing along the sweep. That is two different worlds and they need
+		# different answers: genuinely open space, or a collider the sweep refuses to
+		# see because the capsule is already inside it. Ask the resting question
+		# before the ray, because a ramp underfoot answers the ray badly and this
+		# exactly.
+		var resting := _blocking_rest_contact(from, motion, height, radius)
+
+		if resting.hit:
+			return resting
+
 		return _downward_ray_fallback(from, motion, height)
 
 	result.hit = true
@@ -238,6 +248,67 @@ func _downward_ray_fallback(
 
 	if not result.normal.is_normalized():
 		result.normal = Vector3.UP
+
+	return result
+
+
+## A [method rest_contact] filtered to surfaces this motion would drive further into.
+##
+## [b]The filter is the whole safety of the change.[/b] A capsule that is inside
+## something is usually also trying to get out of it — the tick after a push, a step
+## up onto a ledge, a crouch under a lip — and reporting a contact whose normal the
+## motion is already moving away from would stop that move dead at fraction 0 and pin
+## the player against the surface they were escaping. Only a surface being entered
+## blocks; one being left is not this query's business.
+func _blocking_rest_contact(
+	from: Vector3, motion: Vector3, height: float, radius: float
+) -> Hit:
+	var resting := rest_contact(from, height, radius)
+
+	if not resting.hit or motion.dot(resting.normal) >= 0.0:
+		return Hit.miss()
+
+	return resting
+
+
+func rest_contact(at: Vector3, height: float, radius: float) -> Hit:
+	var result := Hit.miss()
+
+	if _space == null and not revalidate():
+		return result
+
+	_configure(height, radius)
+	query_count += 1
+
+	_shape_params.transform = Transform3D(Basis.IDENTITY, at)
+	_shape_params.motion = Vector3.ZERO
+
+	var contact: Dictionary = _space.get_rest_info(_shape_params)
+
+	if contact.is_empty():
+		return result
+
+	var normal: Vector3 = contact.get("normal", Vector3.ZERO)
+
+	# Unlike the sweep, there is no motion here to fall back on for a direction, so a
+	# degenerate normal has no safe substitute and the honest answer is "no contact".
+	# Reporting a made-up one would push the player somewhere arbitrary.
+	if not normal.is_normalized():
+		return Hit.miss()
+
+	var point: Vector3 = contact.get("point", at)
+
+	# How far the capsule's deepest point along -normal lies past the contact point.
+	# Measured against get_rest_info's own point rather than against a shape query,
+	# and checked to 4 decimal places at depths from 0 to 1 m on 4.7.2.
+	var deepest := at - normal * DotFpsBody.capsule_support(normal, height, radius)
+
+	result.hit = true
+	result.fraction = 0.0
+	result.normal = normal
+	result.point = point
+	result.collider_id = int(contact.get("collider_id", 0))
+	result.depth = maxf(normal.dot(point - deepest), 0.0)
 
 	return result
 

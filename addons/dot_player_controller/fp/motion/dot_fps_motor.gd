@@ -118,6 +118,19 @@ var lifted_ticks: int = 0
 ## brush, where a curved ramp is a fan of faces a degree apart and every one of them is
 ## a near-copy of the last.
 var duplicate_plane_ticks: int = 0
+
+## Ticks that began with the capsule inside geometry and pushed it back out.
+##
+## [b]Not the same measurement as [member embedded_ticks], and the difference is the
+## bug it was added for.[/b] That one counts a player who is embedded AND was grounded
+## last tick, which is the only case [method _categorise_ground] could recover; a
+## surfer is never grounded, so a player sinking through a ramp incremented nothing at
+## all. Every counter on this motor read zero through a measured 83 cm of penetration.
+##
+## Expect a small non-zero number on any real map — resting contact and overlap are
+## the same thing to within a margin, so a tick or two of a few microns is ordinary.
+## A count that tracks the tick rate on one surface is that surface eating players.
+var depenetrated_ticks: int = 0
 func _init(p_tunables: DotFpsTunables, p_body: DotFpsBody) -> void:
 	tunables = p_tunables
 	body = p_body
@@ -368,6 +381,13 @@ func simulate(
 		return
 
 	_update_crouch(state, command, delta)
+
+	# Before the ground is categorised, because a probe that starts inside geometry
+	# reports nothing and the answer it produces is the one this whole tick is built
+	# on. Unconditional rather than gated on a mode: the case it exists for is a
+	# player in AIR on a ramp, which is exactly the case every earlier guard excluded.
+	_depenetrate(state, _height(state))
+
 	_categorise_ground(state)
 
 	var jumped := _try_jump(state, command, delta)
@@ -1416,6 +1436,47 @@ func _slide_with_step(
 ## Deterministic — arithmetic and shape queries, no clock and no RNG — so a client and a
 ## server recovering from the same embedded position recover to the same place, which is
 ## the whole contract this file is written to.
+## Pushes the capsule out of whatever it is already inside, along that surface's own
+## normal. Returns whether it moved.
+##
+## [b]The general form of [method _lift_clear], and the reason one was not enough.[/b]
+## Lifting straight up is the right move out of a floor and the wrong one out of a
+## ramp: on a 60 degree face the shortest way out is mostly sideways, and pushing up
+## instead climbs along the inside of the surface rather than leaving it. Worse,
+## [method _lift_clear] is only ever reached from the branch of
+## [method _categorise_ground] that requires the player to have been GROUNDED last
+## tick — and a player on a surf ramp is never grounded, by design, because that is
+## what makes it surf. The one recovery this motor had could not run on the one
+## surface that needed it.
+##
+## Costs one query per tick per player. That is real on a full server and it is worth
+## it: the alternative is asking a cheaper question first, and the cheaper question
+## ([method DotFpsBody.overlaps]) cannot tell a player resting on a floor from a
+## player buried in it, so it answers yes for almost everybody and buys nothing.
+func _depenetrate(state: DotFpsState, height: float) -> bool:
+	var centre := _capsule_centre(state.position, height)
+	var resting := body.rest_contact(centre, height, tunables.radius)
+
+	if not resting.hit or resting.depth <= 0.0:
+		return false
+
+	# Out by the measured depth plus the skin every sweep expects to find, and never
+	# further in one tick than a step. The clamp is what makes a wrong answer
+	# survivable: a degenerate normal that moves a player a centimetre is a glitch
+	# they may not notice, and the same normal unclamped against a deep penetration
+	# throws them across the level. A genuine deep embed simply takes a few ticks to
+	# climb out of, and converges because each one is measured afresh.
+	var push := minf(
+		resting.depth + tunables.skin_width,
+		maxf(tunables.step_height, tunables.skin_width * 2.0)
+	)
+
+	state.position += resting.normal * push
+	depenetrated_ticks += 1
+
+	return true
+
+
 func _lift_clear(state: DotFpsState, height: float) -> bool:
 	var lift := maxf(tunables.skin_width * 2.0, 0.0005)
 	var limit := maxf(tunables.step_height, lift)
@@ -1595,6 +1656,7 @@ func describe() -> Dictionary:
 	return {
 		"ticks": ticks_simulated,
 		"stuck_ticks": stuck_ticks,
+		"depenetrated_ticks": depenetrated_ticks,
 		"surface": _surface.id if _surface != null else &"",
 		"effects": _effects.describe() if not _effects.is_neutral() else "neutral",
 		"custom_modes": Array(mode_names),

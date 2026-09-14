@@ -303,6 +303,64 @@ static func _axis_normal(axis: int, motion: Vector3) -> Vector3:
 	return n
 
 
+## The deepest surface the capsule at [param at] is already inside.
+##
+## The analytic counterpart of [method DotFpsPhysicsBody.rest_contact], so the suite
+## can prove the motor's de-penetration against geometry whose answer is known rather
+## than against a physics server whose answer is the thing under suspicion.
+##
+## Boxes report the face the capsule is least far past, which is the one it should
+## leave by; planes are exact. The floor is a plane like any other.
+func rest_contact(at: Vector3, height: float, radius: float) -> Hit:
+	var best := Hit.miss()
+	var deepest := 0.0
+
+	if floor_y > -INF:
+		var depth := floor_y - (at.y - height * 0.5)
+		if depth > deepest:
+			deepest = depth
+			best = _rest_hit(Vector3.UP, depth, FLOOR_ID)
+
+	for i in range(planes.size()):
+		var plane := planes[i]
+		var support := DotFpsBody.capsule_support(plane.normal, height, radius)
+		var depth := support - (plane.normal.dot(at) - plane.d)
+		if depth > deepest:
+			deepest = depth
+			best = _rest_hit(plane.normal, depth, plane_id(i))
+
+	for i in range(boxes.size()):
+		var box := boxes[i]
+		var bounds := _bounds(at, height, radius)
+		if not bounds.intersects(box):
+			continue
+
+		# The smallest push along any axis that separates them. Anything larger moves
+		# the player further than the overlap and through whatever is on the far side.
+		for axis in range(3):
+			var out_positive := box.position[axis] + box.size[axis] - bounds.position[axis]
+			var out_negative := bounds.position[axis] + bounds.size[axis] - box.position[axis]
+			var depth := minf(out_positive, out_negative)
+			if depth <= 0.0 or depth <= deepest:
+				continue
+			var n := Vector3.ZERO
+			n[axis] = 1.0 if out_positive < out_negative else -1.0
+			deepest = depth
+			best = _rest_hit(n, depth, box_id(i))
+
+	return best
+
+
+func _rest_hit(normal: Vector3, depth: float, id: int) -> Hit:
+	var hit := Hit.new()
+	hit.hit = true
+	hit.fraction = 0.0
+	hit.normal = normal
+	hit.depth = depth
+	hit.collider_id = id
+	return hit
+
+
 func overlaps(at: Vector3, height: float, radius: float) -> bool:
 	var bounds := _bounds(at, height, radius)
 
