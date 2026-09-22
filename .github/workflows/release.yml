@@ -1,0 +1,28 @@
+# Tag it and the artifact lands on the release. What gets built is decided by shape:
+# an addon repository ships addons/<name>/ as a zip that installs by being unpacked at
+# a project root, everything else ships the tracked tree as a tarball. Both come with
+# a SHA256SUMS. See modcommunity/dot-ci.
+#
+# The release may already exist by the time this runs -- the tag is what the sync
+# reacts to -- so this uploads into one that is there rather than failing on it.
+#
+# It publishes nothing to the content origin and signs nothing. A mounted resource
+# pack can contain scripts and can never be unmounted, so the private signing key
+# lives in one deployment and not in sixty release workflows.
+name: Release
+
+on:
+    push:
+        tags: ['v*']
+
+jobs:
+    validate:
+        uses: modcommunity/dot-ci/.github/workflows/validate.yml@v1
+        secrets:
+            DEPS_TOKEN: ${{ secrets.DOT_DEPS_TOKEN }}
+
+    release:
+        needs: validate
+        uses: modcommunity/dot-ci/.github/workflows/release.yml@v1
+        permissions:
+            contents: write
