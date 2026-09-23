@@ -18,7 +18,8 @@ extends Node3D
 ##       Camera3D
 ## [/codeblock]
 
-const CHANNEL := "player.tps"
+# No log channel: a camera following a state it is handed every frame. It has nothing
+# outside the process to fail against, and a line from it would be a line per frame.
 
 @export var tunables: DotTpsTunables = null
 
