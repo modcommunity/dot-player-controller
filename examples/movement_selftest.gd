@@ -24,7 +24,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 149
+const CHECKS := 162
 
 var _passed := 0
 var _failed := 0
@@ -57,6 +57,7 @@ func _run() -> void:
 	_test_ground_snap()
 	_test_coyote_and_buffer()
 	_test_noclip_gating()
+	_test_admin_modifiers()
 	_test_command_sanitising()
 	_test_touch_sampler()
 	_test_wire_round_trip()
@@ -1181,6 +1182,166 @@ func _test_noclip_gating() -> void:
 		revoked_state.mode != DotFpsState.Mode.NOCLIP,
 		"revoking noclip drops a player already using it"
 	)
+
+
+## What an administrator does to somebody's movement, and whether the owning client
+## predicts it.
+##
+## [b]The prediction half is the point.[/b] A forced noclip the server applies and the
+## client's replay undoes is a player rubber-banding between flying and falling, and every
+## server-side number in that picture is correct. So this reconciles a client that has NO
+## noclip permission of its own against the server's state and replays the same commands
+## — once with the modifier, once with the naive "set the mode" — and requires the first
+## to agree and the second not to, because a check that cannot fail is not a check.
+func _test_admin_modifiers() -> void:
+	print("admin modifiers")
+
+	var locked := _tunables()
+	locked.can_noclip = false
+
+	var server := _motor(locked)
+	var registered := DotFpsAdminModifiers.register(server)
+	_check(
+		registered == DotFpsAdminModifiers.definitions().size(),
+		"every admin modifier registers", "%d" % registered
+	)
+
+	var s := _standing(server)
+	server.add_modifier(s, DotFpsAdminModifiers.NOCLIP)
+	server.simulate(s, DotFpsCommand.new(), STEP)
+	_check(
+		s.mode == DotFpsState.Mode.NOCLIP,
+		"a forced noclip holds a player whose tunables forbid it"
+	)
+
+	for _i in range(60):
+		server.simulate(s, _command(0.0, 0.0, 0.0, DotFpsCommand.BUTTON_CROUCH), STEP)
+
+	_check(s.position.y < -1.0, "and they pass through the floor",
+		"y %.2f" % s.position.y)
+
+	# The player's own button must not end an administrator's decision.
+	server.simulate(s, _command(0.0, 0.0, 0.0, DotFpsCommand.BUTTON_NOCLIP), STEP)
+	server.simulate(s, DotFpsCommand.new(), STEP)
+	_check(s.mode == DotFpsState.Mode.NOCLIP, "and their noclip button cannot turn it off")
+
+	# The client: same tunables, no permission, and the server's state as a snapshot.
+	var carrier := Node.new()
+	carrier.set_script(_carrier_script())
+
+	var commands: Array[DotFpsCommand] = []
+	for i in range(30):
+		commands.append(_command(1.0, 0.0, float(i) * 3.0,
+			DotFpsCommand.BUTTON_JUMP if i % 7 == 0 else 0))
+
+	var client := _motor(locked)
+	var _n := DotFpsAdminModifiers.register(client)
+	DotFpsNetSync.pull(s, carrier)
+	var predicted := DotFpsState.new()
+	DotFpsNetSync.push(carrier, predicted)
+
+	var authoritative := s.duplicate_state()
+	for command in commands:
+		server.simulate(authoritative, command, STEP)
+		client.simulate(predicted, command, STEP)
+
+	_check(
+		predicted.mode == DotFpsState.Mode.NOCLIP
+		and predicted.position.distance_to(authoritative.position) < 0.05,
+		"a client without noclip predicts a forced noclip exactly",
+		"client %s %s, server %s %s" % [
+			DotFpsState.mode_name(predicted.mode), str(predicted.position),
+			DotFpsState.mode_name(authoritative.mode), str(authoritative.position),
+		]
+	)
+
+	# Negative control: the mode set directly, which is what a server writes if it does not
+	# know better. The client's own gate drops it to AIR on the first replayed tick.
+	var naive := _standing(server)
+	naive.mode = DotFpsState.Mode.NOCLIP
+	naive.position.y = 5.0
+	var naive_server_motor := _motor(_tunables())      # a server that allows it
+	DotFpsNetSync.pull(naive, carrier)
+	var naive_client := DotFpsState.new()
+	DotFpsNetSync.push(carrier, naive_client)
+
+	for command in commands:
+		naive_server_motor.simulate(naive, command, STEP)
+		client.simulate(naive_client, command, STEP)
+
+	_check(
+		naive_client.mode != naive.mode
+		or naive_client.position.distance_to(naive.position) > 0.5,
+		"and a mode set without the modifier is one the client does NOT predict",
+		"this is the negative control; if it passes the check above proves nothing"
+	)
+
+	carrier.free()
+
+	# Released: a player who may not noclip lands on the next tick.
+	server.remove_modifier(s, DotFpsAdminModifiers.NOCLIP)
+	server.simulate(s, DotFpsCommand.new(), STEP)
+	_check(s.mode != DotFpsState.Mode.NOCLIP, "releasing it drops a player who may not noclip")
+
+	# Freeze: no input, no jump, no gravity, whatever they hold.
+	var frozen := _standing(server)
+	frozen.position.y = 3.0
+	frozen.mode = DotFpsState.Mode.AIR
+	frozen.velocity = Vector3(4.0, 2.0, 0.0)
+	server.add_modifier(frozen, DotFpsAdminModifiers.FREEZE)
+	var at := frozen.position
+
+	for _i in range(60):
+		server.simulate(frozen, _command(1.0, 1.0, 0.0, DotFpsCommand.BUTTON_JUMP), STEP)
+
+	_check(
+		frozen.position.distance_to(at) < 0.01,
+		"a frozen player stays exactly where they were, mid-air, holding every key",
+		"moved %.3f m" % frozen.position.distance_to(at)
+	)
+
+	server.add_modifier(frozen, DotFpsAdminModifiers.NOCLIP)
+	for _i in range(30):
+		server.simulate(frozen, _command(1.0, 0.0, 0.0, DotFpsCommand.BUTTON_JUMP), STEP)
+
+	_check(
+		frozen.position.distance_to(at) < 0.01,
+		"and noclip does not fly them out of it",
+		"moved %.3f m" % frozen.position.distance_to(at)
+	)
+
+	# Speed: the top speed on a step is the step times the base.
+	_check(is_equal_approx(DotFpsAdminModifiers.nearest(DotFpsAdminModifiers.SPEED_STEPS, 2.2), 2.0),
+		"a speed the ladder does not have is taken to the nearest step")
+	_check(is_equal_approx(DotFpsAdminModifiers.nearest(DotFpsAdminModifiers.SPEED_STEPS, 1.1), 1.0),
+		"and one nearest to 1 means none")
+
+	var base_runner := _standing(server)
+	var fast_runner := _standing(server)
+	server.add_modifier(fast_runner, DotFpsAdminModifiers.speed_id(2.0))
+
+	for _i in range(180):
+		server.simulate(base_runner, _command(1.0), STEP)
+		server.simulate(fast_runner, _command(1.0), STEP)
+
+	var ratio := fast_runner.horizontal_speed() / maxf(base_runner.horizontal_speed(), 0.001)
+	_check(absf(ratio - 2.0) < 0.1, "a player on 2x speed runs twice as fast", "%.2fx" % ratio)
+
+	# Gravity: half the gravity is half the fall over the same time from rest.
+	var heavy := _standing(server)
+	var light := _standing(server)
+	heavy.position.y = 50.0
+	light.position.y = 50.0
+	heavy.mode = DotFpsState.Mode.AIR
+	light.mode = DotFpsState.Mode.AIR
+	server.add_modifier(light, DotFpsAdminModifiers.gravity_id(0.5))
+
+	for _i in range(30):
+		server.simulate(heavy, DotFpsCommand.new(), STEP)
+		server.simulate(light, DotFpsCommand.new(), STEP)
+
+	var fall_ratio := (50.0 - light.position.y) / maxf(50.0 - heavy.position.y, 0.001)
+	_check(absf(fall_ratio - 0.5) < 0.05, "and on half gravity falls half as far", "%.2f" % fall_ratio)
 
 
 func _test_command_sanitising() -> void:

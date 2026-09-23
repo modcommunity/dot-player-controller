@@ -150,6 +150,7 @@ Four hooks, and none of them need a fork:
 - **Modifiers.** `DotFpsModifier` scales speed, acceleration, gravity, friction and
   jumping for a while, or denies moving and jumping outright, or applies an impulse.
   Speed pads, slow fields, stuns, launchers.
+- **Admin abilities.** `admin_abilities = true` on every machine registers `DotFpsAdminModifiers` — a forced noclip, a freeze, and speed and gravity steps — so a server's moderation tools can apply them and the owning client predicts them instead of rubber-banding. The multipliers are a ladder (0.25× to 3×), because only a modifier's membership travels on the wire.
 - **Movement modes.** `DotFpsMoveMode` gives a game a whole new way to move — a
   ladder, water, a grapple — using the motor's own collision and acceleration.
 - **Sampling.** `DotFpsSampler` for keyboard, mouse and gamepad;

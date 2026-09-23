@@ -18,7 +18,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 49
+const CHECKS := 54
 
 var _passed := 0
 var _failed := 0
@@ -38,6 +38,7 @@ func _run() -> void:
 	await _test_external_drive()
 	await _test_collider_follows_crouch()
 	await _test_noclip_gate()
+	await _test_admin_abilities()
 	await _test_teleport_and_signals()
 	await _test_registry_and_describe()
 	await _test_local_drive_accumulator()
@@ -597,6 +598,75 @@ func _test_noclip_gate() -> void:
 	)
 
 	allowed_world.queue_free()
+	await get_tree().process_frame
+
+
+## The controller half of DotFpsAdminModifiers: refused without the switch, and "off"
+## lands a player even when their own tunables would have let them keep flying.
+func _test_admin_abilities() -> void:
+	print("admin abilities")
+
+	var plain_world := _make_world()
+	var plain := _make_player(plain_world, DotFpsController.Drive.EXTERNAL)
+	await get_tree().physics_frame
+
+	var refused := DotFpsAdminModifiers.set_noclip(plain, true)
+	_check(
+		not refused.ok and refused.error.code == DotError.CODE_UNSUPPORTED,
+		"a controller built without admin_abilities refuses them rather than improvising"
+	)
+
+	plain_world.queue_free()
+	await get_tree().process_frame
+
+	var world := _make_world()
+	var controller := _make_player(
+		world,
+		DotFpsController.Drive.EXTERNAL,
+		func(c: DotFpsController) -> void:
+			c.tunables = DotFpsTunables.new()
+			c.tunables.can_noclip = true
+			c.allow_noclip = true
+			c.admin_abilities = true
+	)
+	await get_tree().physics_frame
+
+	controller.teleport(Vector3(0.0, 1.0, 0.0))
+	var on := DotFpsAdminModifiers.set_noclip(controller, true)
+	controller.apply_command(DotFpsCommand.new())
+	controller.simulate_tick(1, STEP)
+
+	_check(
+		on.ok and controller.state.mode == DotFpsState.Mode.NOCLIP
+		and DotFpsAdminModifiers.is_noclipped(controller),
+		"with it, an admin noclip takes effect on the next tick"
+	)
+
+	var _off := DotFpsAdminModifiers.set_noclip(controller, false)
+	controller.apply_command(DotFpsCommand.new())
+	controller.simulate_tick(2, STEP)
+
+	_check(
+		controller.state.mode != DotFpsState.Mode.NOCLIP,
+		"and turning it off lands a player whose own tunables allow noclip"
+	)
+
+	var applied := DotFpsAdminModifiers.set_speed(controller, 2.4)
+	_check(
+		applied.ok and is_equal_approx(float(applied.value), 2.0)
+		and is_equal_approx(DotFpsAdminModifiers.speed_of(controller), 2.0),
+		"a speed is applied as the nearest step and reported as that step",
+		str(applied.value)
+	)
+
+	DotFpsAdminModifiers.clear(controller)
+	_check(
+		is_equal_approx(DotFpsAdminModifiers.speed_of(controller), 1.0)
+		and not DotFpsAdminModifiers.is_frozen(controller),
+		"and clear takes every admin modifier off"
+	)
+
+	world.queue_free()
 	await get_tree().process_frame
 
 

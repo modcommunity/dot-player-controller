@@ -63,6 +63,25 @@ extends Resource
 ## Deny movement input entirely. Velocity still decays and gravity still applies.
 @export var deny_move: bool = false
 
+@export_group("Abilities")
+
+## Hold the player in noclip for as long as this is active, whatever
+## [member DotFpsTunables.can_noclip] says and whatever the noclip button does.
+##
+## [b]A modifier rather than a flag somewhere else, because this is the one shape that
+## survives prediction for free.[/b] An administrator's noclip is decided on the server.
+## Setting [member DotFpsState.mode] alone reaches the client in the next snapshot, and the
+## client's own motor then undoes it on every replayed tick — its copy of
+## [code]can_noclip[/code] is false, so [code]_update_noclip[/code] drops the player to
+## AIR — and the player rubber-bands between flying and falling. The active modifier set is
+## already replicated and already restored by a rewind, so a modifier that forces the mode
+## is predicted exactly like a slow field is. See [DotFpsAdminModifiers].
+##
+## Removing it does not by itself land the player: a player whose tunables allow noclip
+## stays in it until they toggle it off, which is correct for a sandbox and is why
+## [method DotFpsAdminModifiers.set_noclip] also puts them back in AIR.
+@export var forces_noclip: bool = false
+
 @export_group("Impulse")
 
 ## Velocity added once, when the modifier is applied, in m/s.
@@ -101,6 +120,7 @@ func _denials() -> String:
 	if deny_jump: out.append("jump")
 	if deny_crouch: out.append("crouch")
 	if deny_move: out.append("move")
+	if forces_noclip: out.append("walking (noclip is forced)")
 	return ", ".join(out) if out.size() > 0 else "none"
 
 
@@ -127,6 +147,8 @@ class Aggregate extends RefCounted:
 	var deny_crouch: bool = false
 	var deny_move: bool = false
 
+	var force_noclip: bool = false
+
 	func reset() -> void:
 		max_speed = 1.0
 		accelerate = 1.0
@@ -137,6 +159,7 @@ class Aggregate extends RefCounted:
 		deny_jump = false
 		deny_crouch = false
 		deny_move = false
+		force_noclip = false
 
 	func apply(modifier: DotFpsModifier) -> void:
 		max_speed *= modifier.max_speed_scale
@@ -151,6 +174,7 @@ class Aggregate extends RefCounted:
 		deny_jump = deny_jump or modifier.deny_jump
 		deny_crouch = deny_crouch or modifier.deny_crouch
 		deny_move = deny_move or modifier.deny_move
+		force_noclip = force_noclip or modifier.forces_noclip
 
 	func is_neutral() -> bool:
 		return (
@@ -160,7 +184,7 @@ class Aggregate extends RefCounted:
 			and is_equal_approx(friction, 1.0)
 			and is_equal_approx(gravity, 1.0)
 			and is_equal_approx(jump, 1.0)
-			and not (deny_jump or deny_crouch or deny_move)
+			and not (deny_jump or deny_crouch or deny_move or force_noclip)
 		)
 
 	func describe() -> Dictionary:
@@ -171,4 +195,5 @@ class Aggregate extends RefCounted:
 			"jump": "%.2f" % jump,
 			"deny_jump": deny_jump,
 			"deny_move": deny_move,
+			"force_noclip": force_noclip,
 		}

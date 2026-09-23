@@ -500,6 +500,17 @@ func _advance_timers(
 # --- Noclip ----------------------------------------------------------------
 
 func _update_noclip(state: DotFpsState, command: DotFpsCommand) -> void:
+	# Before the ability gate, because this is the case where somebody else decided. An
+	# administrator's noclip arrives as a modifier (DotFpsModifier.forces_noclip), which
+	# is in the replicated state — so this line runs identically on the server and in the
+	# client's replay, and the button, which the player still holds, is ignored while it
+	# is in force.
+	if _effects.force_noclip:
+		if state.mode != DotFpsState.Mode.NOCLIP:
+			state.mode = DotFpsState.Mode.NOCLIP
+			state.velocity = Vector3.ZERO
+		return
+
 	if not tunables.can_noclip:
 		# The bit may still be set — a client can put anything in a command. Leaving
 		# noclip on a state that entered it before the ability was revoked would let
@@ -539,6 +550,11 @@ func _simulate_noclip(
 		wish.y += tunables.noclip_speed
 	if command.is_pressed(DotFpsCommand.BUTTON_CROUCH):
 		wish.y -= tunables.noclip_speed
+
+	# A root holds in noclip too. Without this a frozen player who is also noclipped —
+	# the ordinary order an admin does the two in — flies away from the freeze.
+	if _effects.deny_move:
+		wish = Vector3.ZERO
 
 	# Eased rather than snapped so noclip is usable for lining up a screenshot, and
 	# framed as an exponential decay so it is frame-rate independent.
