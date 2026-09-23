@@ -161,6 +161,16 @@ enum Drive {
 ## the bit the client set in the command.
 @export var allow_noclip: bool = false
 
+## Register [DotFpsAdminModifiers] — forced noclip, freeze, and the speed and gravity
+## steps — so a server can apply them to this player and the owning client predicts them.
+##
+## [b]Set it on every machine or on none.[/b] The modifiers are registered straight after
+## [method _register_extensions], and a registration order is part of the wire contract:
+## a server with this on and a client with it off disagree about which modifier every
+## replicated index means. Off by default because a game that never uses them should not
+## carry thirteen definitions for nothing.
+@export var admin_abilities: bool = false
+
 ## Register this addon's default input bindings if the project has none.
 @export var register_default_actions: bool = true
 
@@ -283,6 +293,10 @@ func setup() -> DotResult:
 		motor.surface_resolver = _resolve_surface_id
 
 	_register_extensions()
+
+	# After the game's own, so turning this on does not renumber a game's modifiers.
+	if admin_abilities:
+		var _count := DotFpsAdminModifiers.register(motor)
 
 	if drive == Drive.LOCAL:
 		sampler = DotFpsSampler.new(tunables)
@@ -940,6 +954,7 @@ func describe() -> Dictionary:
 		"tick": _tick,
 		"tick_rate": tick_rate,
 		"allow_noclip": allow_noclip,
+		"admin_abilities": admin_abilities,
 		"state": state.describe(),
 		"motor": motor.describe() if motor != null else {},
 		"sampler": sampler.describe() if sampler != null else {},

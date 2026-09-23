@@ -322,6 +322,17 @@ Registration order defines the indices, and the indices are what replicate — s
 (only on the server, only in one game mode) gives two peers different ids for the
 same modifier, and the symptom is a power-up that works for some players.
 
+### What an administrator does to somebody's movement
+
+`DotFpsAdminModifiers` is noclip, freeze, a speed step and a gravity step, and **every one of them is a `DotFpsModifier`**, because that is the only shape of server decision this motor's prediction already carries. The alternatives were tried in the suite before being refused:
+
+- **Setting `state.mode = NOCLIP` on the server** reaches the client in the next snapshot, and the client's own `_update_noclip` then drops the player to AIR on every replayed tick, because the client's `can_noclip` is false — correctly, since a client's copy of the tunables is not a permission. That is rubber-banding between flying and falling, with every server-side number right. `movement_selftest`'s admin section keeps this as its negative control: the naive version must *fail* to predict, or the positive check proves nothing.
+- **Changing a tunable** is the same bug by another route, and also a fingerprint mismatch.
+
+`DotFpsModifier.forces_noclip` is the one new field, read in `_update_noclip` **before** the ability gate so it wins over `can_noclip` and over the player's own button. `_simulate_noclip` now honours `deny_move`, so a frozen player who is also noclipped stays frozen — the ordinary order an admin does the two in.
+
+Two costs, both deliberate. **The multipliers are a ladder** (`SPEED_STEPS`, `GRAVITY_STEPS`) because only membership travels and a value made up at runtime is one the client has never heard of; `set_speed` returns the step it picked so the admin is told. **`admin_abilities` must be on for every player on every machine**, because registration order is the wire contract — the modifiers register straight after `_register_extensions` so a game's own indices do not move, and `DotFpsAdminModifiers` refuses rather than registering on the spot for a controller built without them.
+
 ### Custom modes
 
 `DotFpsMoveMode` is how a game adds a ladder, water, a grapple or a vehicle seat
@@ -444,6 +455,7 @@ Nothing here should require a fork.
 | Camera behaviour, view bob, landing kick, strafe roll | `DotFpsView` exports, or a subclass |
 | Anything inside the tick — triggers, mode switches | `_on_pre_simulate` / `_on_post_simulate` |
 | Refusing input — a cutscene, a respawn freeze | `_accept_command` |
+| An administrator's noclip, freeze, speed or gravity | `admin_abilities` on every machine, then `DotFpsAdminModifiers` on the server |
 | Reacting to movement | `landed`, `jumped`, `stepped_up`, `crouch_changed`, `surface_changed`, `modifier_added` / `modifier_removed`, `mode_changed` |
 
 `BUTTON_USER_*` exists so a game's own actions ride in the command it already sends,
@@ -457,8 +469,9 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-godot --headless --path . res://examples/movement_selftest.tscn     # 149 checks
-godot --headless --path . res://examples/controller_selftest.tscn   # 49 checks
+godot --headless --path . res://examples/movement_selftest.tscn     # 162 checks
+godot --headless --path . res://examples/controller_selftest.tscn   # 106 checks
+godot --headless --path . res://examples/fps_controller_selftest.tscn # 54 checks
 godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks
 godot --headless --path . res://examples/surf_physics_selftest.tscn # 24 checks
 ```
