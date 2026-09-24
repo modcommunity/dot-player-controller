@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 162
+const CHECKS := 172
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 25
+const SECTIONS := 27
 
 var _passed := 0
 var _failed := 0
@@ -61,6 +61,7 @@ func _run() -> void:
 	_test_crouch_headroom()
 	_test_crouch_jump()
 	_test_stair_step()
+	_test_walkable_slope()
 	_test_step_refused_without_floor()
 	_test_ground_snap()
 	_test_coyote_and_buffer()
@@ -73,6 +74,7 @@ func _run() -> void:
 	_test_fingerprint()
 	_test_replay_determinism()
 	await _test_physics_body()
+	await _test_physics_slope()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -1042,6 +1044,79 @@ func _test_stair_step() -> void:
 	_done()
 
 
+## A slope under max_slope is walked up, and a jump started on it still leaves it.
+##
+## Neither was true: `_categorise_ground` read any upward speed over 0.1 m/s as airborne,
+## so the first tick of any walkable slope put the player in AIR, and `_try_jump` refused
+## to jump while "rising", which on an uphill is always. Measured before the fix on this
+## geometry: the player stalls about a metre up the ramp and never jumps.
+func _test_walkable_slope() -> void:
+	_section("walkable slope")
+
+	var t := _tunables()
+	var angle := 20.0
+	# Rises toward -z (the direction forward walks at yaw 0) from the floor line at z = 0.
+	var world := DotFpsFlatBody.with_floor(0.0)
+	world.add_ramp(Vector3.ZERO, Vector3.BACK, angle)
+
+	var motor := _motor(t, world)
+	var s := DotFpsState.new()
+	s.position = Vector3(0.0, 0.0, 2.0)
+	s.mode = DotFpsState.Mode.GROUND
+	for _i in range(4):
+		motor.simulate(s, DotFpsCommand.new(), STEP)
+
+	var airborne_on_ramp := 0
+	var ramp_ticks := 0
+
+	for _i in range(180):
+		motor.simulate(s, _command(1.0), STEP)
+		if s.position.z < -0.5:
+			ramp_ticks += 1
+			if not s.is_grounded():
+				airborne_on_ramp += 1
+
+	# DotFpsFlatBody treats the capsule as a box, so it rests on its uphill bottom edge:
+	# the surface that matters is the one a radius up the slope from the feet.
+	var surface := world.ramp_height(0, s.position + Vector3.FORWARD * t.radius)
+
+	_check(
+		s.position.y > 5.0,
+		"a player walks up a %d-degree slope (max_slope %d)" % [int(angle), int(t.max_slope_angle)],
+		"y = %.2f at z = %.2f" % [s.position.y, s.position.z]
+	)
+	_check(
+		ramp_ticks > 100 and airborne_on_ramp == 0,
+		"and is grounded on every tick of it",
+		"%d airborne of %d ramp ticks" % [airborne_on_ramp, ramp_ticks]
+	)
+	_check_near(s.position.y, surface, 0.05, "and stands on the surface rather than above it")
+	_check(
+		s.velocity.dot(s.ground_normal) <= 0.1 and s.velocity.y > 1.0,
+		"and its velocity runs up the slope, in the ground plane",
+		"v = %s, n = %s" % [s.velocity, s.ground_normal]
+	)
+
+	# A jump on the uphill: it has to fire, and it has to leave the slope rather than be
+	# mistaken for walking along it.
+	var start_clearance := s.position.y - world.ramp_height(0, s.position)
+	motor.simulate(s, _command(1.0, 0.0, 0.0, DotFpsCommand.BUTTON_JUMP), STEP)
+	var left := not s.is_grounded()
+	var peak_clearance := start_clearance
+
+	for _i in range(20):
+		motor.simulate(s, _command(1.0), STEP)
+		peak_clearance = maxf(peak_clearance, s.position.y - world.ramp_height(0, s.position))
+
+	_check(left, "a jump started on the slope leaves the ground", "mode %d" % s.mode)
+	_check(
+		peak_clearance > 0.5,
+		"and rises clear of the slope, not along it",
+		"peak clearance %.3f m" % peak_clearance
+	)
+	_done()
+
+
 func _test_step_refused_without_floor() -> void:
 	_section("step rejection")
 
@@ -1957,6 +2032,85 @@ func _test_replay_determinism() -> void:
 
 ## The real [DotFpsBody], against the real physics server.
 ##
+## The walkable slope again, against real collision and a real capsule, with the crest a
+## ramp has in a level: a wedge up to a plateau. The capsule's rounded bottom and Godot's
+## sweep are what a game walks on; the flat body is a box and answers analytically.
+func _test_physics_slope() -> void:
+	_section("walkable slope, physics body")
+
+	var world := Node3D.new()
+	add_child(world)
+
+	var length := 12.0
+	var rise := length * tan(deg_to_rad(20.0))
+
+	var add_static := func(shape: Shape3D, at: Vector3) -> void:
+		var b := StaticBody3D.new()
+		var cs := CollisionShape3D.new()
+		cs.shape = shape
+		b.add_child(cs)
+		b.position = at
+		world.add_child(b)
+
+	var floor_box := BoxShape3D.new()
+	floor_box.size = Vector3(40.0, 1.0, 80.0)
+	add_static.call(floor_box, Vector3(0.0, -0.5, 0.0))
+
+	# Rises toward -z from z = 0 to z = -length.
+	var wedge := ConvexPolygonShape3D.new()
+	wedge.points = PackedVector3Array([
+		Vector3(-4.0, 0.0, 0.0), Vector3(4.0, 0.0, 0.0),
+		Vector3(-4.0, 0.0, -length), Vector3(4.0, 0.0, -length),
+		Vector3(-4.0, rise, -length), Vector3(4.0, rise, -length),
+	])
+	add_static.call(wedge, Vector3.ZERO)
+
+	var plateau := BoxShape3D.new()
+	plateau.size = Vector3(8.0, rise, 10.0)
+	add_static.call(plateau, Vector3(0.0, rise * 0.5, -length - 5.0))
+
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	var body := DotFpsPhysicsBody.new()
+	if not _check(body.bind(world).ok, "the physics body binds to the slope world"):
+		world.queue_free()
+		return
+
+	var t := _tunables()
+	var motor := DotFpsMotor.new(t, body)
+	var s := DotFpsState.new()
+	s.position = Vector3(0.0, 0.0, 2.0)
+	s.mode = DotFpsState.Mode.GROUND
+	for _i in range(4):
+		motor.simulate(s, DotFpsCommand.new(), STEP)
+
+	var airborne := 0
+	var above_plateau := 0.0
+
+	for _i in range(150):
+		motor.simulate(s, _command(1.0), STEP)
+		if not s.is_grounded():
+			airborne += 1
+		if s.position.z < -length:
+			above_plateau = maxf(above_plateau, s.position.y - rise)
+
+	_check(
+		s.position.z < -length - 2.0 and absf(s.position.y - rise) < 0.05,
+		"a player walks up a real 20-degree ramp onto the plateau at its top",
+		"at %s, plateau %.2f" % [s.position, rise]
+	)
+	_check(airborne <= 2, "grounded all the way", "%d airborne ticks of 150" % airborne)
+	_check(
+		above_plateau < 0.05,
+		"and is not thrown off the crest",
+		"%.3f m above the plateau" % above_plateau
+	)
+
+	world.queue_free()
+	_done()
+
+
 ## Everything above tests the motor. This tests the query layer the motor asks, which
 ## is the other half and cannot be exercised without a physics world and a frame for
 ## it to settle.

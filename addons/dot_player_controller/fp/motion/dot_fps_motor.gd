@@ -46,6 +46,11 @@ const CHANNEL := "fps.motor"
 ## comfortably spans.
 const SWEEP_TOLERANCE := 0.02
 
+## Speed away from a surface, in m/s, above which a player has left it rather than
+## resting on it. Measured along the ground normal when they are standing, so walking
+## up a slope is not leaving it — see [method _categorise_ground].
+const LEAVING_SPEED := 0.1
+
 var tunables: DotFpsTunables
 var body: DotFpsBody
 
@@ -657,23 +662,59 @@ func _categorise_ground(state: DotFpsState) -> void:
 	if state.mode == DotFpsState.Mode.NOCLIP:
 		return
 
+	var was_grounded := state.mode == DotFpsState.Mode.GROUND
+	var rising := state.velocity.y > LEAVING_SPEED
+
 	# Moving upward fast enough to have left the ground is not on it, whatever is
 	# under the feet. Without this the tick a jump starts still counts as grounded,
 	# gravity is skipped, ground friction applies, and the jump loses most of its
 	# height for no visible reason.
-	if state.velocity.y > 0.1:
+	#
+	# [b]Upward is not the same as away from the ground[/b], and this used to treat
+	# them as one: `velocity.y > 0.1` put every player walking up any walkable slope in
+	# AIR on the first tick of it — 18 degrees at 6.5 m/s is 2 m/s upward ALONG the
+	# surface — so nothing in the family could walk up a ramp. Only a player who was
+	# grounded can be walking, so an airborne one still leaves here without a query; a
+	# grounded one is asked the question below, after the probe, against the plane.
+	if rising and not was_grounded:
 		state.mode = DotFpsState.Mode.AIR
 		state.ground_normal = Vector3.UP
 		state.ground_id = 0
 		return
-
-	var was_grounded := state.mode == DotFpsState.Mode.GROUND
 
 	var height := _height(state)
 	var centre := _capsule_centre(state.position, height)
 	var probe := Vector3.DOWN * (tunables.skin_width * 2.0 + 0.02)
 
 	var hit := _sweep(centre, probe, height)
+
+	if rising:
+		# Grounded last tick and moving up. That is a walk up a slope when the velocity
+		# lies in the ground plane — along the floor under the feet now, or the one stood
+		# on last tick, which is the crest of a ramp — and a launch when it points out of
+		# both. A jump never reaches this: [method _try_jump] puts the player in AIR
+		# itself, and its launch is `jump_velocity * normal.y` out of any floor, which is
+		# metres per second against a tenth. So is anything a game throws them with.
+		var walking := (
+			hit.hit
+			and _is_floor(hit.normal)
+			and (
+				state.velocity.dot(hit.normal) <= LEAVING_SPEED
+				or state.velocity.dot(state.ground_normal) <= LEAVING_SPEED
+			)
+		)
+
+		if not walking:
+			state.mode = DotFpsState.Mode.AIR
+			state.ground_normal = Vector3.UP
+			state.ground_id = 0
+			return
+
+		# Along the floor they are on now. At a ramp's crest the velocity still points
+		# up the ramp, and leaving it there makes the next tick see 2 m/s away from the
+		# flat top and throw a walker a tenth of a metre into the air. Changes nothing
+		# on the slope itself, where it is already in the plane.
+		state.velocity = state.velocity.slide(hit.normal)
 
 	if hit.hit and _is_floor(hit.normal):
 		var found := _surface_id_for(hit.collider_id)
@@ -815,7 +856,13 @@ func _try_jump(
 
 	# Only while descending or level. Without this a player under a ceiling can jump
 	# repeatedly on the way up and climb it.
-	if state.velocity.y > 0.1:
+	#
+	# Level with the ground they are standing on, not with the horizon: a player walking
+	# up a slope is moving upward and is on the ground, and asking `velocity.y` refused
+	# every jump on every uphill. Airborne (coyote time) the normal is UP, so it is the
+	# same question it always was.
+	var normal := state.ground_normal if state.mode == DotFpsState.Mode.GROUND else Vector3.UP
+	if state.velocity.dot(normal) > LEAVING_SPEED:
 		return false
 
 	var launch := (
@@ -1088,6 +1135,9 @@ func _move(state: DotFpsState, delta: float, jumped: bool) -> void:
 		return
 
 	var was_grounded := state.mode == DotFpsState.Mode.GROUND
+	# The floor the tick started on. The snap below compares the velocity with THIS
+	# plane, because by the time it runs the categorise has already forgotten it.
+	var stood_on := state.ground_normal
 
 	var plain := _slide(state.position, state.velocity, motion, height)
 
@@ -1128,7 +1178,7 @@ func _move(state: DotFpsState, delta: float, jumped: bool) -> void:
 		_categorise_ground(state)
 
 		if state.mode != DotFpsState.Mode.GROUND:
-			_snap_to_ground(state, height)
+			_snap_to_ground(state, height, stood_on)
 
 
 ## The result of one collide-and-slide.
@@ -1514,8 +1564,18 @@ func _lift_clear(state: DotFpsState, height: float) -> bool:
 	return false
 
 
-func _snap_to_ground(state: DotFpsState, height: float) -> void:
-	if state.velocity.y > 0.1:
+##
+## [param stood_on] is the floor the player was on at the start of the tick. Moving away
+## from it means something launched them and the snap must not cancel it; moving along
+## it is a walk, and at the crest of a ramp that walk still points upward while the feet
+## have run off the top — without the snap a walker is thrown about fifteen centimetres
+## into the air at every crest. So "away" is measured against that plane, not the horizon.
+func _snap_to_ground(
+	state: DotFpsState,
+	height: float,
+	stood_on: Vector3 = Vector3.UP
+) -> void:
+	if state.velocity.dot(stood_on) > LEAVING_SPEED:
 		return
 
 	var centre := _capsule_centre(state.position, height)
@@ -1537,6 +1597,10 @@ func _snap_to_ground(state: DotFpsState, height: float) -> void:
 	# belongs to something that launched the player and is not ours to cancel.
 	if state.velocity.y < 0.0:
 		state.velocity.y = 0.0
+	elif state.velocity.dot(hit.normal) > LEAVING_SPEED:
+		# Walked over a crest, still carrying the ramp's climb. Laid along the floor they
+		# have been put on, or the next tick reads that climb as leaving it.
+		state.velocity = state.velocity.slide(hit.normal)
 
 
 # --- The surface a custom mode builds on -----------------------------------
