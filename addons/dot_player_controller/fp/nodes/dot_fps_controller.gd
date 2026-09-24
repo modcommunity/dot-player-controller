@@ -681,10 +681,13 @@ func simulate_tick(tick: int, delta: float) -> void:
 		# expects of a starved tick: a player whose packet was lost should keep
 		# moving in a straight line rather than stopping dead and jerking forward
 		# when it arrives.
-		current_command = (
-			DotFpsCommand.new() if state.previous_buttons == 0
-			else _repeat_command()
-		)
+		#
+		# Whether or not a button was held. This used to hand a player with nothing held
+		# a fresh command, whose yaw and pitch are zero: every lost packet turned them to
+		# face north, level, for a tick — the motor takes the view from the command.
+		# _repeat_command keeps the view and the held buttons and drops the movement,
+		# which with nothing held is the fresh command with the right angles.
+		current_command = _repeat_command()
 
 	if not _accept_command(current_command):
 		# Substituted, not skipped. Skipping the tick would leave the tick counter

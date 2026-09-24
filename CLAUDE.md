@@ -471,7 +471,7 @@ find . -name '*.gd' -not -path './.godot/*' | while read f; do
 done
 godot --headless --path . res://examples/movement_selftest.tscn     # 172 checks
 godot --headless --path . res://examples/controller_selftest.tscn   # 106 checks
-godot --headless --path . res://examples/fps_controller_selftest.tscn # 54 checks
+godot --headless --path . res://examples/fps_controller_selftest.tscn # 55 checks
 godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks
 godot --headless --path . res://examples/surf_physics_selftest.tscn # 24 checks
 ```

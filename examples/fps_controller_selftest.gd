@@ -18,7 +18,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 54
+const CHECKS := 55
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -507,6 +507,23 @@ func _test_external_drive() -> void:
 	_check(
 		controller.state.position.z < before,
 		"a starved tick keeps the player moving rather than stopping dead"
+	)
+
+	# And keeps them LOOKING where they were. With no buttons held the starved tick used
+	# a fresh command, whose yaw and pitch are zero, so every lost packet snapped the
+	# view north and level for a tick — and the motor takes the view from the command.
+	var looking := _command(0.0, 0.0, 90.0)
+	looking.pitch = 20.0
+	controller.apply_command(looking)
+	controller.simulate_tick(201, STEP)
+	controller.current_command = null
+	controller.simulate_tick(202, STEP)
+
+	_check(
+		is_equal_approx(controller.state.yaw, 90.0)
+		and is_equal_approx(controller.state.pitch, 20.0),
+		"a starved tick with nothing held repeats the last view, not north",
+		"yaw %.1f pitch %.1f" % [controller.state.yaw, controller.state.pitch]
 	)
 
 	world.queue_free()
