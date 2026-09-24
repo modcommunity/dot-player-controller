@@ -26,9 +26,17 @@ const STEP := 1.0 / 60.0
 
 const CHECKS := 162
 
+## Sections entered against sections that ran to their last line, and against this. A
+## runtime error inside a section aborts that function and nothing says so; a section that
+## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
+## total is the other half — see docs/testing.md.
+const SECTIONS := 25
+
 var _passed := 0
 var _failed := 0
 var _failures := PackedStringArray()
+var _entered := 0
+var _completed := 0
 
 
 func _ready() -> void:
@@ -72,6 +80,13 @@ func _run() -> void:
 	for line in _failures:
 		print("  FAIL  %s" % line)
 
+	print("%d of %d sections ran to their last line" % [_completed, _entered])
+	if _entered != SECTIONS or _completed != _entered:
+		print("ERROR: %d sections entered and %d completed, %d expected. One aborted or was skipped." % [
+			_entered, _completed, SECTIONS
+		])
+		get_tree().quit(1)
+		return
 	# The total the section counter cannot be. A runtime error inside a section aborts
 	# that function, and the counter is satisfied because the section had already
 	# announced itself. See docs/testing.md.
@@ -211,6 +226,16 @@ func _run_ticks(
 
 # --- Assertions ------------------------------------------------------------
 
+func _section(title: String) -> void:
+	_entered += 1
+	print(title)
+
+
+## A section reached its last line. See [constant SECTIONS].
+func _done() -> void:
+	_completed += 1
+
+
 func _check(condition: bool, what: String, detail: String = "") -> bool:
 	if condition:
 		_passed += 1
@@ -239,7 +264,7 @@ func _check_near(
 # --- Tests -----------------------------------------------------------------
 
 func _test_configuration() -> void:
-	print("configuration")
+	_section("configuration")
 
 	var good := _tunables()
 	_check(good.validate().ok, "default tunables validate")
@@ -274,10 +299,11 @@ func _test_configuration() -> void:
 		0.0001,
 		"jump velocity is derived from gravity and height"
 	)
+	_done()
 
 
 func _test_falling_and_landing() -> void:
-	print("falling")
+	_section("falling")
 
 	var t := _tunables()
 	var motor := _motor(t)
@@ -299,10 +325,11 @@ func _test_falling_and_landing() -> void:
 		s.velocity is Vector3,
 		"velocity is still a Vector3 after clamping"
 	)
+	_done()
 
 
 func _test_jump_height() -> void:
-	print("jumping")
+	_section("jumping")
 
 	var t := _tunables()
 	t.jump_height = 1.2
@@ -363,10 +390,11 @@ func _test_jump_height() -> void:
 		"without auto-hop a held button jumps exactly once",
 		"hops: %d" % manual_hops
 	)
+	_done()
 
 
 func _test_ground_friction() -> void:
-	print("friction")
+	_section("friction")
 
 	var t := _tunables()
 	var motor := _motor(t)
@@ -382,10 +410,11 @@ func _test_ground_friction() -> void:
 		"friction brings a sliding player to a stop",
 		"%.4f m/s" % s.horizontal_speed()
 	)
+	_done()
 
 
 func _test_ground_speed_cap() -> void:
-	print("ground speed")
+	_section("ground speed")
 
 	var t := _tunables()
 	t.max_speed = 7.0
@@ -410,10 +439,11 @@ func _test_ground_speed_cap() -> void:
 		"running diagonally is not faster than running forward",
 		"%.3f m/s" % diagonal.horizontal_speed()
 	)
+	_done()
 
 
 func _test_air_strafing() -> void:
-	print("air control")
+	_section("air control")
 
 	var t := _tunables()
 	t.air_accelerate = 100.0
@@ -473,10 +503,11 @@ func _test_air_strafing() -> void:
 		"max_air_wish_speed 0 removes air control entirely",
 		"%.2f -> %.2f m/s" % [locked_launch, locked_state.horizontal_speed()]
 	)
+	_done()
 
 
 func _test_speed_modifiers() -> void:
-	print("speed modifiers")
+	_section("speed modifiers")
 
 	var t := _tunables()
 	t.max_speed = 8.0
@@ -515,10 +546,11 @@ func _test_speed_modifiers() -> void:
 		0.001,
 		"a disabled ability ignores its button"
 	)
+	_done()
 
 
 func _test_surfaces() -> void:
-	print("surfaces")
+	_section("surfaces")
 
 	var ice := DotFpsSurface.make(&"ice")
 	ice.friction_scale = 0.02
@@ -665,10 +697,11 @@ func _test_surfaces() -> void:
 	marker.free()
 	grouped.free()
 	unmarked.free()
+	_done()
 
 
 func _test_modifiers() -> void:
-	print("modifiers")
+	_section("modifiers")
 
 	var t := _tunables()
 	var motor := _motor(t)
@@ -822,10 +855,11 @@ func _test_modifiers() -> void:
 		not motor.remove_modifier(floaty, &"low_gravity"),
 		"and removing it twice reports nothing to remove"
 	)
+	_done()
 
 
 func _test_custom_mode() -> void:
-	print("custom movement modes")
+	_section("custom movement modes")
 
 	var t := _tunables()
 	var motor := _motor(t)
@@ -882,10 +916,11 @@ func _test_custom_mode() -> void:
 		motor.simulate(s, DotFpsCommand.new(), STEP)
 
 	_check(s.position.y < before, "and the built-in modes take over again")
+	_done()
 
 
 func _test_crouch_headroom() -> void:
-	print("crouching")
+	_section("crouching")
 
 	var t := _tunables()
 	t.crouch_transition_time = 0.0
@@ -934,10 +969,11 @@ func _test_crouch_headroom() -> void:
 		motor.simulate(s, DotFpsCommand.new(), STEP)
 
 	_check(not s.is_crouched(), "and stands as soon as there is room")
+	_done()
 
 
 func _test_crouch_jump() -> void:
-	print("crouch-jump")
+	_section("crouch-jump")
 
 	var t := _tunables()
 	t.instant_air_crouch = true
@@ -954,10 +990,11 @@ func _test_crouch_jump() -> void:
 		"crouching in mid-air lifts the feet toward the head",
 		"%.3f -> %.3f" % [feet_before, s.position.y]
 	)
+	_done()
 
 
 func _test_stair_step() -> void:
-	print("stairs")
+	_section("stairs")
 
 	var t := _tunables()
 	t.step_height = 0.4
@@ -1002,10 +1039,11 @@ func _test_stair_step() -> void:
 		"a wall taller than step_height is not climbed",
 		"y = %.3f" % wall_state.position.y
 	)
+	_done()
 
 
 func _test_step_refused_without_floor() -> void:
-	print("step rejection")
+	_section("step rejection")
 
 	var t := _tunables()
 	t.step_height = 0.4
@@ -1030,10 +1068,11 @@ func _test_step_refused_without_floor() -> void:
 		"a step with nothing behind it does not leave the player hovering",
 		"peak y = %.3f" % max_y
 	)
+	_done()
 
 
 func _test_ground_snap() -> void:
-	print("ground snap")
+	_section("ground snap")
 
 	var t := _tunables()
 	t.ground_snap = true
@@ -1067,10 +1106,11 @@ func _test_ground_snap() -> void:
 		"walking down steps keeps the player grounded",
 		"%d airborne ticks of 180" % airborne_ticks
 	)
+	_done()
 
 
 func _test_coyote_and_buffer() -> void:
-	print("jump forgiveness")
+	_section("jump forgiveness")
 
 	var t := _tunables()
 	t.coyote_time = 0.1
@@ -1126,10 +1166,11 @@ func _test_coyote_and_buffer() -> void:
 		"a jump long after leaving the ground does not fire",
 		"%.2f -> %.2f" % [late_before, late.velocity.y]
 	)
+	_done()
 
 
 func _test_noclip_gating() -> void:
-	print("noclip")
+	_section("noclip")
 
 	var allowed := _tunables()
 	allowed.can_noclip = true
@@ -1182,6 +1223,7 @@ func _test_noclip_gating() -> void:
 		revoked_state.mode != DotFpsState.Mode.NOCLIP,
 		"revoking noclip drops a player already using it"
 	)
+	_done()
 
 
 ## What an administrator does to somebody's movement, and whether the owning client
@@ -1194,7 +1236,7 @@ func _test_noclip_gating() -> void:
 ## — once with the modifier, once with the naive "set the mode" — and requires the first
 ## to agree and the second not to, because a check that cannot fail is not a check.
 func _test_admin_modifiers() -> void:
-	print("admin modifiers")
+	_section("admin modifiers")
 
 	var locked := _tunables()
 	locked.can_noclip = false
@@ -1342,10 +1384,11 @@ func _test_admin_modifiers() -> void:
 
 	var fall_ratio := (50.0 - light.position.y) / maxf(50.0 - heavy.position.y, 0.001)
 	_check(absf(fall_ratio - 0.5) < 0.05, "and on half gravity falls half as far", "%.2f" % fall_ratio)
+	_done()
 
 
 func _test_command_sanitising() -> void:
-	print("command validation")
+	_section("command validation")
 
 	var c := DotFpsCommand.new()
 	c.move = Vector2(40.0, 40.0)
@@ -1396,10 +1439,11 @@ func _test_command_sanitising() -> void:
 		"a client claiming a huge move vector still runs at max_speed",
 		"%.2f m/s" % s.horizontal_speed()
 	)
+	_done()
 
 
 func _test_touch_sampler() -> void:
-	print("touch sampling")
+	_section("touch sampling")
 
 	var t := _tunables()
 	var sampler := DotFpsTouchSampler.new(t)
@@ -1502,6 +1546,7 @@ func _test_touch_sampler() -> void:
 		"and a touch-driven player reaches ordinary walking speed",
 		"%.2f m/s" % s.horizontal_speed()
 	)
+	_done()
 
 
 static func _touch(index: int, at: Vector2, pressed: bool) -> InputEventScreenTouch:
@@ -1566,7 +1611,7 @@ class FakeWire extends RefCounted:
 
 
 func _test_wire_round_trip() -> void:
-	print("wire format")
+	_section("wire format")
 
 	var original := DotFpsCommand.new()
 	original.move = Vector2(-0.5, 0.75)
@@ -1602,10 +1647,11 @@ func _test_wire_round_trip() -> void:
 		"a command costs under 8 bytes",
 		"%d bits" % DotFpsCommand.estimated_bits()
 	)
+	_done()
 
 
 func _test_net_sync_round_trip() -> void:
-	print("net sync")
+	_section("net sync")
 
 	var specs := DotFpsNetSync.state_specs()
 	_check(specs.size() == 7, "seven properties replicate", "%d" % specs.size())
@@ -1723,6 +1769,7 @@ func _test_net_sync_round_trip() -> void:
 	)
 
 	carrier.free()
+	_done()
 
 
 func _carrier_script() -> GDScript:
@@ -1742,7 +1789,7 @@ var net_modifiers: int
 
 
 func _test_fingerprint() -> void:
-	print("configuration agreement")
+	_section("configuration agreement")
 
 	var a := _tunables()
 	var b := _tunables()
@@ -1778,6 +1825,7 @@ func _test_fingerprint() -> void:
 			named = true
 
 	_check(named, "the mismatch names the property that differs")
+	_done()
 
 
 ## The property everything else depends on.
@@ -1788,7 +1836,7 @@ func _test_fingerprint() -> void:
 ## prediction cannot work, and the failure at runtime looks like packet loss rather
 ## than like a bug.
 func _test_replay_determinism() -> void:
-	print("determinism")
+	_section("determinism")
 
 	var world := DotFpsFlatBody.with_floor(0.0)
 	world.add_box(AABB(Vector3(2.0, 0.0, -12.0), Vector3(2.0, 0.3, 6.0)))
@@ -1904,6 +1952,7 @@ func _test_replay_determinism() -> void:
 		"changing one command in the replay does diverge, so the test can fail",
 		"divergence %.6f m" % altered_state.divergence(full)
 	)
+	_done()
 
 
 ## The real [DotFpsBody], against the real physics server.
@@ -1912,7 +1961,7 @@ func _test_replay_determinism() -> void:
 ## is the other half and cannot be exercised without a physics world and a frame for
 ## it to settle.
 func _test_physics_body() -> void:
-	print("physics body")
+	_section("physics body")
 
 	var world := Node3D.new()
 	add_child(world)
@@ -1985,3 +2034,4 @@ func _test_physics_body() -> void:
 	_check(not clear, "and reports clear space as clear")
 
 	world.queue_free()
+	_done()

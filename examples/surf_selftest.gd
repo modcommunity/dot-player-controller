@@ -26,9 +26,17 @@ const STEP := 1.0 / 128.0
 
 const CHECKS := 52
 
+## Sections entered against sections that ran to their last line, and against this. A
+## runtime error inside a section aborts that function and nothing says so; a section that
+## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
+## total is the other half — see docs/testing.md.
+const SECTIONS := 12
+
 var _passed := 0
 var _failed := 0
 var _failures := PackedStringArray()
+var _entered := 0
+var _completed := 0
 
 
 func _ready() -> void:
@@ -59,6 +67,13 @@ func _run() -> void:
 	for line in _failures:
 		print("  FAIL  %s" % line)
 
+	print("%d of %d sections ran to their last line" % [_completed, _entered])
+	if _entered != SECTIONS or _completed != _entered:
+		print("ERROR: %d sections entered and %d completed, %d expected. One aborted or was skipped." % [
+			_entered, _completed, SECTIONS
+		])
+		get_tree().quit(1)
+		return
 	# The total the section counter cannot be. A runtime error inside a section aborts
 	# that function, and the counter is satisfied because the section had already
 	# announced itself. See docs/testing.md.
@@ -94,6 +109,16 @@ func _command(x: float, y: float, yaw: float, jump: bool = false) -> DotFpsComma
 	c.yaw = yaw
 	c.set_button(DotFpsCommand.BUTTON_JUMP, jump)
 	return c
+
+
+func _section(title: String) -> void:
+	_entered += 1
+	print(title)
+
+
+## A section reached its last line. See [constant SECTIONS].
+func _done() -> void:
+	_completed += 1
 
 
 func _check(ok: bool, what: String, detail: String = "") -> void:
@@ -165,7 +190,7 @@ func _on_ramp(body: DotFpsFlatBody, z: float, above: float) -> DotFpsState:
 
 
 func _test_ramp_is_not_ground() -> void:
-	print("a ramp is not ground")
+	_section("a ramp is not ground")
 
 	# 60° — well past the 46° the tunables allow anybody to stand on.
 	var body := _surf_world(60.0)
@@ -202,10 +227,11 @@ func _test_ramp_is_not_ground() -> void:
 		motor2.simulate(s2, DotFpsCommand.new(), STEP)
 
 	_check(s2.is_grounded(), "while a 30° face is ordinary ground")
+	_done()
 
 
 func _test_surf_keeps_speed() -> void:
-	print("surfing preserves speed")
+	_section("surfing preserves speed")
 
 	var body := _surf_world(60.0)
 	var motor := DotFpsMotor.new(_tunables(), body)
@@ -236,10 +262,11 @@ func _test_surf_keeps_speed() -> void:
 		"and the slide never runs out of iterations",
 		"%d stuck ticks" % motor.stuck_ticks
 	)
+	_done()
 
 
 func _test_surf_gains_speed_from_strafing() -> void:
-	print("surfing gains speed from strafing")
+	_section("surfing gains speed from strafing")
 
 	var body := _surf_world(60.0)
 
@@ -254,6 +281,7 @@ func _test_surf_gains_speed_from_strafing() -> void:
 		"a strafing surfer outruns one who only turns the view",
 		"%.2f vs %.2f m/s" % [strafed, straight]
 	)
+	_done()
 
 
 ## Runs 200 ticks down the ramp, turning throughout, and returns the speed reached.
@@ -273,7 +301,7 @@ func _run_ramp(body: DotFpsFlatBody, strafe: bool) -> float:
 
 
 func _test_crease_does_not_stop_a_surfer() -> void:
-	print("a seam between two ramps")
+	_section("a seam between two ramps")
 
 	# Two ramps falling toward each other along X, meeting in a valley that runs
 	# along Z. A player sliding down the valley is in permanent contact with both.
@@ -335,12 +363,13 @@ func _test_crease_does_not_stop_a_surfer() -> void:
 		"and does at least as well as the plain sequential slide",
 		"%.2f m with, %.2f m without" % [travelled, travelled2]
 	)
+	_done()
 
 
 # --- Bunny-hopping ---------------------------------------------------------
 
 func _test_bhop_preserves_speed() -> void:
-	print("bunny-hopping")
+	_section("bunny-hopping")
 
 	var body := DotFpsFlatBody.with_floor(0.0)
 	var t := _tunables()
@@ -377,10 +406,11 @@ func _test_bhop_preserves_speed() -> void:
 		"while standing on it does not",
 		"%.2f m/s" % s2.horizontal_speed()
 	)
+	_done()
 
 
 func _test_bhop_cap_removes_it() -> void:
-	print("the landing cap")
+	_section("the landing cap")
 
 	var body := DotFpsFlatBody.with_floor(0.0)
 
@@ -403,10 +433,11 @@ func _test_bhop_cap_removes_it() -> void:
 			s.horizontal_speed(), capped.max_speed * 1.104
 		]
 	)
+	_done()
 
 
 func _test_perfect_jump_counting() -> void:
-	print("perfect-hop statistics")
+	_section("perfect-hop statistics")
 
 	var body := DotFpsFlatBody.with_floor(0.0)
 	var motor := DotFpsMotor.new(_tunables(), body)
@@ -459,10 +490,11 @@ func _test_perfect_jump_counting() -> void:
 		stats2.perfect_ratio(), 0.0, 0.0001,
 		"so the perfect ratio reports nothing rather than a failure"
 	)
+	_done()
 
 
 func _test_sync_measurement() -> void:
-	print("strafe synchronisation")
+	_section("strafe synchronisation")
 
 	var body := DotFpsFlatBody.new()
 	body.floor_y = -500.0
@@ -511,12 +543,13 @@ func _test_sync_measurement() -> void:
 		"which is not a cosmetic number: the in-sync run is faster",
 		"%.2f vs %.2f m/s" % [s.horizontal_speed(), s2.horizontal_speed()]
 	)
+	_done()
 
 
 # --- Styles ----------------------------------------------------------------
 
 func _test_style_transform() -> void:
-	print("styles transform the tunables")
+	_section("styles transform the tunables")
 
 	var base := _tunables()
 	base.gravity = 20.0
@@ -557,10 +590,11 @@ func _test_style_transform() -> void:
 		hard.apply_to(base).jump_buffer_time, 0.0, 0.0001,
 		"turning easy-bhop off removes the jump buffer entirely"
 	)
+	_done()
 
 
 func _test_style_command_filter() -> void:
-	print("styles filter the command")
+	_section("styles filter the command")
 
 	var sideways := DotFpsStyle.new()
 	sideways.key_preset = DotFpsStyle.KeyPreset.SIDEWAYS
@@ -608,10 +642,11 @@ func _test_style_command_filter() -> void:
 		not c4.is_pressed(DotFpsCommand.BUTTON_CROUCH),
 		"a style that blocks crouch clears the button"
 	)
+	_done()
 
 
 func _test_style_round_trip() -> void:
-	print("styles survive serialisation")
+	_section("styles survive serialisation")
 
 	for style in DotFpsStyle.defaults():
 		var back := DotFpsStyle.from_dictionary(style.to_dictionary())
@@ -640,10 +675,11 @@ func _test_style_round_trip() -> void:
 	for style in DotFpsStyle.defaults():
 		_check(not ids.has(style.id), "%s has a unique id" % style.display_name)
 		ids[style.id] = true
+	_done()
 
 
 func _test_edge_friction() -> void:
-	print("edge friction")
+	_section("edge friction")
 
 	# A single block with nothing beyond it. A player sliding toward the drop passes
 	# over the edge partway through the run.
@@ -666,6 +702,7 @@ func _test_edge_friction() -> void:
 		"a player skidding at a ledge stops shorter with edge friction on",
 		"%.3f m vs %.3f m" % [slid_edged, slid_plain]
 	)
+	_done()
 
 
 ## Runs a player toward the lip of the block and returns how far they got.

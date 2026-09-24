@@ -20,9 +20,17 @@ const STEP := 1.0 / 60.0
 
 const CHECKS := 54
 
+## Sections entered against sections that ran to their last line, and against this. A
+## runtime error inside a section aborts that function and nothing says so; a section that
+## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
+## total is the other half — see docs/testing.md.
+const SECTIONS := 11
+
 var _passed := 0
 var _failed := 0
 var _failures := PackedStringArray()
+var _entered := 0
+var _completed := 0
 
 
 func _ready() -> void:
@@ -52,6 +60,13 @@ func _run() -> void:
 	for line in _failures:
 		print("  FAIL  %s" % line)
 
+	print("%d of %d sections ran to their last line" % [_completed, _entered])
+	if _entered != SECTIONS or _completed != _entered:
+		print("ERROR: %d sections entered and %d completed, %d expected. One aborted or was skipped." % [
+			_entered, _completed, SECTIONS
+		])
+		get_tree().quit(1)
+		return
 	# The total the section counter cannot be. A runtime error inside a section aborts
 	# that function, and the counter is satisfied because the section had already
 	# announced itself. See docs/testing.md.
@@ -81,6 +96,16 @@ class FrozenController extends DotFpsController:
 
 
 # --- Assertions ------------------------------------------------------------
+
+func _section(title: String) -> void:
+	_entered += 1
+	print(title)
+
+
+## A section reached its last line. See [constant SECTIONS].
+func _done() -> void:
+	_completed += 1
+
 
 func _check(condition: bool, what: String, detail: String = "") -> bool:
 	if condition:
@@ -185,7 +210,7 @@ func _command(
 # --- Tests -----------------------------------------------------------------
 
 func _test_surfaces_from_scene() -> void:
-	print("surfaces from the scene")
+	_section("surfaces from the scene")
 
 	var world := _make_world()
 
@@ -238,10 +263,11 @@ func _test_surfaces_from_scene() -> void:
 
 	world.queue_free()
 	await get_tree().process_frame
+	_done()
 
 
 func _test_change_signals() -> void:
-	print("change signals")
+	_section("change signals")
 
 	var world := _make_world()
 
@@ -334,10 +360,11 @@ func _test_change_signals() -> void:
 
 	world.queue_free()
 	await get_tree().process_frame
+	_done()
 
 
 func _test_command_veto() -> void:
-	print("command veto and extension registration")
+	_section("command veto and extension registration")
 
 	var world := _make_world()
 
@@ -399,10 +426,11 @@ func _test_command_veto() -> void:
 
 	world.queue_free()
 	await get_tree().process_frame
+	_done()
 
 
 func _test_zero_configuration() -> void:
-	print("zero-configuration wiring")
+	_section("zero-configuration wiring")
 
 	var world := _make_world()
 	var controller := _make_player(world, DotFpsController.Drive.EXTERNAL)
@@ -430,10 +458,11 @@ func _test_zero_configuration() -> void:
 
 	world.queue_free()
 	await get_tree().process_frame
+	_done()
 
 
 func _test_external_drive() -> void:
-	print("external drive")
+	_section("external drive")
 
 	var world := _make_world()
 	var controller := _make_player(world, DotFpsController.Drive.EXTERNAL)
@@ -482,10 +511,11 @@ func _test_external_drive() -> void:
 
 	world.queue_free()
 	await get_tree().process_frame
+	_done()
 
 
 func _test_collider_follows_crouch() -> void:
-	print("collider follows the crouch")
+	_section("collider follows the crouch")
 
 	var world := _make_world()
 	var controller := _make_player(world, DotFpsController.Drive.EXTERNAL)
@@ -535,10 +565,11 @@ func _test_collider_follows_crouch() -> void:
 
 	world.queue_free()
 	await get_tree().process_frame
+	_done()
 
 
 func _test_noclip_gate() -> void:
-	print("noclip gate")
+	_section("noclip gate")
 
 	var world := _make_world()
 	var controller := _make_player(
@@ -599,12 +630,13 @@ func _test_noclip_gate() -> void:
 
 	allowed_world.queue_free()
 	await get_tree().process_frame
+	_done()
 
 
 ## The controller half of DotFpsAdminModifiers: refused without the switch, and "off"
 ## lands a player even when their own tunables would have let them keep flying.
 func _test_admin_abilities() -> void:
-	print("admin abilities")
+	_section("admin abilities")
 
 	var plain_world := _make_world()
 	var plain := _make_player(plain_world, DotFpsController.Drive.EXTERNAL)
@@ -668,10 +700,11 @@ func _test_admin_abilities() -> void:
 
 	world.queue_free()
 	await get_tree().process_frame
+	_done()
 
 
 func _test_teleport_and_signals() -> void:
-	print("teleport and signals")
+	_section("teleport and signals")
 
 	var world := _make_world()
 	var controller := _make_player(world, DotFpsController.Drive.EXTERNAL)
@@ -726,10 +759,11 @@ func _test_teleport_and_signals() -> void:
 
 	world.queue_free()
 	await get_tree().process_frame
+	_done()
 
 
 func _test_registry_and_describe() -> void:
-	print("registry and diagnostics")
+	_section("registry and diagnostics")
 
 	var world := _make_world()
 	var controller := _make_player(
@@ -769,10 +803,11 @@ func _test_registry_and_describe() -> void:
 		not DotRegistry.has(scoped),
 		"and unregisters when it leaves the tree"
 	)
+	_done()
 
 
 func _test_local_drive_accumulator() -> void:
-	print("local drive")
+	_section("local drive")
 
 	var world := _make_world()
 	var controller := _make_player(
@@ -853,3 +888,4 @@ func _test_local_drive_accumulator() -> void:
 
 	world.queue_free()
 	await get_tree().process_frame
+	_done()
