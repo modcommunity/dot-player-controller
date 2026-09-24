@@ -144,8 +144,14 @@ the plane list treated a repeated normal as "stuck" and stopped the player. A pl
 who begins a tick a fraction of a millimetre inside a ramp — which happens on every
 spawn onto one and after every prediction correction — was then brought to a dead
 stop on a surface they should have been accelerating down. A duplicate plane is one
-that has already been satisfied: stop the move, keep the velocity. A *full* plane
+that has already been satisfied: keep the velocity. A *full* plane
 list is a real corner and does stop them.
+
+**And stopping the move there was the next freeze.** Until 2026-09-24 the duplicate broke the loop with the rest of the tick unspent, and a surfer pressed into a bank — resting on the face, velocity already in it — met the face again at fraction zero on the second leg every tick: position fixed, velocity intact, not grounded, not stuck, only `duplicate_plane_ticks` rising (game-g2gfast measured 697 of 1,786 ticks on one bank). The rest of the tick is now spent in ONE leg along the plane lifted a skin off it, velocity untouched. Returning to the loop instead was tried and is worse: a real contact's near-copy normals fill the plane list and zero the velocity in a corner that is not there. `movement_selftest`'s "pressed into a bank" section is the guard, on a physics body because the flat body never produces the contact.
+
+**Walking up a slope is not leaving the ground.** `_categorise_ground`, `_try_jump` and `_snap_to_ground` all measure "moving away" (`LEAVING_SPEED`) along the floor normal rather than along +Y — before 2026-09-24 nothing in the family could walk up any slope under `max_slope`. A jump still leaves: `_try_jump` sets AIR itself. At a ramp's crest the velocity is laid along the new floor so a walker is not thrown into the air.
+
+**A step's landing on a kerb's edge is judged by the kerb, not the capsule.** The rounded bottom landing on a corner reports the sphere's normal; `_floor_beyond_edge` asks a thin probe past the contact instead. Only the step uses it — the ground probe still reads the capsule's normal, so a capsule balanced on an edge is still AIR on the next tick (measured: at 15 m/s a 0.34 m kerb throws the player to 1.06 m, 0.7 m above its top, riding the edge normal).
 
 `bhop_speed_cap_scale` is the landing cap those shooters added (they ship
 1.104), off here because a movement game that caps hop speed has no bunny-hopping.
