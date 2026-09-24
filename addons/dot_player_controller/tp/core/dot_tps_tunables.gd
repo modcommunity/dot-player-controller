@@ -181,7 +181,10 @@ static func smoothing(rate: float, delta: float) -> float:
 
 ## Over-the-shoulder, camera-locked, tight. A third-person shooter.
 static func shooter() -> DotTpsTunables:
-	var t := DotTpsTunables.new()
+	# Not this class's own name. A script that names itself in an expression, loaded after
+	# its base, cuts Godot 4.7.2's exit teardown short and leaks every script loaded before
+	# it. See docs/gdscript-hazards.md, "A script that names itself".
+	var t := new()
 	t.turn_mode = 1
 	t.walk_speed = 3.2
 	t.run_speed = 6.0
@@ -196,7 +199,7 @@ static func shooter() -> DotTpsTunables:
 
 ## Behind and above, turning to face movement. An adventure game.
 static func adventure() -> DotTpsTunables:
-	var t := DotTpsTunables.new()
+	var t := new()
 	t.turn_mode = 0
 	t.walk_speed = 3.0
 	t.run_speed = 6.5
@@ -210,7 +213,7 @@ static func adventure() -> DotTpsTunables:
 
 ## Fast, forgiving, and jumping a lot. A platformer.
 static func platformer() -> DotTpsTunables:
-	var t := DotTpsTunables.new()
+	var t := new()
 	t.turn_mode = 0
 	t.walk_speed = 5.0
 	t.run_speed = 9.0
@@ -227,9 +230,9 @@ static func platformer() -> DotTpsTunables:
 
 static func presets() -> Dictionary:
 	return {
-		&"shooter": Callable(DotTpsTunables, "shooter"),
-		&"adventure": Callable(DotTpsTunables, "adventure"),
-		&"platformer": Callable(DotTpsTunables, "platformer"),
+		&"shooter": shooter,
+		&"adventure": adventure,
+		&"platformer": platformer,
 	}
 
 
@@ -240,4 +243,6 @@ static func preset(p_id: StringName) -> DotTpsTunables:
 		return null
 
 	var fn: Callable = table[p_id]
-	return fn.call() as DotTpsTunables
+	# Returned through the declared type rather than cast to this class by name; see the
+	# note on the presets above.
+	return fn.call()
