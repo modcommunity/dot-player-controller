@@ -1270,6 +1270,28 @@ func _slide(
 			break
 
 		if outcome == PLANE_DUPLICATE:
+			# [b]Spend the rest of the tick along the plane, a skin off it, and stop.[/b]
+			# The same plane again at the start of a leg is a capsule resting on it with
+			# a velocity that already lies in it — a surfer pressed into a bank. Breaking
+			# with nothing more spent none of the tick: the first leg ended touching the
+			# face, the second met it again at fraction zero, and the player hung in
+			# mid-air with its speed intact — 697 of 1,786 ticks of one bank in
+			# game-g2gfast, and every tick of some lines. Lifting the leg off the face
+			# by a skin (the classic slide move's one-unit nudge, for the same reason)
+			# makes it a leg that leaves the face instead of grazing it.
+			#
+			# One leg, not a return to the loop: carrying on collects the near-copies
+			# of the face a real contact reports, fills the plane list, and zeroes the
+			# velocity in a corner that is not there — measured, a surfer stopped dead
+			# after 38 ticks. The velocity is not touched; whatever this leg meets is
+			# next tick's business.
+			var rest := current * time_left + hit.normal * tunables.skin_width
+			var clear := _sweep(_capsule_centre(result.position, height), rest, height)
+			var spent := 1.0 if not clear.hit else clear.fraction
+			result.position += rest * spent
+			if spent > 1e-6:
+				time_left = 0.0
+				break
 			result.stopped_on_duplicate = true
 			# The same plane again. The velocity has already been resolved against
 			# it, so resolving again is a no-op and the loop would spin until it ran

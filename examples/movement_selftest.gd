@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 172
+const CHECKS := 175
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 27
+const SECTIONS := 28
 
 var _passed := 0
 var _failed := 0
@@ -75,6 +75,7 @@ func _run() -> void:
 	_test_replay_determinism()
 	await _test_physics_body()
 	await _test_physics_slope()
+	await _test_physics_bank()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -2106,6 +2107,88 @@ func _test_physics_slope() -> void:
 		"and is not thrown off the crest",
 		"%.3f m above the plateau" % above_plateau
 	)
+
+	world.queue_free()
+	_done()
+
+
+## A surfer pressed into a banked ramp keeps moving: never a tick where the position is
+## fixed while the velocity is not.
+##
+## The duplicate-plane early-out in `_slide` used to break with the rest of the tick
+## unspent. Against a bank the capsule rests on, with a velocity lying in its face, that
+## was the whole tick: the rider hung in mid-air at full speed, not grounded, not counted
+## stuck, only `duplicate_plane_ticks` rising. Real collision, because the flat body
+## never reports the contact that caused it. Numbers are a timer server's: a 60-degree
+## bank, 128 ticks a second, a 0.30 m capsule, riding at 4.2 m/s while holding strafe
+## into the face with a low air-acceleration.
+func _test_physics_bank() -> void:
+	_section("pressed into a bank, physics body")
+
+	var world := Node3D.new()
+	add_child(world)
+
+	var bank := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(14.6, 0.61, 39.0)
+	shape.shape = box
+	bank.add_child(shape)
+	bank.transform = Transform3D(Basis(Vector3.FORWARD, deg_to_rad(-60.0)), Vector3.ZERO)
+	world.add_child(bank)
+
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	var body := DotFpsPhysicsBody.new()
+	if not _check(body.bind(world).ok, "the physics body binds to the bank"):
+		world.queue_free()
+		return
+
+	var normal := bank.transform.basis.y.normalized()
+	var up_face := Vector3(-normal.y, normal.x, 0.0).normalized()
+	var delta := 1.0 / 128.0
+	var frozen := 0
+	var covered := 0.0
+	var expected := 0.0
+
+	# Two lines on the face, because which ticks freeze depends on where the capsule
+	# happens to rest; each was measured freezing before the fix.
+	for along in [0.0, -2.0]:
+		var t := _tunables()
+		t.can_noclip = false
+		t.max_speed = 4.76
+		t.max_velocity = 66.7
+		t.air_accelerate = 150.0
+		t.max_air_wish_speed = 0.57
+		t.gravity = 15.24
+		t.stand_height = 1.37
+		t.crouch_height = 1.03
+		t.radius = 0.305
+		t.max_slope_angle = 45.57
+		t.step_height = 0.34
+		var motor := DotFpsMotor.new(t, body)
+
+		var s := DotFpsState.new()
+		var on_face := normal * (box.size.y * 0.5) + up_face * float(along)
+		s.position = on_face + normal * (t.radius + 0.01) - Vector3.UP * t.radius
+		s.velocity = Vector3(0.0, 0.0, -4.23)
+		s.mode = DotFpsState.Mode.AIR
+
+		var start := s.position
+		var last := s.position
+		for _i in range(400):
+			motor.simulate(s, _command(0.0, 1.0), delta)
+			if s.position.distance_to(last) < 1e-5 and s.velocity.length() > 0.1:
+				frozen += 1
+			last = s.position
+		covered += start.z - s.position.z
+		expected += 4.23 * 400.0 * delta
+
+	_check(frozen == 0, "a rider pressed into a bank never hangs with its speed intact",
+		"%d ticks with the position fixed and the velocity not" % frozen)
+	_check(covered > expected * 0.97, "and covers the ground its speed says",
+		"%.2f m of %.2f" % [covered, expected])
 
 	world.queue_free()
 	_done()
