@@ -1484,7 +1484,9 @@ func _slide_with_step(
 	result.velocity = across.velocity
 	result.blocked = across.blocked
 
-	if not landing.hit or not _is_floor(landing.normal):
+	if not landing.hit or not (
+		_is_floor(landing.normal) or _floor_beyond_edge(landing, across.position)
+	):
 		# Nothing to stand on up there. Refusing the step is important: accepting it
 		# would leave the player floating at step height with no ground under them,
 		# and the next tick would drop them back, once per tick, forever.
@@ -1499,6 +1501,37 @@ func _slide_with_step(
 	).length()
 
 	return result
+
+
+## Whether a steep landing contact is the rounded bottom of the capsule on the edge of
+## a floor, rather than a steep face.
+##
+## [b]The step's down leg reports the capsule's normal, not the kerb's.[/b] At walking
+## pace one tick's across leg is a few centimetres, so the capsule's axis is still short
+## of the edge when it comes down, its hemisphere lands on the corner, and the contact
+## normal points from the corner to the sphere's centre: 50 to 80 degrees from up. So a
+## 0.34 m kerb under a 0.45 m step_height was refused at every walking speed, and once
+## refused the slide had taken the speed into it, so the next tick's leg was shorter
+## still. The question the step is asking is whether the surface is a floor, and that is
+## answered by a thin probe just past the contact, which must find a floor at the
+## contact's own height. A steep face answers no, so surf and walls are unaffected.
+## Only the step asks it; the ground probe still reads the capsule's normal.
+func _floor_beyond_edge(landing: DotFpsBody.Hit, feet: Vector3) -> bool:
+	var outward := Vector3(landing.point.x - feet.x, 0.0, landing.point.z - feet.z)
+	if outward.length_squared() < 1e-8:
+		return false
+
+	var probe_radius := minf(0.05, tunables.radius * 0.25)
+	var probe_height := probe_radius * 2.0
+	var at := landing.point + outward.normalized() * (probe_radius + 0.01)
+	var centre := at + Vector3.UP * (probe_radius + 0.05)
+	var hit := body.sweep(centre, Vector3.DOWN * 0.1, probe_height, probe_radius)
+
+	if not hit.hit or not _is_floor(hit.normal):
+		return false
+
+	var bottom := centre.y - probe_radius + (-0.1 * hit.fraction)
+	return absf(bottom - landing.point.y) < 0.02
 
 
 ## Pulls the player back down onto ground they have just walked off the edge of.

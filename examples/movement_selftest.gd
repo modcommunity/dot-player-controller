@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 175
+const CHECKS := 178
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 28
+const SECTIONS := 29
 
 var _passed := 0
 var _failed := 0
@@ -76,6 +76,7 @@ func _run() -> void:
 	await _test_physics_body()
 	await _test_physics_slope()
 	await _test_physics_bank()
+	await _test_physics_kerb()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -2107,6 +2108,68 @@ func _test_physics_slope() -> void:
 		"and is not thrown off the crest",
 		"%.3f m above the plateau" % above_plateau
 	)
+
+	world.queue_free()
+	_done()
+
+
+## A kerb under step_height is stepped onto by a real capsule at walking pace.
+##
+## The step's down leg lands the capsule's ROUNDED bottom on the kerb's edge whenever the
+## across leg ends with the axis short of it — which at walking pace is every time, since
+## one tick's motion is a few centimetres — and that contact's normal is the sphere's,
+## 50 to 80 degrees from up, so the landing was refused as "not a floor". Measured on a
+## 0.34 m kerb with step_height 0.45: refused at 3, 5, 7 and 15 m/s, climbed only at
+## 10. The flat body is a box with a flat bottom and cannot see this.
+func _test_physics_kerb() -> void:
+	_section("kerb, physics body")
+
+	var world := Node3D.new()
+	add_child(world)
+
+	for spec in [[Vector3(40.0, 1.0, 40.0), Vector3(0.0, -0.5, 0.0)],
+			[Vector3(10.0, 0.34, 0.6), Vector3(0.0, 0.17, -2.3)]]:
+		var b := StaticBody3D.new()
+		var cs := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = spec[0]
+		cs.shape = box
+		b.add_child(cs)
+		b.position = spec[1]
+		world.add_child(b)
+
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	var body := DotFpsPhysicsBody.new()
+	if not _check(body.bind(world).ok, "the physics body binds to the kerb"):
+		world.queue_free()
+		return
+
+	for speed in [3.0, 7.0]:
+		var t := _tunables()
+		t.step_height = 0.45
+		t.max_speed = speed
+		var motor := DotFpsMotor.new(t, body)
+		var s := DotFpsState.new()
+		s.position = Vector3(0.0, 0.0, 1.0)
+		s.mode = DotFpsState.Mode.GROUND
+		for _i in range(4):
+			motor.simulate(s, DotFpsCommand.new(), STEP)
+
+		var on_top := -1.0
+		for _i in range(240):
+			motor.simulate(s, _command(1.0), STEP)
+			if s.position.z < -2.1 and s.position.z > -2.5:
+				on_top = maxf(on_top, s.position.y)
+			if s.position.z < -4.0:
+				break
+
+		_check(
+			on_top > 0.3 and s.position.z < -2.6,
+			"a 0.34 m kerb 0.6 m deep is stepped over at %d m/s (step_height 0.45)" % int(speed),
+			"highest over the kerb %.3f, got to z %.2f" % [on_top, s.position.z]
+		)
 
 	world.queue_free()
 	_done()
