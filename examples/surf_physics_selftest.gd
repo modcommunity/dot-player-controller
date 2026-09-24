@@ -29,9 +29,17 @@ extends Node3D
 const STEP := 1.0 / 128.0
 const CHECKS := 24
 
+## Sections entered against sections that ran to their last line, and against this. A
+## runtime error inside a section aborts that function and nothing says so; a section that
+## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
+## total is the other half — see docs/testing.md.
+const SECTIONS := 5
+
 var _passed := 0
 var _failed := 0
 var _failures := PackedStringArray()
+var _entered := 0
+var _completed := 0
 var _t: DotFpsTunables
 
 
@@ -51,6 +59,16 @@ func _tunables() -> DotFpsTunables:
 	t.friction = 6.0
 	t.max_slope_angle = 46.0
 	return t
+
+
+func _section(title: String) -> void:
+	_entered += 1
+	print(title)
+
+
+## A section reached its last line. See [constant SECTIONS].
+func _done() -> void:
+	_completed += 1
 
 
 func _check(ok: bool, what: String, detail: String = "") -> void:
@@ -150,6 +168,13 @@ func _run() -> void:
 	for line in _failures:
 		print("  FAIL  %s" % line)
 
+	print("%d of %d sections ran to their last line" % [_completed, _entered])
+	if _entered != SECTIONS or _completed != _entered:
+		print("ERROR: %d sections entered and %d completed, %d expected. One aborted or was skipped." % [
+			_entered, _completed, SECTIONS
+		])
+		get_tree().quit(1)
+		return
 	# The total the section counter cannot be. See docs/testing.md.
 	if _passed + _failed != CHECKS:
 		print("ERROR: %d checks ran, %d expected. A section aborted part-way." % [
@@ -164,7 +189,7 @@ func _run() -> void:
 # --- The query the whole bug lived in --------------------------------------
 
 func _test_rest_contact_sees_what_a_sweep_cannot() -> void:
-	print("a resting query sees a surface the sweep has stopped reporting")
+	_section("a resting query sees a surface the sweep has stopped reporting")
 
 	await _clear()
 	_add_ramp(60.0)
@@ -208,12 +233,13 @@ func _test_rest_contact_sees_what_a_sweep_cannot() -> void:
 		"a sweep driving further into a ramp it is inside is blocked, not free",
 		"hit=%s n=%v" % [blocked.hit, blocked.normal]
 	)
+	_done()
 
 
 # --- The symptom -----------------------------------------------------------
 
 func _test_a_surfer_stays_on_the_ramp() -> void:
-	print("a surfer stays on the ramp rather than inside it")
+	_section("a surfer stays on the ramp rather than inside it")
 
 	await _clear()
 	_add_ramp(60.0)
@@ -271,10 +297,11 @@ func _test_a_surfer_stays_on_the_ramp() -> void:
 		"without sinking into it either",
 		"%.4f m" % _penetration(h.position, hill)
 	)
+	_done()
 
 
 func _test_an_embedded_spawn_recovers() -> void:
-	print("a player who starts inside geometry gets out")
+	_section("a player who starts inside geometry gets out")
 
 	await _clear()
 	_add_ramp(60.0)
@@ -306,10 +333,11 @@ func _test_an_embedded_spawn_recovers() -> void:
 		"and says so, rather than recovering silently",
 		"%d ticks" % motor.depenetrated_ticks
 	)
+	_done()
 
 
 func _test_a_standing_player_is_left_alone() -> void:
-	print("a player on a floor is not pushed around by the recovery")
+	_section("a player on a floor is not pushed around by the recovery")
 
 	await _clear()
 	_add_floor(0.0)
@@ -346,10 +374,11 @@ func _test_a_standing_player_is_left_alone() -> void:
 		"the recovery stays out of the way of ordinary standing",
 		"%d of 384 ticks" % motor.depenetrated_ticks
 	)
+	_done()
 
 
 func _test_leaving_a_surface_is_not_blocked() -> void:
-	print("a capsule inside a surface may still move away from it")
+	_section("a capsule inside a surface may still move away from it")
 
 	await _clear()
 	_add_ramp(60.0)
@@ -381,3 +410,4 @@ func _test_leaving_a_surface_is_not_blocked() -> void:
 		"and sliding along the face is not blocked either",
 		"fraction %.3f" % slide.fraction
 	)
+	_done()
