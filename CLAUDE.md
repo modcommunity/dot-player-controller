@@ -469,7 +469,7 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-godot --headless --path . res://examples/movement_selftest.tscn     # 162 checks
+godot --headless --path . res://examples/movement_selftest.tscn     # 172 checks
 godot --headless --path . res://examples/controller_selftest.tscn   # 106 checks
 godot --headless --path . res://examples/fps_controller_selftest.tscn # 54 checks
 godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks
