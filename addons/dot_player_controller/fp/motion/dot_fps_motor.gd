@@ -1485,7 +1485,7 @@ func _slide_with_step(
 	result.blocked = across.blocked
 
 	if not landing.hit or not (
-		_is_floor(landing.normal) or _floor_beyond_edge(landing, across.position)
+		_is_floor(landing.normal) or _floor_beyond_edge(landing, across.position, from.y)
 	):
 		# Nothing to stand on up there. Refusing the step is important: accepting it
 		# would leave the player floating at step height with no ground under them,
@@ -1516,7 +1516,19 @@ func _slide_with_step(
 ## answered by a thin probe just past the contact, which must find a floor at the
 ## contact's own height. A steep face answers no, so surf and walls are unaffected.
 ## Only the step asks it; the ground probe still reads the capsule's normal.
-func _floor_beyond_edge(landing: DotFpsBody.Hit, feet: Vector3) -> bool:
+##
+## [b]And the floor has to be within a step of where the step started[/b]
+## ([param start_y], the feet before the lift). Without that this answered yes for any
+## kerb at all: the across leg's slide rides the capsule's hemisphere up the corner, the
+## down leg comes to rest on the corner above the lifted feet, and the probe finds the
+## kerb's top at the contact's height and calls it a floor, which it is. With
+## step_height 0.45 a walker went over 0.5 m kerbs at 3 and 7 m/s and 0.7 m at 7, and
+## was stopped only at 1.0 m. The feet end up below that corner, hanging on it, so a cap
+## on how far the feet rose would not catch this; the floor's height does.
+func _floor_beyond_edge(landing: DotFpsBody.Hit, feet: Vector3, start_y: float) -> bool:
+	if landing.point.y - start_y > tunables.step_height + tunables.skin_width:
+		return false
+
 	var outward := Vector3(landing.point.x - feet.x, 0.0, landing.point.z - feet.z)
 	if outward.length_squared() < 1e-8:
 		return false
