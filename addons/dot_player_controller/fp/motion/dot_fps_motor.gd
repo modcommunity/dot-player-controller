@@ -748,6 +748,7 @@ func _categorise_ground(state: DotFpsState) -> void:
 		state.ground_id = hit.collider_id
 		state.surface = found
 		_resolve_surface(state)
+		_keep_skin(state, hit, probe)
 		return
 
 	# The recovery path, and the reason it is worth an extra query.
@@ -1563,6 +1564,23 @@ func _edge_floor_normal(landing: DotFpsBody.Hit, feet: Vector3, start_y: float) 
 
 	var bottom := centre.y - probe_radius + (-0.1 * hit.fraction)
 	return hit.normal if absf(bottom - landing.point.y) < 0.02 else Vector3.ZERO
+
+
+## Puts a grounded player back a skin clear of the floor [param hit] found, if they are
+## closer than half of one. Straight up, and never further than the skin.
+##
+## [b]Exactly touching a floor is a state a horizontal sweep cannot move out of.[/b] Every
+## query here stops a skin short of what it meets, so the motor never puts a player there
+## itself — but a spawn at the floor's height does, and nothing then moved them off it,
+## because a player the ground check finds a floor under is never snapped. From exactly
+## touching, cast_motion reports the floor as an obstacle to a HORIZONTAL move, at fraction
+## ~0, in about one position in five (none at 0.2 mm clear, measured on 4 m and 40 m
+## boxes); the slide met that plane twice and stopped, every tick, velocity intact. A
+## runner at 12 m/s spawned on a floor's centre line froze in front of every kerb.
+func _keep_skin(state: DotFpsState, hit: DotFpsBody.Hit, probe: Vector3) -> void:
+	var gap := probe.length() * hit.fraction
+	if gap < tunables.skin_width * 0.5 and hit.normal.y > 0.0:
+		state.position.y += tunables.skin_width - gap
 
 
 ## The floor [param hit] puts the player on, or [constant Vector3.ZERO] if it is not one.
