@@ -151,7 +151,7 @@ list is a real corner and does stop them.
 
 **Walking up a slope is not leaving the ground.** `_categorise_ground`, `_try_jump` and `_snap_to_ground` all measure "moving away" (`LEAVING_SPEED`) along the floor normal rather than along +Y — before 2026-09-24 nothing in the family could walk up any slope under `max_slope`. A jump still leaves: `_try_jump` sets AIR itself. At a ramp's crest the velocity is laid along the new floor so a walker is not thrown into the air.
 
-**A step's landing on a kerb's edge is judged by the kerb, not the capsule.** The rounded bottom landing on a corner reports the sphere's normal; `_floor_beyond_edge` asks a thin probe past the contact instead. Only the step uses it — the ground probe still reads the capsule's normal, so a capsule balanced on an edge is still AIR on the next tick (measured: at 15 m/s a 0.34 m kerb throws the player to 1.06 m, 0.7 m above its top, riding the edge normal).
+**A step's landing on a kerb's edge is judged by the kerb, not the capsule.** The rounded bottom landing on a corner reports the sphere's normal; `_floor_beyond_edge` asks a thin probe past the contact instead, **and refuses a floor more than `step_height` above where the step started** — without that it accepted any kerb whose top it could see, because the across leg's slide rides the hemisphere up the corner and the down leg rests on it above the lifted feet (step_height 0.45 went over 0.5 m and 0.7 m kerbs, stopped only at 1.0). Only the step uses it — the ground probe still reads the capsule's normal, so a capsule balanced on an edge is still AIR on the next tick (measured: at 15 m/s a 0.34 m kerb throws the player to 1.06 m, 0.7 m above its top, riding the edge normal).
 
 `bhop_speed_cap_scale` is the landing cap those shooters added (they ship
 1.104), off here because a movement game that caps hop speed has no bunny-hopping.
@@ -475,7 +475,7 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-godot --headless --path . res://examples/movement_selftest.tscn     # 178 checks
+godot --headless --path . res://examples/movement_selftest.tscn     # 182 checks
 godot --headless --path . res://examples/controller_selftest.tscn   # 106 checks
 godot --headless --path . res://examples/fps_controller_selftest.tscn # 55 checks
 godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks

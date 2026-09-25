@@ -24,7 +24,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 178
+const CHECKS := 182
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -2113,7 +2113,8 @@ func _test_physics_slope() -> void:
 	_done()
 
 
-## A kerb under step_height is stepped onto by a real capsule at walking pace.
+## A kerb under step_height is stepped onto by a real capsule at walking pace, and one
+## over it is not.
 ##
 ## The step's down leg lands the capsule's ROUNDED bottom on the kerb's edge whenever the
 ## across leg ends with the axis short of it — which at walking pace is every time, since
@@ -2121,22 +2122,20 @@ func _test_physics_slope() -> void:
 ## 50 to 80 degrees from up, so the landing was refused as "not a floor". Measured on a
 ## 0.34 m kerb with step_height 0.45: refused at 3, 5, 7 and 15 m/s, climbed only at
 ## 10. The flat body is a box with a flat bottom and cannot see this.
+##
+## [b]And the answer to that let a walker over kerbs far higher than a step[/b]: the probe
+## past the edge found the kerb's top and accepted it without asking how high it was, so
+## with step_height 0.45 a walker got over 0.5 m at 3 and 7 m/s and 0.7 m at 7, and was
+## stopped only at 1.0. The corner the capsule lands on is above the lifted feet; the
+## floor beyond it is a floor, and it is out of reach.
 func _test_physics_kerb() -> void:
 	_section("kerb, physics body")
 
-	var world := Node3D.new()
+	# One lane per kerb, 3 m apart, each kerb 2.5 m wide and 0.6 m deep across z -2.0 to
+	# -2.6. A walker starts at z 1.0 and walks toward -z along its lane's centre line.
+	var heights: Array[float] = [0.34, 0.5, 0.7]
+	var world := _kerb_world(heights)
 	add_child(world)
-
-	for spec in [[Vector3(40.0, 1.0, 40.0), Vector3(0.0, -0.5, 0.0)],
-			[Vector3(10.0, 0.34, 0.6), Vector3(0.0, 0.17, -2.3)]]:
-		var b := StaticBody3D.new()
-		var cs := CollisionShape3D.new()
-		var box := BoxShape3D.new()
-		box.size = spec[0]
-		cs.shape = box
-		b.add_child(cs)
-		b.position = spec[1]
-		world.add_child(b)
 
 	await get_tree().physics_frame
 	await get_tree().physics_frame
@@ -2147,32 +2146,74 @@ func _test_physics_kerb() -> void:
 		return
 
 	for speed in [3.0, 7.0]:
-		var t := _tunables()
-		t.step_height = 0.45
-		t.max_speed = speed
-		var motor := DotFpsMotor.new(t, body)
-		var s := DotFpsState.new()
-		s.position = Vector3(0.0, 0.0, 1.0)
-		s.mode = DotFpsState.Mode.GROUND
-		for _i in range(4):
-			motor.simulate(s, DotFpsCommand.new(), STEP)
-
-		var on_top := -1.0
-		for _i in range(240):
-			motor.simulate(s, _command(1.0), STEP)
-			if s.position.z < -2.1 and s.position.z > -2.5:
-				on_top = maxf(on_top, s.position.y)
-			if s.position.z < -4.0:
-				break
-
+		var walk := _walk_kerb(body, 0.0, speed)
 		_check(
-			on_top > 0.3 and s.position.z < -2.6,
+			walk.on_top > 0.3 and walk.end_z < -2.6,
 			"a 0.34 m kerb 0.6 m deep is stepped over at %d m/s (step_height 0.45)" % int(speed),
-			"highest over the kerb %.3f, got to z %.2f" % [on_top, s.position.z]
+			"highest over the kerb %.3f, got to z %.2f" % [walk.on_top, walk.end_z]
 		)
+
+	for lane in [1, 2]:
+		for speed in [3.0, 7.0]:
+			var walk := _walk_kerb(body, lane * 3.0, speed)
+			_check(
+				walk.on_top < 0.0 and walk.end_z > -2.0 and walk.peak < 0.46,
+				"a %.1f m kerb is refused at %d m/s with step_height 0.45" % [heights[lane], int(speed)],
+				"highest over the kerb %.3f, peak y %.3f, got to z %.2f" % [
+					walk.on_top, walk.peak, walk.end_z
+				]
+			)
 
 	world.queue_free()
 	_done()
+
+
+## Kerbs of [param heights] on a 40 m floor, one lane each at x = 3 * index.
+func _kerb_world(heights: Array[float]) -> Node3D:
+	var world := Node3D.new()
+	var specs: Array = [[Vector3(40.0, 1.0, 40.0), Vector3(0.0, -0.5, 0.0)]]
+	for i in range(heights.size()):
+		specs.append([Vector3(2.5, heights[i], 0.6), Vector3(i * 3.0, heights[i] * 0.5, -2.3)])
+
+	for spec: Array in specs:
+		var b := StaticBody3D.new()
+		var cs := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = spec[0]
+		cs.shape = box
+		b.add_child(cs)
+		b.position = spec[1]
+		world.add_child(b)
+
+	return world
+
+
+## Walks a standing player at [param speed] from z 1.0 toward -z along x = [param x],
+## step_height 0.45. [code]on_top[/code] is the highest y while over the kerb's footprint
+## (-1.0 if never there), [code]peak[/code] the highest y anywhere, [code]end_z[/code]
+## where they got to.
+func _walk_kerb(body: DotFpsBody, x: float, speed: float) -> Dictionary:
+	var t := _tunables()
+	t.step_height = 0.45
+	t.max_speed = speed
+	var motor := DotFpsMotor.new(t, body)
+	var s := DotFpsState.new()
+	s.position = Vector3(x, 0.0, 1.0)
+	s.mode = DotFpsState.Mode.GROUND
+	for _i in range(4):
+		motor.simulate(s, DotFpsCommand.new(), STEP)
+
+	var on_top := -1.0
+	var peak := 0.0
+	for _i in range(240):
+		motor.simulate(s, _command(1.0), STEP)
+		peak = maxf(peak, s.position.y)
+		if s.position.z < -2.1 and s.position.z > -2.5:
+			on_top = maxf(on_top, s.position.y)
+		if s.position.z < -4.0:
+			break
+
+	return {"on_top": on_top, "peak": peak, "end_z": s.position.z}
 
 
 ## A surfer pressed into a banked ramp keeps moving: never a tick where the position is
