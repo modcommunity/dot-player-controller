@@ -159,6 +159,12 @@ list is a real corner and does stop them.
 1.104), off here because a movement game that caps hop speed has no bunny-hopping.
 `edge_friction` is `sv_edgefriction`, off because it costs a query per grounded tick.
 
+### How far a jump goes
+
+`DotFpsTunables` answers it: `jump_apex()`, `climb_limit(margin = CLIMB_MARGIN)` (nine tenths of the apex, the highest top face a standing player is asked to jump onto), `jump_airtime(rise)` and `jump_reach(rise, speed = max_speed)`, plus the static `airtime_for(gravity, jump_height, rise)` / `reach_for(speed, gravity, jump_height, rise)` for a map that keeps its own constants and has no tunables in front of it. **`rise` is the whole point**: the airtime everybody writes down is the time back to the height you left, and on a course that climbs it is about 30% too long — which is how two games shipped courses nobody could finish. It uses the descending root, holds ground speed through the air (holding forward adds nothing past `max_air_wish_speed`), and gives no credit for the capsule's radius. `movement_selftest`'s "jump reach" section checks it against a running jump in the motor, not against another copy of the formula.
+
+It exists because four games had copied it: game-playground (`PlaygroundMap.jump_reach`), game-arena (`ArenaMap.jump_reach` / `climb_limit`), game-g2gfast (`game/g2g_reach.gd` `airtime` / `run_reach` / `apex` / `climb_limit`, in genre units) and mg-buses-from-hell (`game/bfh_reach.gd` `jump_reach` / `climb_limit`), with mg-smash-copter's `ScPlayer.jump_reach` a fifth. None of them has been changed to call it yet.
+
 ### Styles
 
 `DotFpsStyle` is what a timer server means by the word: sideways,
@@ -452,6 +458,7 @@ Nothing here should require a fork.
 | --- | --- |
 | Which node anything attaches to | `DotNodeRef` on the controller and the view |
 | Movement feel | `DotFpsTunables`, per instance or per JSON file |
+| How far a jump carries a player, for sizing a gap or a ledge | `DotFpsTunables.jump_reach` / `climb_limit` / `jump_airtime`, or the static `reach_for` / `airtime_for` |
 | A named variation on it — sideways, low gravity, prebhop | `DotFpsStyle`, via `DotFpsController.set_style` |
 | How one kind of ground behaves | `DotFpsSurface` in a `DotFpsSurfaceSet` |
 | How a collider maps to a surface | Node metadata or a group; override `DotFpsController._resolve_surface_id` |
@@ -477,7 +484,7 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-godot --headless --path . res://examples/movement_selftest.tscn     # 188 checks
+godot --headless --path . res://examples/movement_selftest.tscn     # 194 checks
 godot --headless --path . res://examples/controller_selftest.tscn   # 106 checks
 godot --headless --path . res://examples/fps_controller_selftest.tscn # 55 checks
 godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks
