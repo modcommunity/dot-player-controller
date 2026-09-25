@@ -24,7 +24,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 194
+const CHECKS := 197
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -2234,6 +2234,35 @@ func _test_physics_kerb() -> void:
 		)
 
 	world.queue_free()
+
+	# A runner spawned exactly on the floor, feet at y 0.0000, is exactly touching it, and
+	# a horizontal sweep from exactly touching reports the floor as an obstacle at fraction
+	# ~0 in about one position in five (none at 0.2 mm clear). The slide then met that
+	# plane twice and stopped every tick with the velocity intact: frozen in front of any
+	# kerb from 0.1 to 0.45 m at 12 and 20 m/s, the speeds whose run never had a tick that
+	# happened to re-seat the feet a skin up. Which positions hit is floating-point luck;
+	# on the floor's centre line, from these round starts, each speed froze at least once.
+	# The lanes' floor must be gone first: two coincident floors are a different contact.
+	await get_tree().process_frame
+	var spawn_world := _kerb_world([0.3] as Array[float])
+	add_child(spawn_world)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var spawn_body := DotFpsPhysicsBody.new()
+	if _check(spawn_body.bind(spawn_world).ok, "the physics body binds to the 0.3 m kerb"):
+		for speed in [12.0, 20.0]:
+			var frozen: Array[String] = []
+			for z in [1.0, 0.0, 2.0]:
+				var run := _walk_kerb(spawn_body, 0.0, speed, z)
+				if not (run.end_z < -2.6 and run.on_top > 0.25):
+					frozen.append("from z %.1f: top %.3f, stopped at z %.2f" % [z, run.on_top, run.end_z])
+			_check(
+				frozen.is_empty(),
+				"a runner at %d m/s spawned on the floor climbs a 0.3 m kerb, from z 1, 0 and 2" % int(speed),
+				"; ".join(frozen)
+			)
+
+	spawn_world.queue_free()
 	_done()
 
 
@@ -2257,17 +2286,17 @@ func _kerb_world(heights: Array[float]) -> Node3D:
 	return world
 
 
-## Walks a standing player at [param speed] from z 1.0 toward -z along x = [param x],
+## Walks a standing player at [param speed] from [param z] toward -z along x = [param x],
 ## step_height 0.45. [code]on_top[/code] is the highest y while over the kerb's footprint
 ## (-1.0 if never there), [code]peak[/code] the highest y anywhere, [code]end_z[/code]
 ## where they got to.
-func _walk_kerb(body: DotFpsBody, x: float, speed: float) -> Dictionary:
+func _walk_kerb(body: DotFpsBody, x: float, speed: float, z: float = 1.0) -> Dictionary:
 	var t := _tunables()
 	t.step_height = 0.45
 	t.max_speed = speed
 	var motor := DotFpsMotor.new(t, body)
 	var s := DotFpsState.new()
-	s.position = Vector3(x, 0.0, 1.0)
+	s.position = Vector3(x, 0.0, z)
 	s.mode = DotFpsState.Mode.GROUND
 	for _i in range(4):
 		motor.simulate(s, DotFpsCommand.new(), STEP)

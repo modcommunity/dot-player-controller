@@ -252,6 +252,8 @@ player was grounded last tick, they stay grounded. A swept query cannot say anyt
 useful about a shape that starts inside geometry, and the failure mode without that
 check is falling out of the level.
 
+**And a grounded player is kept a skin clear of the floor, because exactly touching is a fourth one.** Every query stops a skin short, so the motor never puts a player exactly on a surface — but a spawn at the floor's height does, and a player the ground check finds a floor under is never snapped, so nothing moved them off it. From exactly touching, `cast_motion` reports the floor as an obstacle to a *horizontal* move at fraction ~0 in about one position in five (none at 0.2 mm clear); the slide met that plane twice and stopped every tick with the velocity intact — a runner at 12 m/s spawned on a floor's centre line froze in front of every kerb from 0.1 to 0.45 m. `_keep_skin` lifts a grounded player whose floor is under half a skin away back to a skin, straight up.
+
 **The ground snap only runs when the player has actually left the ground.** That is
 not an optimisation. Running the longest, least precise query in the tick on a player
 who is already standing still re-derived a correct position from the worst available
@@ -484,7 +486,7 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-godot --headless --path . res://examples/movement_selftest.tscn     # 194 checks
+godot --headless --path . res://examples/movement_selftest.tscn     # 197 checks
 godot --headless --path . res://examples/controller_selftest.tscn   # 106 checks
 godot --headless --path . res://examples/fps_controller_selftest.tscn # 55 checks
 godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks
