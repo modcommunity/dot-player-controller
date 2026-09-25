@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 182
+const CHECKS := 186
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 29
+const SECTIONS := 30
 
 var _passed := 0
 var _failed := 0
@@ -77,6 +77,7 @@ func _run() -> void:
 	await _test_physics_slope()
 	await _test_physics_bank()
 	await _test_physics_kerb()
+	await _test_physics_slope_landing()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -2214,6 +2215,125 @@ func _walk_kerb(body: DotFpsBody, x: float, speed: float) -> Dictionary:
 			break
 
 	return {"on_top": on_top, "peak": peak, "end_z": s.position.z}
+
+
+## A player landing on a walkable slope while moving uphill is on it, not gliding up it.
+##
+## An airborne player's ground check used to leave without a query whenever they were
+## moving up faster than LEAVING_SPEED. Landing uphill makes exactly that: the slide
+## clips the velocity onto the face, and walking pace along a 13-degree slope is 0.4 m/s
+## upward — so the player stayed in AIR, gravity took a third of a metre per second off,
+## the next slide put it back, and they glided at air speed (1.7 m/s against a 2.7 m/s
+## walk) until a tick happened to end within the probe's 2 cm. Measured with these
+## tunables (a game's, max_slope_angle 14): 13 airborne ticks from 0.1 m at walking
+## pace, 9 of them touching the slope; reported in that game as over a second.
+func _test_physics_slope_landing() -> void:
+	_section("landing on a walkable slope while moving uphill, physics body")
+
+	var world := Node3D.new()
+	add_child(world)
+
+	var degrees := 13.0
+	var slab := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(40.0, 1.0, 80.0)
+	cs.shape = box
+	slab.add_child(cs)
+	# Rises toward -z; the surface passes through the origin.
+	slab.rotation = Vector3(deg_to_rad(degrees), 0.0, 0.0)
+	slab.position = Vector3(0.0, -0.5 / cos(deg_to_rad(degrees)), 0.0)
+	world.add_child(slab)
+
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	var body := DotFpsPhysicsBody.new()
+	if not _check(body.bind(world).ok, "the physics body binds to the slope"):
+		world.queue_free()
+		return
+
+	var t := _tunables()
+	t.max_speed = 6.4
+	t.walk_speed_scale = 0.42
+	t.accelerate = 11.0
+	t.friction = 7.5
+	t.stop_speed = 3.0
+	t.air_accelerate = 44.0
+	t.max_air_wish_speed = 1.8
+	t.max_slope_angle = 14.0
+	t.step_height = 0.45
+
+	# [drop, speed already uphill]: the reported case, and the same glide from a standing
+	# drop, which only needs the fall to meet the face inside the slide rather than inside
+	# the ground probe (15 airborne ticks before the fix).
+	for case: Array in [[0.1, 2.7], [0.15, 0.0]]:
+		var drop: float = case[0]
+		var start_speed: float = case[1]
+		var motor := DotFpsMotor.new(t, body)
+		var s := DotFpsState.new()
+		s.position = Vector3(0.0, drop, 0.0)
+		s.velocity = Vector3(0.0, 0.0, -start_speed)
+		s.mode = DotFpsState.Mode.AIR
+
+		var first := -1
+		var airborne_after := 0
+		var gliding := 0
+		for i in range(60):
+			var c := _command(1.0)
+			c.set_button(DotFpsCommand.BUTTON_WALK, true)
+			motor.simulate(s, c, STEP)
+			var above := s.position.y + s.position.z * tan(deg_to_rad(degrees))
+			if s.is_grounded():
+				if first < 0:
+					first = i
+			else:
+				if first >= 0:
+					airborne_after += 1
+				if s.velocity.y > 0.0 and above < 0.05:
+					gliding += 1
+
+		_check(
+			first >= 0 and first <= 5 and airborne_after == 0 and gliding == 0,
+			"landing %.2f m above a 13-degree slope at %.1f m/s uphill, pushing uphill, is grounded within a few ticks and stays so" % [
+				drop, start_speed
+			],
+			"first grounded tick %d, %d airborne after it, %d ticks gliding up the face" % [
+				first, airborne_after, gliding
+			]
+		)
+
+	# The other side of the line. A jump up a steep walkable ramp at speed meets the ramp
+	# on its way up, and the slide lays it along the face: a ground check that asked every
+	# rising player would find a floor under a velocity in its plane and land them on the
+	# tick they left. Only a rise under half a jump's launch is asked. Analytic ramp, 40
+	# degrees, 10 m/s: without that line the player is grounded on all 31 ticks.
+	var jt := _tunables()
+	jt.max_speed = 10.0
+	var ramp := DotFpsFlatBody.with_floor(0.0)
+	ramp.add_ramp(Vector3.ZERO, Vector3.BACK, 40.0)
+	var jumper := _motor(jt, ramp)
+	var js := DotFpsState.new()
+	js.position = Vector3(0.0, 0.0, 3.0)
+	js.mode = DotFpsState.Mode.GROUND
+	for _i in range(150):
+		jumper.simulate(js, _command(1.0), STEP)
+		if js.position.z < -3.0:
+			break
+	jumper.simulate(js, _command(1.0, 0.0, 0.0, DotFpsCommand.BUTTON_JUMP), STEP)
+	var jump_air := 0 if js.is_grounded() else 1
+	for _i in range(30):
+		jumper.simulate(js, _command(1.0), STEP)
+		if not js.is_grounded():
+			jump_air += 1
+	_check(
+		jump_air >= 15,
+		"and a jump up a 40-degree ramp at 10 m/s still leaves it",
+		"airborne %d of 31 ticks" % jump_air
+	)
+
+	world.queue_free()
+	_done()
 
 
 ## A surfer pressed into a banked ramp keeps moving: never a tick where the position is

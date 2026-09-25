@@ -673,10 +673,22 @@ func _categorise_ground(state: DotFpsState) -> void:
 	# [b]Upward is not the same as away from the ground[/b], and this used to treat
 	# them as one: `velocity.y > 0.1` put every player walking up any walkable slope in
 	# AIR on the first tick of it — 18 degrees at 6.5 m/s is 2 m/s upward ALONG the
-	# surface — so nothing in the family could walk up a ramp. Only a player who was
-	# grounded can be walking, so an airborne one still leaves here without a query; a
-	# grounded one is asked the question below, after the probe, against the plane.
-	if rising and not was_grounded:
+	# surface — so nothing in the family could walk up a ramp. A grounded player is asked
+	# the question below, after the probe, against the plane.
+	#
+	# [b]And so is an airborne one that is only rising slowly.[/b] Landing while moving
+	# uphill makes exactly the same velocity: the slide clips it onto the face, and
+	# walking pace along 13 degrees is 0.4 m/s upward. Leaving here without a query kept
+	# that player in AIR; gravity took a third of a metre per second off, the next slide
+	# put it back, and they glided up the slope at air speed until a tick happened to end
+	# inside the probe's two centimetres — over a second, in one game. Only a rise of more
+	# than half a jump's launch skips the query: that is a jump or a launch, the classic
+	# movement model draws its own line at the same ratio, and it is what keeps a jump
+	# into a steep uphill from landing on the tick it leaves, and a bunny-hopper crossing a
+	# walkable ramp at speed from being put on it.
+	if rising and not was_grounded and (
+		state.velocity.y > maxf(tunables.jump_velocity() * 0.5, LEAVING_SPEED)
+	):
 		state.mode = DotFpsState.Mode.AIR
 		state.ground_normal = Vector3.UP
 		state.ground_id = 0
@@ -689,10 +701,11 @@ func _categorise_ground(state: DotFpsState) -> void:
 	var hit := _sweep(centre, probe, height)
 
 	if rising:
-		# Grounded last tick and moving up. That is a walk up a slope when the velocity
-		# lies in the ground plane — along the floor under the feet now, or the one stood
-		# on last tick, which is the crest of a ramp — and a launch when it points out of
-		# both. A jump never reaches this: [method _try_jump] puts the player in AIR
+		# Moving up, and either grounded last tick or airborne and rising slowly (above).
+		# That is a walk up a slope, or a landing on one, when the velocity lies in the
+		# ground plane — along the floor under the feet now, or the one stood on last
+		# tick, which is the crest of a ramp (UP for an airborne player, so never) — and a
+		# launch when it points out of both. A jump never reaches this: [method _try_jump] puts the player in AIR
 		# itself, and its launch is `jump_velocity * normal.y` out of any floor, which is
 		# metres per second against a tenth. So is anything a game throws them with.
 		var walking := (
