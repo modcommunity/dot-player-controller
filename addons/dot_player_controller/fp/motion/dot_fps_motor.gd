@@ -699,6 +699,7 @@ func _categorise_ground(state: DotFpsState) -> void:
 	var probe := Vector3.DOWN * (tunables.skin_width * 2.0 + 0.02)
 
 	var hit := _sweep(centre, probe, height)
+	var floor_normal := _standable_normal(state, hit)
 
 	if rising:
 		# Moving up, and either grounded last tick or airborne and rising slowly (above).
@@ -709,10 +710,9 @@ func _categorise_ground(state: DotFpsState) -> void:
 		# itself, and its launch is `jump_velocity * normal.y` out of any floor, which is
 		# metres per second against a tenth. So is anything a game throws them with.
 		var walking := (
-			hit.hit
-			and _is_floor(hit.normal)
+			floor_normal != Vector3.ZERO
 			and (
-				state.velocity.dot(hit.normal) <= LEAVING_SPEED
+				state.velocity.dot(floor_normal) <= LEAVING_SPEED
 				or state.velocity.dot(state.ground_normal) <= LEAVING_SPEED
 			)
 		)
@@ -727,9 +727,9 @@ func _categorise_ground(state: DotFpsState) -> void:
 		# up the ramp, and leaving it there makes the next tick see 2 m/s away from the
 		# flat top and throw a walker a tenth of a metre into the air. Changes nothing
 		# on the slope itself, where it is already in the plane.
-		state.velocity = state.velocity.slide(hit.normal)
+		state.velocity = state.velocity.slide(floor_normal)
 
-	if hit.hit and _is_floor(hit.normal):
+	if floor_normal != Vector3.ZERO:
 		var found := _surface_id_for(hit.collider_id)
 
 		# A surface marked unstandable behaves like a wall whatever its angle: a
@@ -744,7 +744,7 @@ func _categorise_ground(state: DotFpsState) -> void:
 			return
 
 		state.mode = DotFpsState.Mode.GROUND
-		state.ground_normal = hit.normal
+		state.ground_normal = floor_normal
 		state.ground_id = hit.collider_id
 		state.surface = found
 		_resolve_surface(state)
@@ -1539,12 +1539,18 @@ func _slide_with_step(
 ## was stopped only at 1.0 m. The feet end up below that corner, hanging on it, so a cap
 ## on how far the feet rose would not catch this; the floor's height does.
 func _floor_beyond_edge(landing: DotFpsBody.Hit, feet: Vector3, start_y: float) -> bool:
+	return _edge_floor_normal(landing, feet, start_y) != Vector3.ZERO
+
+
+## The floor's own normal behind [method _floor_beyond_edge]'s answer, or
+## [constant Vector3.ZERO] when there is none.
+func _edge_floor_normal(landing: DotFpsBody.Hit, feet: Vector3, start_y: float) -> Vector3:
 	if landing.point.y - start_y > tunables.step_height + tunables.skin_width:
-		return false
+		return Vector3.ZERO
 
 	var outward := Vector3(landing.point.x - feet.x, 0.0, landing.point.z - feet.z)
 	if outward.length_squared() < 1e-8:
-		return false
+		return Vector3.ZERO
 
 	var probe_radius := minf(0.05, tunables.radius * 0.25)
 	var probe_height := probe_radius * 2.0
@@ -1553,10 +1559,35 @@ func _floor_beyond_edge(landing: DotFpsBody.Hit, feet: Vector3, start_y: float) 
 	var hit := body.sweep(centre, Vector3.DOWN * 0.1, probe_height, probe_radius)
 
 	if not hit.hit or not _is_floor(hit.normal):
-		return false
+		return Vector3.ZERO
 
 	var bottom := centre.y - probe_radius + (-0.1 * hit.fraction)
-	return absf(bottom - landing.point.y) < 0.02
+	return hit.normal if absf(bottom - landing.point.y) < 0.02 else Vector3.ZERO
+
+
+## The floor [param hit] puts the player on, or [constant Vector3.ZERO] if it is not one.
+##
+## A walkable contact is its own answer. A steep one is the capsule's rounded bottom on
+## an edge, and counts as the floor beyond it — [method _edge_floor_normal] — [b]only
+## for a player moving onto that floor[/b]. That is the case a step leaves behind: it
+## accepts a landing on a kerb's corner, and the next tick's ground check read the
+## corner's normal, said AIR, and the air slide turned the run into a climb up the
+## corner — at 15 m/s over a 0.34 m kerb, to 1.07 m. Standing still on a ledge, walking
+## off one and running along one keep the capsule's answer and roll off as they did.
+func _standable_normal(state: DotFpsState, hit: DotFpsBody.Hit) -> Vector3:
+	if not hit.hit:
+		return Vector3.ZERO
+
+	if _is_floor(hit.normal):
+		return hit.normal
+
+	var toward := Vector3(hit.point.x - state.position.x, 0.0, hit.point.z - state.position.z)
+	var horizontal := Vector3(state.velocity.x, 0.0, state.velocity.z)
+
+	if horizontal.dot(toward) <= 0.0:
+		return Vector3.ZERO
+
+	return _edge_floor_normal(hit, state.position, state.position.y)
 
 
 ## Pulls the player back down onto ground they have just walked off the edge of.

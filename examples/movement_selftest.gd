@@ -24,7 +24,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 186
+const CHECKS := 188
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -2164,6 +2164,19 @@ func _test_physics_kerb() -> void:
 					walk.on_top, walk.peak, walk.end_z
 				]
 			)
+
+	# A kerb run over at speed is run over. The step lands the capsule's rounded bottom on
+	# the corner, and the next tick's ground check read the corner's normal, said AIR, and
+	# the air slide turned 15 m/s of run into 5.9 m/s of climb: 1.07 m, 0.73 above the
+	# kerb. The ground check now counts the floor beyond an edge for a player moving onto
+	# it. 7 m/s is the same shape, smaller (0.49).
+	for speed in [7.0, 15.0]:
+		var run := _walk_kerb(body, 0.0, speed)
+		_check(
+			run.end_z < -2.6 and run.peak < 0.34 + 0.1,
+			"running over a 0.34 m kerb at %d m/s stays within 0.1 m of its top" % int(speed),
+			"peak y %.3f, got to z %.2f" % [run.peak, run.end_z]
+		)
 
 	world.queue_free()
 	_done()
