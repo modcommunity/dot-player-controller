@@ -151,6 +151,8 @@ list is a real corner and does stop them.
 
 **Walking up a slope is not leaving the ground.** `_categorise_ground`, `_try_jump` and `_snap_to_ground` all measure "moving away" (`LEAVING_SPEED`) along the floor normal rather than along +Y — before 2026-09-24 nothing in the family could walk up any slope under `max_slope`. A jump still leaves: `_try_jump` sets AIR itself. At a ramp's crest the velocity is laid along the new floor so a walker is not thrown into the air.
 
+**Landing on a slope while moving uphill is the same question, asked of an airborne player.** The slide lays a landing velocity along the face, so walking pace onto 13° is 0.4 m/s upward; `_categorise_ground` used to leave any airborne player rising over `LEAVING_SPEED` in AIR without a query, and they glided up the slope at air speed until a tick happened to end inside the probe (13 ticks from 0.1 m in the suite, over a second in one game). Now an airborne player rising slower than **half a jump's launch** (`jump_velocity() * 0.5`) is probed and landed when the velocity lies in a walkable floor's plane. Above that line the query is still skipped, and that line is load-bearing: without it a jump up a 40° ramp at 10 m/s is landed on the tick it leaves (0 of 31 ticks airborne). A game with no jump (`jump_height` 0) keeps the old `LEAVING_SPEED` line.
+
 **A step's landing on a kerb's edge is judged by the kerb, not the capsule.** The rounded bottom landing on a corner reports the sphere's normal; `_floor_beyond_edge` asks a thin probe past the contact instead, **and refuses a floor more than `step_height` above where the step started** — without that it accepted any kerb whose top it could see, because the across leg's slide rides the hemisphere up the corner and the down leg rests on it above the lifted feet (step_height 0.45 went over 0.5 m and 0.7 m kerbs, stopped only at 1.0). Only the step uses it — the ground probe still reads the capsule's normal, so a capsule balanced on an edge is still AIR on the next tick (measured: at 15 m/s a 0.34 m kerb throws the player to 1.06 m, 0.7 m above its top, riding the edge normal).
 
 `bhop_speed_cap_scale` is the landing cap those shooters added (they ship
@@ -475,7 +477,7 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-godot --headless --path . res://examples/movement_selftest.tscn     # 182 checks
+godot --headless --path . res://examples/movement_selftest.tscn     # 186 checks
 godot --headless --path . res://examples/controller_selftest.tscn   # 106 checks
 godot --headless --path . res://examples/fps_controller_selftest.tscn # 55 checks
 godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks
