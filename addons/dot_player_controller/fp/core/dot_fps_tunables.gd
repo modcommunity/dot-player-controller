@@ -371,6 +371,89 @@ func speed_for(buttons: int) -> float:
 	return max_speed * scale
 
 
+# --- Reach -----------------------------------------------------------------
+#
+# How far these numbers carry a player, for anyone sizing a gap or a ledge against them.
+#
+# [b]Why here rather than in each map.[/b] Four games in this family each carried a copy
+# of the same arithmetic over their own copy of three of these numbers, with a check that
+# the copies agreed, and two of those games had shipped courses nobody could finish
+# because the copy was the wrong formula. The numbers are this class's; so is the
+# question.
+
+## How much of the apex a climb is asked to use.
+##
+## A player landing at exactly [member jump_height] arrives with no vertical speed at the
+## one instant of the arc where a tick either side of it is short: a ledge that works when
+## the tick lands right and not when it does not. Nine tenths works every time.
+const CLIMB_MARGIN := 0.9
+
+
+## Seconds from take-off to landing [param rise] metres higher (negative for lower), for a
+## jump of [param p_jump_height] under [param p_gravity]. -1.0 when no jump reaches that
+## high, or gravity is not positive.
+##
+## [b]The landing height is the point.[/b] The airtime everybody writes down is the time
+## to fall back to the height you left, and it is the wrong one for anything that climbs:
+## with a 1.15 m jump under 20 m/s² a player is airborne 0.68 s flat and 0.53 s onto a
+## step 0.8 m up. A course sized with the first number is 30% longer than the movement.
+## Static, so a map holding its own constants can ask without building a tunables.
+static func airtime_for(p_gravity: float, p_jump_height: float, rise: float) -> float:
+	if p_gravity <= 0.0:
+		return -1.0
+
+	var launch := sqrt(2.0 * p_gravity * maxf(p_jump_height, 0.0))
+	var remaining := launch * launch - 2.0 * p_gravity * rise
+
+	if remaining < 0.0:
+		return -1.0
+
+	# The DESCENDING root. The ascending one is the same height on the way up, which is a
+	# shorter jump that lands on the near lip rather than the far one.
+	return (launch + sqrt(remaining)) / p_gravity
+
+
+## The clear air crossed at [param speed] by a jump landing [param rise] metres higher, in
+## metres; see [method airtime_for]. 0.0 when no jump reaches that high.
+static func reach_for(
+	speed: float, p_gravity: float, p_jump_height: float, rise: float
+) -> float:
+	var time := airtime_for(p_gravity, p_jump_height, rise)
+	return speed * time if time > 0.0 else 0.0
+
+
+## The apex of a standing jump on flat ground, in metres. [member jump_height] by
+## definition — the launch is derived from it — and named so a caller does not mistake
+## it for the height of something a player can get onto, which is [method climb_limit].
+func jump_apex() -> float:
+	return jump_height
+
+
+## Seconds airborne in a jump landing [param rise] metres higher, or -1.0 if unreachable.
+func jump_airtime(rise: float = 0.0) -> float:
+	return airtime_for(gravity, jump_height, rise)
+
+
+## The clear air a player crosses in one jump landing [param rise] metres higher, at
+## [param speed] ([member max_speed] when negative), in metres. 0.0 if unreachable.
+##
+## Ground speed held through the air, which is what holding forward does: air
+## acceleration is capped at [member max_air_wish_speed] along the wish direction, so it
+## adds nothing to a player already moving faster than that. Strafing adds more and a
+## landing cap ([member bhop_speed_cap_scale]) takes some away; both are a game's
+## question about skill, not this one. Measured from the player's centre, lip to lip,
+## with no credit for the capsule's radius — that is the margin.
+func jump_reach(rise: float = 0.0, speed: float = -1.0) -> float:
+	return reach_for(max_speed if speed < 0.0 else speed, gravity, jump_height, rise)
+
+
+## The highest top face a player standing on flat ground is asked to jump onto, in metres:
+## [member jump_height] × [param margin]. Above this a block is a wall; at or below
+## [member step_height] it is walked.
+func climb_limit(margin: float = CLIMB_MARGIN) -> float:
+	return jump_height * margin
+
+
 ## A short hash of every value that affects the simulation.
 ##
 ## [b]The point of this is to fail loudly.[/b] A client whose tunables differ from

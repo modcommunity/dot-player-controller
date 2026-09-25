@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 188
+const CHECKS := 194
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 30
+const SECTIONS := 31
 
 var _passed := 0
 var _failed := 0
@@ -51,6 +51,7 @@ func _run() -> void:
 	_test_configuration()
 	_test_falling_and_landing()
 	_test_jump_height()
+	_test_jump_reach()
 	_test_ground_friction()
 	_test_ground_speed_cap()
 	_test_air_strafing()
@@ -395,6 +396,60 @@ func _test_jump_height() -> void:
 		"without auto-hop a held button jumps exactly once",
 		"hops: %d" % manual_hops
 	)
+	_done()
+
+
+## The reach arithmetic on DotFpsTunables says what the motor does.
+##
+## Four games carried their own copy of it; the point of it living here is that it is
+## checked against the simulation rather than against another copy.
+func _test_jump_reach() -> void:
+	_section("jump reach")
+
+	# game-playground's numbers, which its comments quote: 0.68 s flat, 0.53 s onto 0.8 m.
+	_check_near(DotFpsTunables.airtime_for(20.0, 1.15, 0.0), 0.678, 0.002, "airborne 0.68 s flat at 1.15 m under 20")
+	_check_near(DotFpsTunables.airtime_for(20.0, 1.15, 0.8), 0.528, 0.002, "and 0.53 s onto a step 0.8 m up")
+	_check(
+		DotFpsTunables.airtime_for(20.0, 1.15, 1.2) < 0.0
+			and DotFpsTunables.reach_for(7.0, 20.0, 1.15, 1.2) == 0.0,
+		"a rise over the apex has no airtime and no reach"
+	)
+
+	var t := _tunables()
+	_check(
+		t.jump_apex() == t.jump_height and is_equal_approx(t.climb_limit(), t.jump_height * 0.9),
+		"the apex is jump_height and the climb limit nine tenths of it"
+	)
+
+	# Against the motor: a running jump on flat ground, holding forward, and the distance
+	# covered between take-off and the tick the feet come back down through 0 and 0.5 m.
+	var motor := _motor(t)
+	var s := _standing(motor)
+	for _i in range(90):
+		motor.simulate(s, _command(1.0), STEP)
+	var take_off := s.position
+	motor.simulate(s, _command(1.0, 0.0, 0.0, DotFpsCommand.BUTTON_JUMP), STEP)
+	var crossed := {}
+	var previous_y := s.position.y
+	for _i in range(120):
+		motor.simulate(s, _command(1.0), STEP)
+		for rise in [0.5, 0.0]:
+			if not crossed.has(rise) and previous_y > rise and s.position.y <= rise + 0.01 and s.velocity.y <= 0.0:
+				crossed[rise] = Vector2(s.position.x - take_off.x, s.position.z - take_off.z).length()
+		previous_y = s.position.y
+		if crossed.has(0.0):
+			break
+
+	# One tick of travel either way: the motor lands on a tick, the arithmetic between two.
+	var tick_travel := t.max_speed * STEP
+	for rise in [0.0, 0.5]:
+		var predicted := t.jump_reach(rise)
+		var got: float = crossed.get(rise, -1.0)
+		_check(
+			absf(got - predicted) <= tick_travel * 1.5,
+			"jump_reach(%.1f) is what a running jump in the motor covers" % rise,
+			"motor %.3f m, jump_reach %.3f m" % [got, predicted]
+		)
 	_done()
 
 

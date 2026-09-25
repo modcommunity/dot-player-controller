@@ -104,7 +104,7 @@ It does its own collide-and-slide, deliberately: bunny-hopping and surfing are c
 | --- | --- |
 | `DotFpsCommand` | One tick of player intent. Bit-packed to under 8 bytes. |
 | `DotFpsState` | Everything the simulation carries between ticks. Capture, restore, compare. |
-| `DotFpsTunables` | Every movement number, layered: exported defaults < JSON < `DOT_FPS_*` < `--fps-*`. |
+| `DotFpsTunables` | Every movement number, layered: exported defaults < JSON < `DOT_FPS_*` < `--fps-*`. And what they add up to for a level designer: `jump_reach(rise)`, `jump_airtime(rise)`, `climb_limit()`. |
 | `DotFpsMotor` | The simulation. Deterministic, no engine globals, no input reads. |
 | `DotFpsBody` | The collision queries the motor needs. `DotFpsPhysicsBody` for real geometry, `DotFpsFlatBody` for tests. |
 | `DotFpsController` | The node. Drives the motor, writes to the scene, resizes the collider. |
