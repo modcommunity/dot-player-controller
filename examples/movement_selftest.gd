@@ -24,7 +24,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 197
+const CHECKS := 203
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -2263,15 +2263,42 @@ func _test_physics_kerb() -> void:
 			)
 
 	spawn_world.queue_free()
+
+	# A kerb a centimetre over step_height is a wall, at every speed. On a kerb 10 m wide,
+	# run down its middle, 0.46 m with step_height 0.45 was climbed at 3, 4, 10, 15, 20 and
+	# 25 m/s and 0.5 m at 10, 20 and 25 (to 2.1 m) until 2026-09-26, three ways at once: a
+	# step lifted from feet hovering up to 2 cm over the floor rather than from the floor;
+	# a step's landing on the corner at about 41 degrees counted as a floor with no height
+	# asked; and a walker a hair inside the kerb's face was lifted straight up out of it by
+	# the ground check and stepped over from there.
+	for kerb in [0.46, 0.5]:
+		await get_tree().process_frame
+		var high_world := _kerb_world([kerb] as Array[float], 10.0)
+		add_child(high_world)
+		await get_tree().physics_frame
+		await get_tree().physics_frame
+		var high_body := DotFpsPhysicsBody.new()
+		if high_body.bind(high_world).ok:
+			for speed in [3.0, 10.0, 20.0]:
+				var walk := _walk_kerb(high_body, 0.0, speed)
+				_check(
+					walk.on_top < 0.0 and walk.end_z > -2.0 and walk.peak < 0.05,
+					"a %.2f m kerb is a wall at %d m/s with step_height 0.45" % [kerb, int(speed)],
+					"highest over the kerb %.3f, peak y %.3f, got to z %.2f" % [walk.on_top, walk.peak, walk.end_z]
+				)
+		else:
+			_check(false, "the physics body binds to the %.2f m kerb" % kerb)
+		high_world.queue_free()
+
 	_done()
 
 
-## Kerbs of [param heights] on a 40 m floor, one lane each at x = 3 * index.
-func _kerb_world(heights: Array[float]) -> Node3D:
+## Kerbs of [param heights], [param width] wide, on a 40 m floor, one lane each at x = 3 * index.
+func _kerb_world(heights: Array[float], width: float = 2.5) -> Node3D:
 	var world := Node3D.new()
 	var specs: Array = [[Vector3(40.0, 1.0, 40.0), Vector3(0.0, -0.5, 0.0)]]
 	for i in range(heights.size()):
-		specs.append([Vector3(2.5, heights[i], 0.6), Vector3(i * 3.0, heights[i] * 0.5, -2.3)])
+		specs.append([Vector3(width, heights[i], 0.6), Vector3(i * 3.0, heights[i] * 0.5, -2.3)])
 
 	for spec: Array in specs:
 		var b := StaticBody3D.new()

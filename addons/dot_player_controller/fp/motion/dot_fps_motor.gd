@@ -785,7 +785,14 @@ func _categorise_ground(state: DotFpsState) -> void:
 		# So: lift them clear first, and keep the old answer only if that fails. A
 		# player who is not embedded any more is one the ordinary probe can find a floor
 		# for on the very next tick.
-		if _lift_clear(state, height):
+		# [b]Only when the probe saw nothing.[/b] A probe that reported a steep surface
+		# at fraction 0 has found a WALL the capsule is a hair inside — a step that
+		# dropped back beside a kerb leaves it 0.1 mm into the face — and straight up is
+		# not out of a wall: it lifted a walker held against a 0.46 m kerb 0.13 m into
+		# the air, and from there the next step cleared the kerb. [method _depenetrate]
+		# leaves a wall along its own normal at the start of the next tick; until then
+		# the old answer stands.
+		if not hit.hit and _lift_clear(state, height):
 			lifted_ticks += 1
 			DotLog.debug(
 				CHANNEL,
@@ -1163,7 +1170,11 @@ func _move(state: DotFpsState, delta: float, jumped: bool) -> void:
 
 		# Only if it genuinely got further. A step that gains nothing but ends
 		# slightly higher would ratchet the player up a wall over many ticks.
-		if stepped.travelled > plain.travelled + 0.0001:
+		#
+		# [b]And by more than a skin.[/b] Raised to step height, the capsule's rounded
+		# bottom can slide a millimetre past a kerb's top corner that its straight side
+		# could not; dropped back to the floor, that millimetre is inside the kerb's face.
+		if stepped.travelled > plain.travelled + tunables.skin_width * 2.0:
 			plain = stepped
 
 	state.position = plain.position
@@ -1470,8 +1481,19 @@ func _slide_with_step(
 	motion: Vector3,
 	height: float
 ) -> MoveResult:
-	var lift := Vector3.UP * tunables.step_height
 	var centre := _capsule_centre(from, height)
+
+	# [b]A step is measured from the floor, not from the feet.[/b] A grounded player can
+	# be up to the ground probe's two centimetres above it — the tick they land — and a
+	# full lift from there clears a kerb that much taller than step_height: a walker
+	# landing beside a 0.46 m kerb with step_height 0.45 stepped straight onto it. One
+	# short query, and only on a tick the slide was blocked.
+	var seat := _sweep(centre, Vector3.DOWN * (tunables.skin_width * 2.0 + 0.02), height)
+	var hover := 0.0
+	if seat.hit:
+		hover = maxf((tunables.skin_width * 2.0 + 0.02) * seat.fraction - tunables.skin_width, 0.0)
+	var floor_y := from.y - hover
+	var lift := Vector3.UP * (tunables.step_height - hover)
 
 	# Up. If there is no room above, there is no step to take.
 	var up := _sweep(centre, lift, height)
@@ -1491,15 +1513,21 @@ func _slide_with_step(
 
 	# Down, by at least the lift. Landing higher than we started is a step up;
 	# landing lower is walking off the far edge, which the ground snap then handles.
-	var drop := Vector3.DOWN * (tunables.step_height + tunables.skin_width)
+	var drop := Vector3.DOWN * (lift.y + tunables.skin_width)
 	var landing := _sweep(_capsule_centre(across.position, height), drop, height)
 
 	var result := MoveResult.new()
 	result.velocity = across.velocity
 	result.blocked = across.blocked
 
-	if not landing.hit or not (
-		_is_floor(landing.normal) or _floor_beyond_edge(landing, across.position, from.y)
+	# [b]And what it lands on is at most step_height above the floor it left.[/b] Asked
+	# of every landing, not only the edge's: a capsule coming down with its axis a
+	# quarter-metre short of a kerb meets the corner at about 41 degrees, which is a
+	# floor, and a 0.5 m kerb with step_height 0.45 was stepped onto at 10 m/s.
+	var too_high := landing.hit and landing.point.y - floor_y > tunables.step_height + tunables.skin_width
+
+	if not landing.hit or too_high or not (
+		_is_floor(landing.normal) or _floor_beyond_edge(landing, across.position, floor_y)
 	):
 		# Nothing to stand on up there. Refusing the step is important: accepting it
 		# would leave the player floating at step height with no ground under them,
@@ -1756,7 +1784,7 @@ func move_and_slide(
 
 	if step and result.blocked and tunables.step_height > 0.0:
 		var stepped := _slide_with_step(state.position, state.velocity, motion, height)
-		if stepped.travelled > result.travelled + 0.0001:
+		if stepped.travelled > result.travelled + tunables.skin_width * 2.0:
 			result = stepped
 
 	state.position = result.position
