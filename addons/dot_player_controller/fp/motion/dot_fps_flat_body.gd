@@ -213,7 +213,19 @@ func sweep(
 	result.fraction = clampf(best, 0.0, 1.0)
 	result.normal = best_normal
 	result.collider_id = best_id
-	result.point = from + motion * result.fraction
+	# [b]The contact, not the centre.[/b] [member DotFpsBody.Hit.point] is a point in
+	# world space ON the surface, and the motor reads its height: a step's landing is
+	# refused when what it lands on is more than step_height above the floor it left.
+	# This returned the swept centre until 2026-09-26, half a capsule above any floor,
+	# so every step on this body read as too high the day the motor started asking.
+	# The capsule is a box here, so the contact is the box's support point against the
+	# normal: a face's centre for an axis normal, a corner for a ramp's.
+	var centre := from + motion * result.fraction
+	result.point = centre - Vector3(
+		signf(best_normal.x) * radius,
+		signf(best_normal.y) * height * 0.5,
+		signf(best_normal.z) * radius
+	)
 	return result
 
 
