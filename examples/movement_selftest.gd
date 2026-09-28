@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 203
+const CHECKS := 205
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 31
+const SECTIONS := 32
 
 var _passed := 0
 var _failed := 0
@@ -78,6 +78,7 @@ func _run() -> void:
 	await _test_physics_slope()
 	await _test_physics_bank()
 	await _test_physics_kerb()
+	await _test_physics_kerb_press()
 	await _test_physics_slope_landing()
 
 	print("")
@@ -2294,6 +2295,79 @@ func _test_physics_kerb() -> void:
 
 
 ## Kerbs of [param heights], [param width] wide, on a 40 m floor, one lane each at x = 3 * index.
+## `[kerb-lift-1]`: a kerb just under step_height is climbed whatever the walking pace,
+## and a walker held against one just over it stays on the ground.
+##
+## [b]Both were found by pace, not by height.[/b] 0.40, 0.44 and 0.45 m kerbs were refused
+## at exactly 3 m/s while 2.7 and 5 climbed. And a walker pressed against a wall-height
+## kerb was lifted out of the ground by `_lift_clear` every six ticks or so, bouncing in
+## AIR at the face. That was enough, at 2.7 m/s, to carry them over a 0.46 m kerb.
+func _test_physics_kerb_press() -> void:
+	_section("kerb climb does not depend on pace, and a wall is leaned on, physics body")
+
+	# One world per height: a 10 m kerb, walked down its middle, which is where the
+	# refusals were measured.
+	var refused: Array[String] = []
+	var bound := 0
+	for height in [0.40, 0.44, 0.45]:
+		var climb := _kerb_world([height] as Array[float], 10.0)
+		add_child(climb)
+		await get_tree().physics_frame
+		await get_tree().physics_frame
+		var body := DotFpsPhysicsBody.new()
+		if body.bind(climb).ok:
+			bound += 1
+			for speed in [2.7, 3.0, 5.0, 7.0]:
+				var walk := _walk_kerb(body, 0.0, speed)
+				if walk.end_z > -4.0 or walk.on_top < height - 0.05:
+					refused.append("%.2f m at %.1f m/s (got to z %.2f, highest over it %.3f)" % [
+						height, speed, walk.end_z, walk.on_top])
+		climb.queue_free()
+	_check(bound == 3 and refused.is_empty(),
+		"kerbs of 0.40, 0.44 and 0.45 m are climbed at 2.7, 3, 5 and 7 m/s (step_height 0.45)",
+		", ".join(refused))
+
+	var bounced: Array[String] = []
+	var walls := 0
+	for height in [0.46, 0.5]:
+		var wall := _kerb_world([height] as Array[float], 10.0)
+		add_child(wall)
+		await get_tree().physics_frame
+		await get_tree().physics_frame
+		var wall_body := DotFpsPhysicsBody.new()
+		if not wall_body.bind(wall).ok:
+			wall.queue_free()
+			continue
+		walls += 1
+		for speed in [2.7, 3.0, 7.0]:
+			var t := _tunables()
+			t.step_height = 0.45
+			t.max_speed = speed
+			var motor := DotFpsMotor.new(t, wall_body)
+			var s := DotFpsState.new()
+			s.position = Vector3(0.0, 0.0, 1.0)
+			s.mode = DotFpsState.Mode.GROUND
+			for _i in range(4):
+				motor.simulate(s, DotFpsCommand.new(), STEP)
+			var air := 0
+			var peak := 0.0
+			for i in range(360):
+				motor.simulate(s, _command(1.0), STEP)
+				# Counted once the walker has had two seconds to reach the face.
+				if i >= 120:
+					peak = maxf(peak, s.position.y)
+					if s.mode != DotFpsState.Mode.GROUND:
+						air += 1
+			if air > 0 or peak > 0.05:
+				bounced.append("%.2f m at %.1f m/s: %d of 240 ticks in the air, peak y %.3f, at z %.2f" % [
+					height, speed, air, peak, s.position.z])
+		wall.queue_free()
+	_check(walls == 2 and bounced.is_empty(),
+		"a walker held against a 0.46 or 0.5 m kerb for four seconds stays on the ground",
+		"; ".join(bounced))
+	_done()
+
+
 func _kerb_world(heights: Array[float], width: float = 2.5) -> Node3D:
 	var world := Node3D.new()
 	var specs: Array = [[Vector3(40.0, 1.0, 40.0), Vector3(0.0, -0.5, 0.0)]]
