@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 207
+const CHECKS := 208
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 33
+const SECTIONS := 34
 
 var _passed := 0
 var _failed := 0
@@ -80,6 +80,7 @@ func _run() -> void:
 	await _test_physics_kerb()
 	await _test_physics_kerb_press()
 	await _test_physics_graze_normal()
+	await _test_physics_wall_sweep()
 	await _test_physics_slope_landing()
 
 	print("")
@@ -2408,6 +2409,62 @@ func _test_physics_graze_normal() -> void:
 				hit.hit, hit.normal, bank, -motion.normalized()]
 		)
 	world.queue_free()
+	_done()
+
+
+## `[sweep-1]`: a capsule swept sideways into a large wall never ends up inside it.
+##
+## [b]The floor's problem, turned on its side.[/b] Seeded sweeps of 1 to 12 cm from 0
+## to 6 mm off the face of a 4, 40 and 164 m wall. Measured on 4.7.2 against the body
+## before this check: cast_motion reported the contact up to 5 cm late on the 40 m
+## wall, and on the 164 m wall 33 of 3,000 sweeps saw no wall at all and ended 11 cm
+## inside it. Either one is a player walking into a wall and, a few ticks later,
+## through it.
+func _test_physics_wall_sweep() -> void:
+	_section("a sideways sweep never ends inside a large wall, physics body")
+	var embedded: Array[String] = []
+	var walls := 0
+	for size: float in [4.0, 40.0, 164.0]:
+		var world := Node3D.new()
+		var wall := StaticBody3D.new()
+		var cs := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(size, size, 1.0)
+		cs.shape = box
+		wall.add_child(cs)
+		wall.position = Vector3(0.0, 0.0, -0.5)   # the face is z = 0
+		world.add_child(wall)
+		add_child(world)
+		await get_tree().physics_frame
+		await get_tree().physics_frame
+		var body := DotFpsPhysicsBody.new()
+		if body.bind(world).ok:
+			walls += 1
+			var radius := 0.4
+			var height := 1.8
+			var rng := RandomNumberGenerator.new()
+			rng.seed = 11
+			var count := 0
+			var worst := 0.0
+			for _i in range(1000):
+				var gap := rng.randf_range(0.0, 0.006)
+				var step := rng.randf_range(0.01, 0.12)
+				var centre := Vector3(
+					rng.randf_range(-size * 0.4, size * 0.4),
+					rng.randf_range(-size * 0.4, size * 0.4),
+					radius + gap)
+				var motion := Vector3(rng.randf_range(-0.02, 0.02), 0.0, -step)
+				var hit := body.sweep(centre, motion, height, radius)
+				var into := step * (hit.fraction if hit.hit else 1.0) - gap
+				if into > 0.0005:
+					count += 1
+					worst = maxf(worst, into)
+			if count > 0:
+				embedded.append("%.0f m wall: %d of 1000, up to %.3f m in" % [size, count, worst])
+		world.queue_free()
+	_check(walls == 3 and embedded.is_empty(),
+		"1,000 sideways sweeps into a 4, 40 and 164 m wall each stop at its face",
+		"; ".join(embedded))
 	_done()
 
 

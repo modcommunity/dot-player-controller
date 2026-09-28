@@ -109,6 +109,10 @@ func revalidate() -> bool:
 ## missed, in metres. A skin is 1 cm in every game here; these stay well inside it.
 const CONTACT_RETRY_DEPTHS: Array[float] = [0.001, 0.002, 0.004]
 
+## How deep `unsafe` may be before [method sweep] treats the sweep's contact as late, in
+## metres. cast_motion's own bisection leaves `unsafe` a fraction of a millimetre in.
+const LATE_CONTACT_DEPTH := 0.0005
+
 
 func sweep(
 	from: Vector3,
@@ -156,7 +160,12 @@ func sweep(
 		if resting.hit:
 			return resting
 
-		return _downward_ray_fallback(from, motion, height)
+		var below := _downward_ray_fallback(from, motion, height)
+
+		if below.hit:
+			return below
+
+		return _end_overlap_fallback(from, motion, height, radius)
 
 	result.hit = true
 	result.fraction = clampf(safe, 0.0, 1.0)
@@ -204,6 +213,21 @@ func sweep(
 	# replicated transform. Cheaper to check here than to find later.
 	if not result.normal.is_normalized():
 		result.normal = -motion.normalized()
+		return result
+
+	# [b]A contact reported late.[/b] Against a large convex, cast_motion's `safe` can be
+	# centimetres past the real contact (`[sweep-1]`: a 40 m wall let a capsule 5 cm
+	# into it, a 164 m wall 11 cm). The rest query at `unsafe` knows how deep `unsafe`
+	# is, from the same numbers [method rest_contact] uses. So when that is more than a
+	# rounding error, back off by that depth over the rate of approach.
+	var approach := -motion.dot(result.normal)
+	if approach > 1e-9:
+		var at_unsafe := from + motion * unsafe
+		var deepest := at_unsafe - result.normal * DotFpsBody.capsule_support(
+			result.normal, height, radius)
+		var depth := result.normal.dot(result.point - deepest)
+		if depth > LATE_CONTACT_DEPTH:
+			result.fraction = clampf(minf(result.fraction, unsafe - depth / approach), 0.0, 1.0)
 
 	return result
 
@@ -234,8 +258,8 @@ func sweep(
 ## the capsule's axis from its lowest point, so on a floor the distance it reports IS
 ## the capsule's contact distance. Sideways, the axis is [member DotFpsTunables.radius]
 ## behind the leading edge, so the same trick would report a wall late and embed the
-## player in it. A wall a sweep cannot see is a real gap and it is written down in the
-## to-do list rather than papered over here.
+## player in it. A wall is [method _end_overlap_fallback]'s, and a wall reported late
+## is handled in [method sweep] itself.
 func _downward_ray_fallback(
 	from: Vector3, motion: Vector3, height: float
 ) -> Hit:
@@ -275,6 +299,43 @@ func _downward_ray_fallback(
 	if not result.normal.is_normalized():
 		result.normal = Vector3.UP
 
+	return result
+
+
+## Where the sweep said "nothing", whether the capsule would END inside something it is
+## moving into, and if so how far back along the motion it stops touching it.
+##
+## [b]The sideways half of [method _downward_ray_fallback]'s problem (`[sweep-1]`).[/b]
+## cast_motion's misjudgement is not only downward: measured on 4.7.2, a capsule 0 to
+## 6 mm off a 164 m wall and swept 1 to 12 cm into it was reported free on 299 of 3,000
+## sweeps, the worst ending 11 cm inside it (40 m wall: 5 cm; 4 m wall: under a
+## millimetre). A ray cannot answer this one, because the axis is a radius behind the
+## leading edge. The overlap at the end can: at centimetres of depth there is no
+## convergence question, and [method rest_contact]'s depth is exact along its normal.
+## So the fraction is backed off by that depth over the motion's rate of approach.
+##
+## Like the ray, it only runs when the sweep saw nothing, and it only ever reports a
+## surface the motion is driving into, so it can never make the motor collide with less.
+func _end_overlap_fallback(
+	from: Vector3, motion: Vector3, height: float, radius: float
+) -> Hit:
+	var end := rest_contact(from + motion, height, radius)
+
+	if not end.hit:
+		return Hit.miss()
+
+	var approach := -motion.dot(end.normal)
+
+	# Moving along it or out of it: a floor underfoot, or a surface being left.
+	if approach <= 1e-9 or end.depth <= 0.0:
+		return Hit.miss()
+
+	var result := Hit.miss()
+	result.hit = true
+	result.fraction = clampf(1.0 - end.depth / approach, 0.0, 1.0)
+	result.normal = end.normal
+	result.point = end.point
+	result.collider_id = end.collider_id
 	return result
 
 
