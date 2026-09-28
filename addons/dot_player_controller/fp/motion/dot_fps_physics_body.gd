@@ -105,6 +105,11 @@ func revalidate() -> bool:
 	return true
 
 
+## How much deeper than `unsafe` [method sweep] looks for a contact the first rest query
+## missed, in metres. A skin is 1 cm in every game here; these stay well inside it.
+const CONTACT_RETRY_DEPTHS: Array[float] = [0.001, 0.002, 0.004]
+
+
 func sweep(
 	from: Vector3,
 	motion: Vector3,
@@ -165,9 +170,27 @@ func sweep(
 
 	if contacts.is_empty():
 		# Contact at `unsafe` but no rest info: the shapes are touching to within
-		# floating point but not overlapping. Treating it as a miss would let the
-		# player through; sliding along the motion's own reverse is the conservative
-		# answer and only ever costs a tick of movement.
+		# floating point but not overlapping. [b]Ask again a few millimetres deeper
+		# before guessing[/b], because the guess is expensive. Sliding along the
+		# motion's own reverse does not "only cost a tick of movement", as this used
+		# to say: the motor clips the VELOCITY against the normal too, and a velocity
+		# parallel to the motion clipped against its own reverse is zero. A surfer
+		# grazing a bank at 254 u/s stopped dead in mid-air on one such tick and hung
+		# there for good (`[bank-hang-1]`, game-g2gfast surf_g2g_intro bonus 1, line
+		# +48); one millimetre further along, the same query reports the bank's own
+		# normal.
+		var along := motion.normalized()
+		for depth: float in CONTACT_RETRY_DEPTHS:
+			_shape_params.transform = Transform3D(
+				Basis.IDENTITY, from + motion * unsafe + along * depth
+			)
+			contacts = _space.get_rest_info(_shape_params)
+			if not contacts.is_empty():
+				break
+
+	if contacts.is_empty():
+		# Still nothing. The reverse of the motion is the conservative answer: it
+		# cannot let the player through, and it stops them, speed and all.
 		result.normal = -motion.normalized()
 		result.point = from + motion * safe
 		return result

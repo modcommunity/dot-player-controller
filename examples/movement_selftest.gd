@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 205
+const CHECKS := 207
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 32
+const SECTIONS := 33
 
 var _passed := 0
 var _failed := 0
@@ -79,6 +79,7 @@ func _run() -> void:
 	await _test_physics_bank()
 	await _test_physics_kerb()
 	await _test_physics_kerb_press()
+	await _test_physics_graze_normal()
 	await _test_physics_slope_landing()
 
 	print("")
@@ -2365,6 +2366,48 @@ func _test_physics_kerb_press() -> void:
 	_check(walls == 2 and bounced.is_empty(),
 		"a walker held against a 0.46 or 0.5 m kerb for four seconds stays on the ground",
 		"; ".join(bounced))
+	_done()
+
+
+## `[bank-hang-1]`: a sweep that grazes a surf bank reports the bank, not the motion's
+## own reverse.
+##
+## [b]Replayed exactly from game-g2gfast[/b], where a bot riding `surf_g2g_intro` bonus
+## 1's bank at 254 u/s stopped dead in mid-air and hung there for good. cast_motion
+## found a contact at `unsafe`, `get_rest_info` there found none, and the body's
+## fallback normal was `-motion`. The motor clips the velocity against it, and a
+## velocity parallel to the motion clipped against its reverse is zero. One millimetre
+## deeper, the same query reports the bank. The slab, capsule and sweep are that game's
+## numbers (a 768 x 32 x 2048 u box banked 60 degrees, 0.01905 m per unit).
+func _test_physics_graze_normal() -> void:
+	_section("a sweep grazing a bank reports the bank, physics body")
+	var world := Node3D.new()
+	var slab := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(768.0, 32.0, 2048.0) * 0.01905
+	cs.shape = box
+	slab.add_child(cs)
+	slab.transform = Transform3D(
+		Basis(Vector3.FORWARD, deg_to_rad(-60.0)), Vector3(1792.0, 1848.0, -800.0) * 0.01905)
+	world.add_child(slab)
+	add_child(world)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	var body := DotFpsPhysicsBody.new()
+	var bank := slab.transform.basis * Vector3.UP
+	if _check(body.bind(world).ok, "the physics body binds to the bank"):
+		var motion := Vector3(0.004581437, 0.0040886872, -0.038811497)
+		var hit := body.sweep(
+			Vector3(31.288847, 31.872414, -5.454201), motion, 1.3716, 0.3048)
+		_check(
+			hit.hit and hit.normal.dot(bank) > 0.999,
+			"a capsule grazing a 60-degree bank along its length is told the bank's normal",
+			"hit %s, normal %s against the bank's %s (the motion's reverse is %s)" % [
+				hit.hit, hit.normal, bank, -motion.normalized()]
+		)
+	world.queue_free()
 	_done()
 
 
