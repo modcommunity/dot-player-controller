@@ -701,6 +701,21 @@ func _categorise_ground(state: DotFpsState) -> void:
 	var hit := _sweep(centre, probe, height)
 	var floor_normal := _standable_normal(state, hit)
 
+	# [b]A face too steep to stand on is asked again, in quarters[/b] (`[steep-climb-1]`).
+	# A capsule pressed against a face that leans back touches it with its rounded
+	# bottom, so the probe reports the face and not the floor the player is standing on,
+	# and a walker was put in AIR at the foot of it. Air acceleration into the face then
+	# carried them 2.5 m up a 70 degree wall, where they hung. The classic movement code
+	# has the same problem with its box and answers it by tracing four quarter-boxes when
+	# the whole one hits a steep plane: a quarter away from the face still finds the
+	# floor. Four half-radius capsules, each offset toward one quarter, do the same here,
+	# over the same probe distance, and only a floor counts.
+	if floor_normal == Vector3.ZERO and hit.hit and not _is_floor(hit.normal):
+		var quarter := _quadrant_floor(centre, probe, height)
+		if quarter.hit:
+			hit = quarter
+			floor_normal = quarter.normal
+
 	if rising:
 		# Moving up, and either grounded last tick or airborne and rising slowly (above).
 		# That is a walk up a slope, or a landing on one, when the velocity lies in the
@@ -1114,10 +1129,27 @@ func _clamp_velocity(state: DotFpsState) -> void:
 ## left slightly clear, and the exactly-coincident case never arises. The returned
 ## fraction is rescaled to the motion the caller asked about, so call sites read as
 ## though none of this were happening.
+## The first of four half-radius capsules, offset half a radius toward each quarter of
+## the player, that finds a FLOOR along [param probe]. See [method _categorise_ground].
+func _quadrant_floor(centre: Vector3, probe: Vector3, height: float) -> DotFpsBody.Hit:
+	var half := tunables.radius * 0.5
+	for quarter: Vector2 in QUADRANTS:
+		var hit := _sweep(centre + Vector3(quarter.x, 0.0, quarter.y) * half, probe, height, half)
+		if hit.hit and _is_floor(hit.normal):
+			return hit
+	return DotFpsBody.Hit.miss()
+
+
+const QUADRANTS: Array[Vector2] = [
+	Vector2(-1.0, -1.0), Vector2(1.0, 1.0), Vector2(-1.0, 1.0), Vector2(1.0, -1.0),
+]
+
+
 func _sweep(
 	centre: Vector3,
 	motion: Vector3,
-	height: float
+	height: float,
+	radius: float = -1.0
 ) -> DotFpsBody.Hit:
 	var length := motion.length()
 
@@ -1132,7 +1164,8 @@ func _sweep(
 	var margin := maxf(tunables.skin_width, length * SWEEP_TOLERANCE)
 
 	var hit := body.sweep(
-		centre, motion + direction * margin, height, tunables.radius
+		centre, motion + direction * margin, height,
+		tunables.radius if radius < 0.0 else radius
 	)
 
 	if not hit.hit:
@@ -1156,6 +1189,7 @@ func _move(state: DotFpsState, delta: float, jumped: bool) -> void:
 		return
 
 	var was_grounded := state.mode == DotFpsState.Mode.GROUND
+	var velocity_in := state.velocity
 	# The floor the tick started on. The snap below compares the velocity with THIS
 	# plane, because by the time it runs the categorise has already forgotten it.
 	var stood_on := state.ground_normal
@@ -1179,6 +1213,19 @@ func _move(state: DotFpsState, delta: float, jumped: bool) -> void:
 
 	state.position = plain.position
 	state.velocity = plain.velocity
+
+	# [b]A walker is not lifted by a face they cannot stand on[/b] (`[steep-climb-1]`).
+	# Sliding along a face that leans back turns a walk into it partly UP it, and that
+	# lift then reads as leaving the floor. The classic walk move zeroes the vertical
+	# before it moves and again once the player is still on the ground, so a walk never
+	# climbs. Here only the lift the slide ADDED along the floor's normal goes, and only
+	# when a steep face did it: a walkable ramp's lift is the floor's own, and a jump
+	# never reaches this. With the quarter probes in [method _categorise_ground], this is
+	# the other half; either alone still let a walker up a 70 degree face.
+	if was_grounded and not jumped and plain.met_steep_face:
+		var lift := state.velocity.dot(stood_on) - maxf(velocity_in.dot(stood_on), 0.0)
+		if lift > 0.0:
+			state.velocity -= stood_on * lift
 
 	if plain.ran_out:
 		stuck_ticks += 1
@@ -1221,6 +1268,9 @@ class MoveResult extends RefCounted:
 	## less ground than it implies. Counted separately because telling the two apart is
 	## the only reason to count either.
 	var stopped_on_duplicate: bool = false
+	## Whether the move met a face too steep to stand on that leans back toward the
+	## sky. Sliding along one of those turns a push into a climb.
+	var met_steep_face: bool = false
 
 
 ## Collide and slide: move, and on contact continue along the surface.
@@ -1272,6 +1322,8 @@ func _slide(
 			break
 
 		result.blocked = true
+		if hit.normal.y > 0.0 and not _is_floor(hit.normal):
+			result.met_steep_face = true
 
 		# The skin gap is already deducted by _sweep, so this stops just short of the
 		# surface rather than exactly on it.
@@ -1739,6 +1791,12 @@ func _snap_to_ground(
 	var probe := Vector3.DOWN * tunables.ground_snap_distance
 
 	var hit := _sweep(centre, probe, height)
+
+	# The same quarters as [method _categorise_ground], for the same capsule: pressed
+	# against a face that leans back, the whole capsule's probe meets the face and the
+	# snap gave up with the floor a couple of centimetres under the player.
+	if hit.hit and not _is_floor(hit.normal):
+		hit = _quadrant_floor(centre, probe, height)
 
 	if not hit.hit or not _is_floor(hit.normal):
 		return

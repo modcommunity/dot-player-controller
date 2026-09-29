@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 208
+const CHECKS := 209
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 34
+const SECTIONS := 35
 
 var _passed := 0
 var _failed := 0
@@ -81,6 +81,7 @@ func _run() -> void:
 	await _test_physics_kerb_press()
 	await _test_physics_graze_normal()
 	await _test_physics_wall_sweep()
+	await _test_physics_steep_face_walk()
 	await _test_physics_slope_landing()
 
 	print("")
@@ -2465,6 +2466,69 @@ func _test_physics_wall_sweep() -> void:
 	_check(walls == 3 and embedded.is_empty(),
 		"1,000 sideways sweeps into a 4, 40 and 164 m wall each stop at its face",
 		"; ".join(embedded))
+	_done()
+
+
+## `[steep-climb-1]`: walking into a face too steep to stand on that leans back does not
+## climb it.
+##
+## Measured on 4.7.2 with these tunables, holding forward into a 3 m block from 1.65 m
+## away: at 70 degrees a walker went to AIR at the foot of the face and crawled 2.5 m up
+## it, and at 60 went over the top. Two causes, both needed: the capsule's rounded
+## bottom touching the face made the ground probe and the snap see the face instead of
+## the floor (the quarter probes), and the slide's lift up the face read as leaving
+## the ground (dropped on a grounded tick). A sheer face must stay a wall for a jump.
+func _test_physics_steep_face_walk() -> void:
+	_section("walking into a steep face does not climb it, physics body")
+	var climbed: Array[String] = []
+	var worlds := 0
+	for angle: float in [60.0, 70.0, 80.0, 90.0]:
+		var world := Node3D.new()
+		var floor_body := StaticBody3D.new()
+		var floor_shape := CollisionShape3D.new()
+		var floor_box := BoxShape3D.new()
+		floor_box.size = Vector3(40.0, 1.0, 40.0)
+		floor_shape.shape = floor_box
+		floor_body.add_child(floor_shape)
+		floor_body.position = Vector3(0.0, -0.5, 0.0)
+		world.add_child(floor_body)
+		var block := StaticBody3D.new()
+		var block_shape := CollisionShape3D.new()
+		var block_box := BoxShape3D.new()
+		block_box.size = Vector3(6.0, 8.0, 4.0)
+		block_shape.shape = block_box
+		block.add_child(block_shape)
+		block.transform = Transform3D(
+			Basis(Vector3.RIGHT, -deg_to_rad(90.0 - angle)), Vector3(0.0, 0.0, -4.0))
+		world.add_child(block)
+		add_child(world)
+		await get_tree().physics_frame
+		await get_tree().physics_frame
+		var body := DotFpsPhysicsBody.new()
+		if body.bind(world).ok:
+			worlds += 1
+			for jump in [false, true]:
+				var motor := DotFpsMotor.new(_tunables(), body)
+				var s := DotFpsState.new()
+				s.mode = DotFpsState.Mode.GROUND
+				for _i in range(4):
+					motor.simulate(s, DotFpsCommand.new(), STEP)
+				var peak := 0.0
+				var airborne := 0
+				for i in range(300):
+					motor.simulate(s, _command(1.0, 0.0, 0.0,
+						DotFpsCommand.BUTTON_JUMP if jump else 0), STEP)
+					peak = maxf(peak, s.position.y)
+					if not jump and i >= 120 and s.mode != DotFpsState.Mode.GROUND:
+						airborne += 1
+				var limit := 1.1 if jump else 0.05
+				if peak > limit or airborne > 0:
+					climbed.append("%.0f deg%s: peak %.2f m, %d ticks off the ground" % [
+						angle, " jumping" if jump else "", peak, airborne])
+		world.queue_free()
+	_check(worlds == 4 and climbed.is_empty(),
+		"held against a 60, 70, 80 or 90 degree face, a walker stays on the floor and a jump peaks at a jump",
+		"; ".join(climbed))
 	_done()
 
 
