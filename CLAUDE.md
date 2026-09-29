@@ -483,6 +483,8 @@ Nothing here should require a fork.
 in tick order with movement, rather than in a second message that has to be
 correlated with it.
 
+**A walker pressed into a face too steep to stand on stays on the floor** (`[steep-climb-1]`, 2026-09-29). A capsule's rounded bottom touches a face that leans back before its feet leave the floor, so the ground probe reported the face and the walker went to AIR at its foot; air acceleration then crawled them 2.5 m up a 70° face and over a 60° one. Two halves, both needed: `_categorise_ground` and `_snap_to_ground` re-ask a steep hit with four half-radius capsules inside the player's footprint (`_quadrant_floor`, Source's `TryTouchGroundInQuadrants`), and a grounded non-jump `_move` drops the lift a steep face's slide added along the floor normal (`MoveResult.met_steep_face`). **An airborne player still ramp-crawls** a steep face at roughly Source's rate; that half is genre-correct and left alone. A jump into a sheer face peaks at a jump. `movement_selftest`'s steep-face section holds both at 60/70/80/90°.
+
 ### Validating
 
 ```bash
@@ -490,7 +492,7 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-godot --headless --path . res://examples/movement_selftest.tscn     # 203 checks
+godot --headless --path . res://examples/movement_selftest.tscn     # 209 checks
 godot --headless --path . res://examples/controller_selftest.tscn   # 106 checks
 godot --headless --path . res://examples/fps_controller_selftest.tscn # 55 checks
 godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks

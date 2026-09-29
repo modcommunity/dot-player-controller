@@ -1111,6 +1111,26 @@ func _clamp_velocity(state: DotFpsState) -> void:
 
 # --- Queries ---------------------------------------------------------------
 
+## The first of four half-radius capsules, one in each quarter of the player, that finds
+## a FLOOR along [param probe]. See [method _categorise_ground]. Each sits half a radius
+## out along its diagonal, so all four stay inside the player's own footprint, as the
+## classic quarter-boxes do: a quarter that poked outside would start its sweep inside
+## the very face that made it necessary, or find floor the player is not over.
+func _quadrant_floor(centre: Vector3, probe: Vector3, height: float) -> DotFpsBody.Hit:
+	var half := tunables.radius * 0.5
+	for quarter: Vector2 in QUADRANTS:
+		var offset := Vector3(quarter.x, 0.0, quarter.y).normalized() * half
+		var hit := _sweep(centre + offset, probe, height, half)
+		if hit.hit and _is_floor(hit.normal):
+			return hit
+	return DotFpsBody.Hit.miss()
+
+
+const QUADRANTS: Array[Vector2] = [
+	Vector2(-1.0, -1.0), Vector2(1.0, 1.0), Vector2(-1.0, 1.0), Vector2(1.0, -1.0),
+]
+
+
 ## A sweep that always leaves [member DotFpsTunables.skin_width] between the player
 ## and whatever it hit.
 ##
@@ -1129,22 +1149,6 @@ func _clamp_velocity(state: DotFpsState) -> void:
 ## left slightly clear, and the exactly-coincident case never arises. The returned
 ## fraction is rescaled to the motion the caller asked about, so call sites read as
 ## though none of this were happening.
-## The first of four half-radius capsules, offset half a radius toward each quarter of
-## the player, that finds a FLOOR along [param probe]. See [method _categorise_ground].
-func _quadrant_floor(centre: Vector3, probe: Vector3, height: float) -> DotFpsBody.Hit:
-	var half := tunables.radius * 0.5
-	for quarter: Vector2 in QUADRANTS:
-		var hit := _sweep(centre + Vector3(quarter.x, 0.0, quarter.y) * half, probe, height, half)
-		if hit.hit and _is_floor(hit.normal):
-			return hit
-	return DotFpsBody.Hit.miss()
-
-
-const QUADRANTS: Array[Vector2] = [
-	Vector2(-1.0, -1.0), Vector2(1.0, 1.0), Vector2(-1.0, 1.0), Vector2(1.0, -1.0),
-]
-
-
 func _sweep(
 	centre: Vector3,
 	motion: Vector3,
