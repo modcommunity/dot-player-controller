@@ -1373,6 +1373,18 @@ func _slide(
 			if spent > 1e-6:
 				time_left = 0.0
 				break
+			# [b]Still nothing: step off the face first, then go along it[/b]
+			# (`[arrive-3]`). A capsule exactly touching a face is blocked at the
+			# first step of cast_motion's bisection by ANY move that starts there,
+			# even one leaving the face — and that is where a grazing contact leaves
+			# it, since the skin is taken along the motion, not the normal. Measured
+			# on a surf_summit displacement, triangles a fraction of a degree apart:
+			# the rest query names the face underneath, the plane list calls it a
+			# duplicate, and a rider hung there at 75 u/s for good. Lifted a
+			# millimetre, the same leg ran 40 cm clear.
+			if _leave_face(result, current * time_left, hit.normal, height):
+				time_left = 0.0
+				break
 			result.stopped_on_duplicate = true
 			# The same plane again. The velocity has already been resolved against
 			# it, so resolving again is a no-op and the loop would spin until it ran
@@ -1410,6 +1422,35 @@ func _slide(
 	).length()
 
 	return result
+
+
+## The duplicate-plane leg's last resort: lift straight off [param normal] by one, two,
+## then four skins, and spend [param leg] from there. True and [param result] moved if
+## any of them got anywhere; false and untouched if none did (a real pocket, or a
+## ceiling a skin away), which leaves the old answer — stop, keep the velocity.
+##
+## Bounded on purpose: at most four skins off a face the player is already touching,
+## along its own normal, so a wrong answer is a few millimetres of air that gravity
+## takes back on the next tick. The velocity is not touched.
+func _leave_face(
+	result: MoveResult, leg: Vector3, normal: Vector3, height: float
+) -> bool:
+	if tunables.skin_width <= 0.0 or leg.length_squared() <= 1e-12:
+		return false
+
+	for scale: float in [1.0, 2.0, 4.0]:
+		var lift := normal * tunables.skin_width * scale
+		var off := _sweep(_capsule_centre(result.position, height), lift, height)
+		if off.hit:
+			return false
+		var from := result.position + lift
+		var along := _sweep(_capsule_centre(from, height), leg, height)
+		var spent := 1.0 if not along.hit else along.fraction
+		if spent > 1e-6:
+			result.position = from + leg * spent
+			return true
+
+	return false
 
 
 ## Outcomes of [method _remember_plane]. The two failures need different answers.

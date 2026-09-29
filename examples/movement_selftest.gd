@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 209
+const CHECKS := 212
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 35
+const SECTIONS := 36
 
 var _passed := 0
 var _failed := 0
@@ -77,6 +77,7 @@ func _run() -> void:
 	await _test_physics_body()
 	await _test_physics_slope()
 	await _test_physics_bank()
+	await _test_physics_displacement_crease()
 	await _test_physics_kerb()
 	await _test_physics_kerb_press()
 	await _test_physics_graze_normal()
@@ -2775,6 +2776,92 @@ func _test_physics_bank() -> void:
 		"%d ticks with the position fixed and the velocity not" % frozen)
 	_check(covered > expected * 0.97, "and covers the ground its speed says",
 		"%.2f m of %.2f" % [covered, expected])
+
+	world.queue_free()
+	_done()
+
+
+## `[arrive-3]`: a rider crossing a displacement's triangles, a fraction of a degree
+## apart, does not hang there with its speed intact.
+##
+## The seven triangles, the two states and the tunables are game-g2gfast's surf_summit
+## stage 3 (`tools/stage_ride.tscn -- surf_summit 3`), where the bot froze at
+## (1773, -812, -300) u at 75 u/s for the rest of the ride. A grazing leg ends with the
+## capsule exactly touching the face; every sweep from there, even one lifted a skin off
+## it, is blocked at the first step of cast_motion's bisection, and the rest query names
+## the face underneath, so the plane list sees a duplicate and nothing moves. The mesh is
+## copied to nine digits because it is that sensitive: rounded to five, the same states
+## ride straight across. Before the fix: 127 of 128 ticks frozen, 0 m covered.
+func _test_physics_displacement_crease() -> void:
+	_section("crossing a displacement crease, physics body")
+
+	var world := Node3D.new()
+	add_child(world)
+
+	var ground := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var mesh := ConcavePolygonShape3D.new()
+	mesh.set_faces(PackedVector3Array([
+		Vector3(34.899600983, -16.444252014, -2.438400030), Vector3(32.994602203, -16.502010345, -4.876800060), Vector3(34.899600983, -14.179647446, -4.876800060),
+		Vector3(34.899600983, -16.444252014, -2.438400030), Vector3(34.899600983, -14.179647446, -4.876800060), Vector3(36.804599762, -12.588292122, -2.438400030),
+		Vector3(36.804599762, -12.588292122, -2.438400030), Vector3(34.899600983, -14.179647446, -4.876800060), Vector3(36.804599762, -11.991741180, -4.876800060),
+		Vector3(32.994602203, -16.502010345, -4.876800060), Vector3(32.994602203, -16.750118256, -7.315199852), Vector3(34.899600983, -14.179647446, -4.876800060),
+		Vector3(34.899600983, -14.179647446, -4.876800060), Vector3(32.994602203, -16.750118256, -7.315199852), Vector3(34.899600983, -14.410800934, -7.315199852),
+		Vector3(34.899600983, -14.179647446, -4.876800060), Vector3(34.899600983, -14.410800934, -7.315199852), Vector3(36.804599762, -11.991741180, -4.876800060),
+		Vector3(36.804599762, -11.991741180, -4.876800060), Vector3(34.899600983, -14.410800934, -7.315199852), Vector3(36.804599762, -13.151485443, -7.315199852),
+	]))
+	shape.shape = mesh
+	ground.add_child(shape)
+	world.add_child(ground)
+
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	var body := DotFpsPhysicsBody.new()
+	if not _check(body.bind(world).ok, "the physics body binds to the displacement"):
+		world.queue_free()
+		return
+
+	var t := _tunables()
+	t.can_noclip = false
+	t.max_speed = 4.7625
+	t.max_velocity = 66.675
+	t.accelerate = 5.0
+	t.friction = 4.0
+	t.air_accelerate = 1000.0
+	t.max_air_wish_speed = 0.5715
+	t.gravity = 15.24
+	t.stand_height = 1.3716
+	t.crouch_height = 1.0287
+	t.radius = 0.3048
+	t.max_slope_angle = 45.57
+	t.step_height = 0.3429
+	var motor := DotFpsMotor.new(t, body)
+
+	# The tick before the grazing leg that ends touching, and the tick after it.
+	var delta := 1.0 / 128.0
+	var frozen := 0
+	var covered := 0.0
+	for start: Vector3 in [
+		Vector3(33.773784637, -15.460395813, -5.714473248),
+		Vector3(33.774005890, -15.460265160, -5.714899540),
+	]:
+		var s := DotFpsState.new()
+		s.position = start
+		s.velocity = Vector3(0.538090825, 0.520951033, -1.327067018)
+		s.mode = DotFpsState.Mode.AIR
+		var last := s.position
+		for _i in range(64):
+			motor.simulate(s, _command(0.0, 1.0, -4.771088958), delta)
+			if s.position.distance_to(last) < 1e-5 and s.velocity.length() > 0.1:
+				frozen += 1
+			last = s.position
+		covered += s.position.distance_to(start)
+
+	_check(frozen == 0, "a rider crossing a 0.2-degree crease never hangs with its speed intact",
+		"%d of 128 ticks with the position fixed and the velocity not" % frozen)
+	_check(covered > 1.0,
+		"and gets on across it", "%.3f m covered in two runs of 64 ticks" % covered)
 
 	world.queue_free()
 	_done()
