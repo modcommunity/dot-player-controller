@@ -485,6 +485,8 @@ correlated with it.
 
 **A walker pressed into a face too steep to stand on stays on the floor** (`[steep-climb-1]`, 2026-09-29). A capsule's rounded bottom touches a face that leans back before its feet leave the floor, so the ground probe reported the face and the walker went to AIR at its foot; air acceleration then crawled them 2.5 m up a 70° face and over a 60° one. Two halves, both needed: `_categorise_ground` and `_snap_to_ground` re-ask a steep hit with four half-radius capsules inside the player's footprint (`_quadrant_floor`, Source's `TryTouchGroundInQuadrants`), and a grounded non-jump `_move` drops the lift a steep face's slide added along the floor normal (`MoveResult.met_steep_face`). **An airborne player still ramp-crawls** a steep face at roughly Source's rate; that half is genre-correct and left alone. A jump into a sheer face peaks at a jump. `movement_selftest`'s steep-face section holds both at 60/70/80/90°.
 
+**A downward probe grazing a face is not a floor** (`[jumping-into-crate-1]`, 2026-10-02). A capsule beside a vertical face, a hair from it, moving down, makes `cast_motion` report a contact that no rest query along the motion can name (`get_rest_info` empty at `unsafe` and at the 1/2/4 mm retries), and `DotFpsPhysicsBody.sweep`'s last resort was the motion's reverse -- which for the ground probe is straight UP, a perfect floor made of nothing. In mg-buses-from-hell a runner jumping beside a column of 1 m crates that had settled 4-5 degrees off square was grounded at its apex by the top crate's corner 2 cm away, jumped again, and climbed the stack a crate at a time (2.02 m with a 1.15 m jump in tonight's probe; 2.98 m of a 3 m face on 2026-09-26). A plain box never did it because nothing stood proud of its face. For a mostly-downward motion that last resort is now `_downward_ray_fallback` -- the floor under the axis, or a miss: a graze does not stop a fall. Sideways sweeps keep the reverse-of-motion guess. `movement_selftest`'s "a downward sweep grazing a crate's side" rebuilds the three crates to nine digits; against the old body it fires (normal (0, 1, 0)). The other five suites, mg-buses-from-hell's three and mg-smash-copter's `headless_run` are unchanged.
+
 ### Validating
 
 ```bash
@@ -492,7 +494,7 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-godot --headless --path . res://examples/movement_selftest.tscn     # 212 checks
+godot --headless --path . res://examples/movement_selftest.tscn     # 214 checks
 godot --headless --path . res://examples/controller_selftest.tscn   # 106 checks
 godot --headless --path . res://examples/fps_controller_selftest.tscn # 55 checks
 godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks

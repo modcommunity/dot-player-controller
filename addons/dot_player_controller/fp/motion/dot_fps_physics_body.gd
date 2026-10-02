@@ -197,6 +197,20 @@ func sweep(
 			if not contacts.is_empty():
 				break
 
+	if contacts.is_empty() and motion.normalized().dot(Vector3.DOWN) >= 0.7:
+		# [b]Downward, the guess below is a floor made of nothing[/b]
+		# (`[jumping-into-crate-1]`, 2026-10-02). A capsule GRAZING a vertical face --
+		# beside it, a hair from it, moving down -- makes cast_motion report a contact
+		# that no rest query along the motion can name, and the motion's reverse is then
+		# straight UP: a perfect floor. A runner jumping beside a crate stack whose upper
+		# crate sat 2 cm proud of the face was put on the ground by the crate's SIDE at
+		# the jump's apex, jumped again from there, and went up the stack a crate at a time
+		# (mg-buses-from-hell; the 2026-09-26 "jumping reached 2.98 m" on a 3 m stack).
+		# The ray down the axis is the honest question for a floor: it answers a floor
+		# under the player, and a face beside them is not one. Nothing under the axis is
+		# a graze, and a graze does not stop a fall.
+		return _downward_ray_fallback(from, motion, height)
+
 	if contacts.is_empty():
 		# Still nothing. The reverse of the motion is the conservative answer: it
 		# cannot let the player through, and it stops them, speed and all.

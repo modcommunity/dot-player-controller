@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 212
+const CHECKS := 214
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 36
+const SECTIONS := 37
 
 var _passed := 0
 var _failed := 0
@@ -81,6 +81,7 @@ func _run() -> void:
 	await _test_physics_kerb()
 	await _test_physics_kerb_press()
 	await _test_physics_graze_normal()
+	await _test_physics_crate_side()
 	await _test_physics_wall_sweep()
 	await _test_physics_steep_face_walk()
 	await _test_physics_slope_landing()
@@ -2409,6 +2410,50 @@ func _test_physics_graze_normal() -> void:
 			"a capsule grazing a 60-degree bank along its length is told the bank's normal",
 			"hit %s, normal %s against the bank's %s (the motion's reverse is %s)" % [
 				hit.hit, hit.normal, bank, -motion.normalized()]
+		)
+	world.queue_free()
+	_done()
+
+
+## `[jumping-into-crate-1]`: a downward probe grazing the side of a box is not a floor.
+##
+## [b]The geometry is mg-buses-from-hell's, to nine digits.[/b] A column of three 1 m
+## crates that had settled about 4 degrees off square, and a runner at the top of a jump
+## beside it, 2 cm clear of the top crate's corner. cast_motion reports a contact to the
+## ground probe that no rest query along the motion can name, and the sweep's guess for
+## that -- the motion's reverse -- is straight UP for a probe going down. The motor
+## grounded the runner on the crate's SIDE, they jumped again from there, and went up the
+## stack a crate at a time, to 2.98 m of a 3 m face with a 1.15 m jump.
+func _test_physics_crate_side() -> void:
+	_section("a downward sweep grazing a crate's side is not a floor, physics body")
+	var world := Node3D.new()
+	# As the engine printed them (`var_to_str`), so they are the crates' exact transforms.
+	var crates := [
+		"Transform3D(0.99685496, 0.00086547446, 0.07924324, -0.00097104284, 0.99999875, 0.0012936823, -0.07924201, -0.001366562, 0.99685454, -2.0710263, 0.49463606, 19.999973)",
+		"Transform3D(0.997621, -0.004241628, 0.06880767, 0.004158334, 0.99999046, 0.0013537237, -0.06881275, -0.0010643778, 0.99762905, -2.0690117, 1.4872793, 19.998213)",
+		"Transform3D(0.9971799, -0.0067888154, 0.074740805, 0.0067166705, 0.99997675, 0.0012165847, -0.074747324, -0.0007111445, 0.9972023, -2.0828123, 2.4785988, 20.00043)",
+	]
+	for written: String in crates:
+		var crate := StaticBody3D.new()
+		var cs := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3.ONE
+		cs.shape = box
+		crate.add_child(cs)
+		crate.transform = str_to_var(written)
+		world.add_child(crate)
+	add_child(world)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	var body := DotFpsPhysicsBody.new()
+	if _check(body.bind(world).ok, "the physics body binds to the crates"):
+		var hit := body.sweep(
+			Vector3(-2.9410343, 1.8324537, 19.915457), Vector3(0.0, -0.023, 0.0), 1.8, 0.35)
+		_check(
+			not hit.hit or hit.normal.y < 0.7,
+			"a capsule beside a crate's side, probing down, is not told it is on a floor",
+			"hit %s, normal %s, point %s" % [hit.hit, hit.normal, hit.point]
 		)
 	world.queue_free()
 	_done()
