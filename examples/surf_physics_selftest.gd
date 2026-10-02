@@ -27,13 +27,13 @@ extends Node3D
 ## are on can tell you so.
 
 const STEP := 1.0 / 128.0
-const CHECKS := 24
+const CHECKS := 26
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 5
+const SECTIONS := 6
 
 var _passed := 0
 var _failed := 0
@@ -161,6 +161,7 @@ func _run() -> void:
 	await _test_an_embedded_spawn_recovers()
 	await _test_a_standing_player_is_left_alone()
 	await _test_leaving_a_surface_is_not_blocked()
+	await _test_a_surfer_leaves_a_face_over_its_far_end()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -409,5 +410,92 @@ func _test_leaving_a_surface_is_not_blocked() -> void:
 		not slide.hit,
 		"and sliding along the face is not blocked either",
 		"fraction %.3f" % slide.fraction
+	)
+	_done()
+
+
+# --- The far end of a face (`[fps-face-edge-stop]`) -------------------------
+
+## A slab like game-playground's long bank: 20 x 1 x 40 m, rolled [param roll] about its
+## length so its +X edge is high, then pitched [param pitch] down toward -Z. Its top
+## face's near edge runs through the origin. Returns the basis.
+func _add_bank(roll: float, pitch: float, length: float) -> Basis:
+	var basis := Basis(Vector3.RIGHT, -deg_to_rad(pitch)) * Basis(Vector3.BACK, deg_to_rad(roll))
+	var sb := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(20.0, 1.0, length)
+	cs.shape = box
+	sb.add_child(cs)
+	sb.transform = Transform3D(basis, basis * Vector3(0.0, -0.5, -length * 0.5))
+	add_child(sb)
+	return basis
+
+
+## One rider down a bank and off its far end, holding into the face. Returns the worst
+## single-tick speed loss as a fraction of the speed before it, and the speed 2 m past
+## the edge (or -1 if the rider never got there).
+func _ride_off_the_end(pitch: float, across: float, speed: float) -> Vector2:
+	await _clear()
+	var length := 40.0
+	var basis := _add_bank(56.0, pitch, length)
+	await _settle()
+
+	var normal := basis * Vector3.UP
+	var far_z := (basis * Vector3(0.0, 0.0, -length)).z
+	var motor := DotFpsMotor.new(_tunables(), DotFpsPhysicsBody.for_node(self))
+	var s := DotFpsState.new()
+	var support := DotFpsBody.capsule_support(normal, _t.stand_height, _t.radius)
+	var centre := basis * Vector3(across, 0.0, -5.0) + normal * (support + 0.03)
+	s.position = centre - Vector3.UP * (_t.stand_height * 0.5)
+	s.mode = DotFpsState.Mode.AIR
+	s.velocity = (basis * Vector3.FORWARD) * speed
+
+	var hold := DotFpsCommand.new()
+	hold.move = Vector2(1.0, 0.0)
+
+	var worst := 0.0
+	var past := -1.0
+	for _i in range(1024):
+		var before := s.velocity.length()
+		motor.simulate(s, hold, STEP)
+		if before > 1.0:
+			worst = maxf(worst, 1.0 - s.velocity.length() / before)
+		if s.position.z < far_z - 2.0:
+			past = s.velocity.length()
+			break
+	return Vector2(worst, past)
+
+
+func _test_a_surfer_leaves_a_face_over_its_far_end() -> void:
+	_section("a surfer leaving a rolled, pitched face over its far end keeps its speed")
+
+	# Three rides that each stopped DEAD on the edge tick: cast_motion grazed the edge
+	# between the slab's top and end faces, no rest query along the motion could name a
+	# surface the motion was leaving, and sweep answered with the motion's reverse --
+	# which the slide clips the velocity against, to exactly zero. 93 of 800 rides in a
+	# sweep over pitch, line, speed and a second face did it.
+	var rides: Array[Vector3] = [
+		Vector3(7.0, 0.0, 28.0), Vector3(5.0, 0.0, 36.0), Vector3(5.0, 6.0, 28.0),
+	]
+	var worst := 0.0
+	var slowest := INF
+	var detail := PackedStringArray()
+	for ride in rides:
+		var r: Vector2 = await _ride_off_the_end(ride.x, ride.y, ride.z)
+		worst = maxf(worst, r.x)
+		slowest = minf(slowest, r.y if r.y >= 0.0 else -1.0)
+		detail.append("pitch %.0f x %.0f %.0f m/s: lost %.0f%%, %.1f m/s past" % [
+			ride.x, ride.y, ride.z, r.x * 100.0, r.y])
+
+	_check(
+		worst < 0.1,
+		"no tick of three rides off the far end costs a tenth of the speed",
+		"; ".join(detail)
+	)
+	_check(
+		slowest > 20.0,
+		"and every rider is still past 20 m/s 2 m beyond the edge",
+		"; ".join(detail)
 	)
 	_done()

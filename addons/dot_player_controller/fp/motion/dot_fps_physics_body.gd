@@ -212,11 +212,23 @@ func sweep(
 		return _downward_ray_fallback(from, motion, height)
 
 	if contacts.is_empty():
-		# Still nothing. The reverse of the motion is the conservative answer: it
-		# cannot let the player through, and it stops them, speed and all.
-		result.normal = -motion.normalized()
-		result.point = from + motion * safe
-		return result
+		# [b]Still nothing: ask where the move ENDS, not what it grazed[/b]
+		# (`[fps-face-edge-stop]`, 2026-10-02). This used to answer with the reverse of
+		# the motion, which "cannot let the player through" -- and which the motor clips
+		# the velocity against, and a velocity clipped against its own reverse is zero.
+		# A surfer leaving a rolled, pitched face over its far END grazes the edge
+		# between its top and end faces: cast_motion reports a contact, and no rest
+		# query along the motion can name it, because the motion is leaving it. Every
+		# rider at 30 m/s off a 56/7 degree slab's end stopped dead in mid-air and fell
+		# from rest (surf_physics_selftest's last section).
+		#
+		# A rest query that finds nothing at `unsafe` or a few millimetres past it means
+		# the capsule touches without overlapping there, so nothing thin sits in the
+		# path. What can still be wrong is the end of the move, and that is the question
+		# _end_overlap_fallback already answers for a sweep that saw nothing at all: a
+		# surface the move ends inside and goes into, backed off by its depth; clear
+		# space or a surface being left, a miss.
+		return _end_overlap_fallback(from, motion, height, radius)
 
 	result.normal = contacts.get("normal", -motion.normalized())
 	result.point = contacts.get("point", from + motion * safe)
