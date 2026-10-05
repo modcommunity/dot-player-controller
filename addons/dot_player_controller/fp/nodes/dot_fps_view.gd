@@ -120,6 +120,14 @@ const CHANNEL := "fps.view"
 ## position while the simulation is already using it.
 var external_offset: Vector3 = Vector3.ZERO
 
+## Extra rotation added to the camera, in degrees: x pitch (up positive), y yaw, z roll.
+##
+## Where a weapon's view punch goes. [b]Presentation only[/b] — the simulated pitch and
+## yaw are untouched, so a shot still goes where the command pointed. It exists because
+## [method apply] writes the camera's angles from scratch every frame: anything a weapon
+## added to the camera itself was overwritten before it was ever drawn.
+var external_angles: Vector3 = Vector3.ZERO
+
 var _body: Node3D = null
 var _head: Node3D = null
 var _camera: Camera3D = null
@@ -240,9 +248,9 @@ func apply(
 		_camera.position = Vector3(_bob_offset.x, eye, 0.0)
 
 	_camera.rotation = Vector3(
-		deg_to_rad(state.pitch + _landing_pitch + _bob_pitch),
-		0.0,
-		deg_to_rad(_roll)
+		deg_to_rad(state.pitch + _landing_pitch + _bob_pitch + external_angles.x),
+		deg_to_rad(external_angles.y),
+		deg_to_rad(_roll + external_angles.z)
 	)
 
 	_apply_roll(state, delta)
