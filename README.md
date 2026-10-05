@@ -43,7 +43,7 @@ The three things every controller needs and nobody wants to write twice.
 ```gdscript
 var intent := DotPlayerIntent.make(Vector2(0, 1), DotPlayerIntent.Btn.JUMP, tick)
 intent.view_yaw = look.yaw
-controller.drive(intent, delta)
+controller.simulate(intent, delta)
 ```
 
 It says *"forward, holding jump, looking here"*. It does not say which key that was, and it does not say what happens. A sampler makes them, a controller consumes them, a replay hands the same ones back, and a server receives them over a wire and never sees a keyboard.
@@ -142,7 +142,7 @@ a JSON file, the environment or the command line without a rebuild.
 
 ### Extending it
 
-Four hooks, and none of them need a fork:
+Five hooks, and none of them need a fork:
 
 - **Surfaces.** Mark a collider `dot_fps_surface = "ice"` in the inspector (or put it
   in a `surface_ice` group) and give the controller a `DotFpsSurfaceSet`. Ice, mud,
