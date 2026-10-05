@@ -108,7 +108,7 @@ It does its own collide-and-slide, deliberately: bunny-hopping and surfing are c
 | `DotFpsMotor` | The simulation. Deterministic, no engine globals, no input reads. |
 | `DotFpsBody` | The collision queries the motor needs. `DotFpsPhysicsBody` for real geometry, `DotFpsFlatBody` for tests. |
 | `DotFpsController` | The node. Drives the motor, writes to the scene, resizes the collider. |
-| `DotFpsView` | Camera, pitch, crouch height, speed FOV. Cosmetic only, runs at frame rate. |
+| `DotFpsView` | Camera, pitch, crouch height, speed FOV. Cosmetic only, runs at frame rate. `external_offset` eases a prediction correction into the eye; `external_angles` (degrees: pitch, yaw, roll) adds a weapon's view punch to the camera without touching the simulated aim. |
 | `DotFpsSampler` | Devices to commands. The only thing that reads the keyboard. |
 | `DotFpsNetSync` | What to replicate and how, without importing dot-net. |
 | `DotFpsSurface` | How one kind of ground behaves — ice, mud, a conveyor. Multipliers on the tunables. |
