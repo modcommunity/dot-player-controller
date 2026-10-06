@@ -476,6 +476,8 @@ Nothing here should require a fork.
 | Camera behaviour, view bob, landing kick, strafe roll | `DotFpsView` exports, or a subclass |
 | Anything inside the tick — triggers, mode switches | `_on_pre_simulate` / `_on_post_simulate` |
 | Refusing input — a cutscene, a respawn freeze | `_accept_command` |
+| A slide off a crouch press at a run | `DotFpsTunables.slide_*` (`slide_enabled` first); `DotFpsView.slide_fov_gain` / `slide_roll`; `slide_changed` |
+| An ability that throws the player into the air | `DotFpsTunables.launch_*`, with `launch_button` set to a command bit the game has free; `launched` |
 | An administrator's noclip, freeze, speed or gravity | `admin_abilities` on every machine, then `DotFpsAdminModifiers` on the server |
 | Reacting to movement | `landed`, `jumped`, `stepped_up`, `crouch_changed`, `surface_changed`, `modifier_added` / `modifier_removed`, `mode_changed` |
 
@@ -487,6 +489,16 @@ correlated with it.
 
 **A downward probe grazing a face is not a floor** (`[jumping-into-crate-1]`, 2026-10-02). A capsule beside a vertical face, a hair from it, moving down, makes `cast_motion` report a contact that no rest query along the motion can name (`get_rest_info` empty at `unsafe` and at the 1/2/4 mm retries), and `DotFpsPhysicsBody.sweep`'s last resort was the motion's reverse -- which for the ground probe is straight UP, a perfect floor made of nothing. In mg-buses-from-hell a runner jumping beside a column of 1 m crates that had settled 4-5 degrees off square was grounded at its apex by the top crate's corner 2 cm away, jumped again, and climbed the stack a crate at a time (2.02 m with a 1.15 m jump in tonight's probe; 2.98 m of a 3 m face on 2026-09-26). A plain box never did it because nothing stood proud of its face. For a mostly-downward motion that last resort is now `_downward_ray_fallback` -- the floor under the axis, or a miss: a graze does not stop a fall. Sideways sweeps keep the reverse-of-motion guess. `movement_selftest`'s "a downward sweep grazing a crate's side" rebuilds the three crates to nine digits; against the old body it fires (normal (0, 1, 0)). The other five suites, mg-buses-from-hell's three and mg-smash-copter's `headless_run` are unchanged.
 
+### Sliding and the launch
+
+**Both are off by default, and that is the whole compatibility story.** Every `slide_*` and `launch_*` number is read only behind `slide_enabled` / `launch_enabled`, so a game that never sets them simulates what it did before they existed — all six suites and every game's numbers unchanged. They are still in `fingerprint()` like everything else: two peers that disagree about them disagree about where a crouching runner goes.
+
+**A slide is a crouch with different friction and steering, and nothing else.** It starts on the crouch PRESS, grounded, at `slide_min_speed`; crouch already held when the speed arrives (a push, a ramp) is a crouch, because that is what a player holding crouch expects. The collider is the crouched one because crouch is held, so a slide goes under what a crouch goes under and stands up where a crouch would. While it lasts, `slide_friction` replaces `friction` (surfaces and modifiers still scale it — ice is slicker to slide on too) and `slide_accelerate` replaces `accelerate`; the wish speed is the crouched one, which a sliding player is already past, so acceleration bends the run rather than speeding it up. `slide_boost` is capped by `slide_max_speed` and a player already faster gets no burst rather than being slowed to it. Measured: from a 10.5 m/s sprint, 13.3 m/s at the start and 10.75 m covered in 1.5 s, against 4.77 m for a crouch from the same run.
+
+**The launch is an ability rather than a `DotFpsModifier`**, because it is an impulse and a modifier is a multiplier. It sets the vertical speed rather than adding to it, so a launch at the top of a jump goes no higher than one from the ground. **Its button is a setting, not a new bit**: every bit on the wire is spoken for (the user bits are each game's own), so `launch_button` names whichever one the game has free. A stun (`deny_jump` / `deny_move`) refuses it.
+
+**`slide_time`, `slide_cooldown_left` and `launch_cooldown_left` are in `DotFpsState`** and not replicated, exactly like the jump timers: the server decides, and the snapshot carries the velocity that resulted. Both sections in `movement_selftest` replay from a snapshot in the middle of the thing and carry a negative control that drops the field from the snapshot, which must diverge. `slide_changed` and `launched` are **not** emitted during a prediction replay, unlike `crouch_changed`: they are where a game hangs a sound, and a replayed tick is one the player already heard.
+
 ### Validating
 
 ```bash
@@ -494,7 +506,7 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-godot --headless --path . res://examples/movement_selftest.tscn     # 214 checks
+godot --headless --path . res://examples/movement_selftest.tscn     # 240 checks
 godot --headless --path . res://examples/controller_selftest.tscn   # 106 checks
 godot --headless --path . res://examples/fps_controller_selftest.tscn # 55 checks
 godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks

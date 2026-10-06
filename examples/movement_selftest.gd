@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 214
+const CHECKS := 240
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 37
+const SECTIONS := 39
 
 var _passed := 0
 var _failed := 0
@@ -74,6 +74,8 @@ func _run() -> void:
 	_test_net_sync_round_trip()
 	_test_fingerprint()
 	_test_replay_determinism()
+	_test_slide()
+	_test_launch()
 	await _test_physics_body()
 	await _test_physics_slope()
 	await _test_physics_bank()
@@ -1974,6 +1976,321 @@ func _test_fingerprint() -> void:
 ## snapshot — which is precisely what client-side reconciliation does. If this fails,
 ## prediction cannot work, and the failure at runtime looks like packet loss rather
 ## than like a bug.
+## A slide: crouch pressed at a run, lower friction and a burst, and every way it ends.
+func _test_slide() -> void:
+	_section("sliding")
+
+	var crouch := DotFpsCommand.BUTTON_CROUCH
+
+	# Off by default: the press that would start a slide is an ordinary crouch.
+	var off := _tunables()
+	var off_motor := _motor(off)
+	var off_state := _running(off_motor)
+	off_motor.simulate(off_state, _command(1.0, 0.0, 0.0, crouch), STEP)
+	_check(not off_state.is_sliding(), "sliding is off unless a game turns it on")
+
+	var t := _slide_tunables()
+	var motor := _motor(t)
+
+	var s := _running(motor)
+	var before := s.horizontal_speed()
+	motor.simulate(s, _command(1.0, 0.0, 0.0, crouch), STEP)
+	_check(s.is_sliding(), "crouch pressed at a run starts a slide",
+		"%.2f m/s, min %.2f" % [before, t.slide_min_speed])
+	_check(
+		s.horizontal_speed() > before + t.slide_boost * 0.8,
+		"the slide starts with a burst of speed",
+		"%.2f -> %.2f m/s" % [before, s.horizontal_speed()]
+	)
+
+	# The point of it: a slide carries further than crouching does from the same run.
+	var crouched_motor := _motor(off)
+	var crouched := _running(crouched_motor)
+	var slid := _running(motor)
+	var crouch_from := crouched.position
+	var slide_from := slid.position
+
+	for _i in range(48):
+		crouched_motor.simulate(crouched, _command(1.0, 0.0, 0.0, crouch), STEP)
+		motor.simulate(slid, _command(1.0, 0.0, 0.0, crouch), STEP)
+
+	var crouch_distance := crouched.position.distance_to(crouch_from)
+	var slide_distance := slid.position.distance_to(slide_from)
+	_check(
+		slide_distance > crouch_distance * 1.5,
+		"a slide carries further than a crouch from the same run",
+		"slide %.2f m, crouch %.2f m in 0.8 s" % [slide_distance, crouch_distance]
+	)
+
+	# Releasing crouch ends it, and starts the cooldown.
+	var released := _running(motor)
+	motor.simulate(released, _command(1.0, 0.0, 0.0, crouch), STEP)
+	motor.simulate(released, _command(1.0), STEP)
+	_check(
+		not released.is_sliding() and released.slide_cooldown_left > 0.0,
+		"releasing crouch ends the slide and starts the cooldown",
+		"sliding %s, cooldown %.2f" % [released.is_sliding(), released.slide_cooldown_left]
+	)
+
+	# The cooldown refuses a second slide straight away, and allows one once it is spent.
+	motor.simulate(released, _command(1.0, 0.0, 0.0, crouch), STEP)
+	_check(not released.is_sliding(), "a slide cannot start again during the cooldown")
+	motor.simulate(released, _command(1.0), STEP)
+
+	for _i in range(int(t.slide_cooldown / STEP) + 2):
+		motor.simulate(released, _command(1.0, 0.0, 0.0, DotFpsCommand.BUTTON_SPRINT), STEP)
+
+	motor.simulate(released, _command(1.0, 0.0, 0.0, crouch), STEP)
+	_check(released.is_sliding(), "a slide starts again once the cooldown is spent",
+		"%.2f m/s, cooldown %.2f" % [released.horizontal_speed(), released.slide_cooldown_left])
+
+	# Held, it ends at slide_duration and carries on as a crouch.
+	var held := _running(motor)
+
+	for _i in range(int(t.slide_duration / STEP) + 2):
+		motor.simulate(held, _command(1.0, 0.0, 0.0, crouch), STEP)
+
+	_check(
+		not held.is_sliding() and held.is_crouched(),
+		"a held slide ends at slide_duration and stays crouched",
+		"sliding %s, crouch %.2f" % [held.is_sliding(), held.crouch_fraction]
+	)
+
+	# Too slow to slide: a walker's crouch press is a crouch.
+	var walker := _standing(motor)
+
+	for _i in range(60):
+		motor.simulate(walker, _command(0.4), STEP)
+
+	motor.simulate(walker, _command(0.4, 0.0, 0.0, crouch), STEP)
+	_check(not walker.is_sliding(), "a crouch press below slide_min_speed does not slide",
+		"%.2f m/s" % walker.horizontal_speed())
+
+	# Crouch already held when the speed arrives (a push, a ramp) is not a press: no slide.
+	var crouch_runner := _standing(motor)
+
+	for _i in range(20):
+		motor.simulate(crouch_runner, _command(1.0, 0.0, 0.0, crouch), STEP)
+
+	crouch_runner.velocity = Vector3(0.0, 0.0, -10.0)
+	motor.simulate(crouch_runner, _command(1.0, 0.0, 0.0, crouch), STEP)
+	_check(not crouch_runner.is_sliding(), "crouch held before the speed arrives never slides",
+		"%.2f m/s" % crouch_runner.horizontal_speed())
+
+	# slide_boost 0: no burst at all.
+	var no_boost := _slide_tunables()
+	no_boost.slide_boost = 0.0
+	var no_boost_motor := _motor(no_boost)
+	var flat := _running(no_boost_motor)
+	var flat_before := flat.horizontal_speed()
+	no_boost_motor.simulate(flat, _command(1.0, 0.0, 0.0, crouch), STEP)
+	_check(
+		flat.is_sliding() and flat.horizontal_speed() <= flat_before + 0.001,
+		"slide_boost 0 slides with no burst",
+		"%.3f -> %.3f m/s" % [flat_before, flat.horizontal_speed()]
+	)
+
+	# Already past slide_max_speed: no burst, and no speed taken away either.
+	var fast := _running(motor)
+	fast.velocity = Vector3(0.0, 0.0, -18.0)
+	motor.simulate(fast, _command(1.0, 0.0, 0.0, crouch), STEP)
+	_check(
+		fast.is_sliding() and fast.horizontal_speed() <= 18.0 and fast.horizontal_speed() > 17.5,
+		"a slide past slide_max_speed gets no burst and loses only friction",
+		"%.3f m/s" % fast.horizontal_speed()
+	)
+
+	# Determinism: a replay from a snapshot in the middle of a slide reproduces it. The
+	# negative control drops the slide from the snapshot, which is what a slide kept
+	# anywhere but the state would do on a rewind, and must diverge.
+	var commands: Array[DotFpsCommand] = []
+
+	for i in range(200):
+		var buttons := DotFpsCommand.BUTTON_SPRINT
+		if (i % 70) >= 40 and (i % 70) < 62:
+			buttons = crouch
+		commands.append(_command(1.0, sin(float(i) * 0.07) * 0.3, float(i) * 0.4, buttons))
+
+	var full := _standing(_motor(t))
+	var full_motor := _motor(t)
+	var snapshot: DotFpsState = null
+
+	for i in range(commands.size()):
+		full_motor.simulate(full, commands[i], STEP)
+		if i == 45:
+			snapshot = full.duplicate_state()
+
+	var slid_at_split := snapshot.is_sliding()
+	var replay := snapshot.duplicate_state()
+	_run_window(_motor(t), replay, commands, 46, commands.size())
+	_check(
+		slid_at_split and replay.equals(full, 0.0001),
+		"replaying from a snapshot mid-slide reproduces the run",
+		"sliding at the split %s, diverged %.6f m" % [slid_at_split, replay.divergence(full)]
+	)
+
+	var amnesiac := snapshot.duplicate_state()
+	amnesiac.slide_time = -1.0
+	_run_window(_motor(t), amnesiac, commands, 46, commands.size())
+	_check(
+		not amnesiac.equals(full, 0.0001),
+		"negative control: a replay that forgets the slide diverges",
+		"diverged %.6f m" % amnesiac.divergence(full)
+	)
+	_done()
+
+
+## The launch ability: a button, an upward throw, a cooldown, and what refuses it.
+func _test_launch() -> void:
+	_section("launch")
+
+	var button := DotFpsCommand.BUTTON_USER_0
+
+	var off_motor := _motor(_tunables())
+	var off := _standing(off_motor)
+	off_motor.simulate(off, _command(0.0, 0.0, 0.0, button), STEP)
+	_check(off.is_grounded(), "the launch is off unless a game turns it on")
+
+	var t := _launch_tunables()
+	var motor := _motor(t)
+
+	var s := _standing(motor)
+	motor.simulate(s, _command(0.0, 0.0, 0.0, button), STEP)
+	_check(not s.is_grounded() and s.velocity.y > t.launch_velocity * 0.9,
+		"the launch button throws the player upward",
+		"%s, %.2f m/s up" % [DotFpsState.mode_name(s.mode), s.velocity.y])
+
+	var apex := s.position.y
+
+	# Two seconds: the landing (about 1.2 s) is inside it and the 3 s cooldown is not.
+	for _i in range(120):
+		motor.simulate(s, _command(0.0, 0.0, 0.0, button), STEP)
+		apex = maxf(apex, s.position.y)
+
+	var expected := t.launch_velocity * t.launch_velocity / (2.0 * t.gravity)
+	_check_near(apex, expected, expected * 0.08, "a launch peaks at launch_velocity^2 / 2g")
+	_check(s.is_grounded() and s.launch_cooldown_left > 0.0,
+		"holding the button does not launch again on landing",
+		"grounded %s, cooldown %.2f" % [s.is_grounded(), s.launch_cooldown_left])
+
+	# Pressed again during the cooldown: nothing. After it: a launch.
+	motor.simulate(s, _command(), STEP)
+	motor.simulate(s, _command(0.0, 0.0, 0.0, button), STEP)
+	_check(s.is_grounded(), "a launch cannot be used again during its cooldown")
+
+	for _i in range(int(t.launch_cooldown / STEP) + 2):
+		motor.simulate(s, _command(), STEP)
+
+	motor.simulate(s, _command(0.0, 0.0, 0.0, button), STEP)
+	_check(not s.is_grounded(), "the launch is ready again once the cooldown is spent")
+
+	# In the air it REPLACES a lower vertical speed rather than adding to it.
+	var jumper := _standing(motor)
+	motor.simulate(jumper, _command(0.0, 0.0, 0.0, DotFpsCommand.BUTTON_JUMP), STEP)
+	motor.simulate(jumper, _command(), STEP)
+	var rising := jumper.velocity.y
+	motor.simulate(jumper, _command(0.0, 0.0, 0.0, button), STEP)
+	_check(
+		rising > 0.0 and jumper.velocity.y <= t.launch_velocity + 0.001,
+		"a launch at the top of a jump goes no higher than one from the ground",
+		"rising at %.2f, after the launch %.2f m/s" % [rising, jumper.velocity.y]
+	)
+
+	# launch_from_air off: mid-air, the button does nothing.
+	var grounded_only := _launch_tunables()
+	grounded_only.launch_from_air = false
+	var grounded_motor := _motor(grounded_only)
+	var falling := _standing(grounded_motor)
+	falling.position.y = 3.0
+	falling.mode = DotFpsState.Mode.AIR
+	falling.time_since_grounded = 1.0
+	grounded_motor.simulate(falling, _command(0.0, 0.0, 0.0, button), STEP)
+	_check(falling.velocity.y <= 0.0, "launch_from_air off refuses a launch in mid-air",
+		"%.2f m/s" % falling.velocity.y)
+
+	# launch_forward throws along the view's heading.
+	var forward := _launch_tunables()
+	forward.launch_forward = 8.0
+	var forward_motor := _motor(forward)
+	var leaper := _standing(forward_motor)
+	forward_motor.simulate(leaper, _command(0.0, 0.0, 90.0, button), STEP)
+	var heading := DotFpsMotor.new(forward, DotFpsFlatBody.with_floor(0.0))._view_basis(90.0, 0.0).forward
+	_check(
+		Vector2(leaper.velocity.x, leaper.velocity.z).dot(Vector2(heading.x, heading.z)) > 7.0,
+		"launch_forward throws the player along the view's heading",
+		"(%.2f, %.2f) against (%.2f, %.2f)" % [leaper.velocity.x, leaper.velocity.z, heading.x, heading.z]
+	)
+
+	# A stun refuses it, as it refuses a jump.
+	var stun := DotFpsModifier.make(&"stun")
+	stun.deny_jump = true
+	var stunned_motor := _motor(_launch_tunables())
+	stunned_motor.register_modifier(stun)
+	var stunned := _standing(stunned_motor)
+	stunned_motor.add_modifier(stunned, &"stun")
+	stunned_motor.simulate(stunned, _command(0.0, 0.0, 0.0, button), STEP)
+	_check(stunned.is_grounded(), "a stun refuses the launch")
+
+	# Determinism, with the cooldown as the thing a replay must carry.
+	var commands: Array[DotFpsCommand] = []
+
+	for i in range(300):
+		var buttons := button if i % 50 == 10 else 0
+		commands.append(_command(0.6, 0.0, float(i), buttons))
+
+	var full_motor := _motor(t)
+	var full := _standing(full_motor)
+	var snapshot: DotFpsState = null
+
+	for i in range(commands.size()):
+		full_motor.simulate(full, commands[i], STEP)
+		if i == 120:
+			snapshot = full.duplicate_state()
+
+	var replay := snapshot.duplicate_state()
+	_run_window(_motor(t), replay, commands, 121, commands.size())
+	_check(replay.equals(full, 0.0001), "replaying across launches reproduces the run",
+		"diverged %.6f m" % replay.divergence(full))
+
+	var amnesiac := snapshot.duplicate_state()
+	amnesiac.launch_cooldown_left = 0.0
+	_run_window(_motor(t), amnesiac, commands, 121, commands.size())
+	_check(not amnesiac.equals(full, 0.0001),
+		"negative control: a replay that forgets the cooldown diverges",
+		"diverged %.6f m" % amnesiac.divergence(full))
+	_done()
+
+
+func _slide_tunables() -> DotFpsTunables:
+	var t := _tunables()
+	t.slide_enabled = true
+	t.slide_min_speed = 6.0
+	t.slide_boost = 3.0
+	t.slide_max_speed = 16.0
+	t.slide_duration = 1.0
+	t.slide_cooldown = 0.5
+	return t
+
+
+func _launch_tunables() -> DotFpsTunables:
+	var t := _tunables()
+	t.launch_enabled = true
+	t.launch_button = DotFpsCommand.BUTTON_USER_0
+	t.launch_velocity = 12.0
+	t.launch_cooldown = 3.0
+	return t
+
+
+## A player at a settled sprint along -Z, on the floor.
+func _running(motor: DotFpsMotor) -> DotFpsState:
+	var s := _standing(motor)
+
+	for _i in range(120):
+		motor.simulate(s, _command(1.0, 0.0, 0.0, DotFpsCommand.BUTTON_SPRINT), STEP)
+
+	return s
+
+
 func _test_replay_determinism() -> void:
 	_section("determinism")
 

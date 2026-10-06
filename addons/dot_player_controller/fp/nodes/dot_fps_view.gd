@@ -86,6 +86,15 @@ const CHANNEL := "fps.view"
 ## it is here so a game that wants it does not implement it against the wrong data.
 @export_range(0.0, 0.15, 0.001) var bob_amount: float = 0.0
 
+## Extra degrees of field of view while sliding, on top of the speed widening. 0 for none.
+##
+## Read only while [method DotFpsState.is_sliding], which needs
+## [member DotFpsTunables.slide_enabled], so a game without sliding sees nothing from it.
+@export_range(0.0, 40.0, 0.5) var slide_fov_gain: float = 8.0
+
+## Degrees the camera rolls while sliding, eased in and out like the strafe roll. 0 for none.
+@export_range(-20.0, 20.0, 0.5) var slide_roll: float = 3.0
+
 ## Horizontal sway, as a fraction of [member bob_amount].
 @export_range(0.0, 2.0, 0.05) var bob_sway: float = 0.5
 
@@ -262,7 +271,7 @@ func apply(
 ## Measured against the view's own right vector rather than against world axes, so
 ## the roll follows where the player is looking and not where the level was built.
 func _apply_roll(state: DotFpsState, delta: float) -> void:
-	if strafe_roll <= 0.0:
+	if strafe_roll <= 0.0 and slide_roll == 0.0:
 		_roll = 0.0
 		return
 
@@ -272,6 +281,9 @@ func _apply_roll(state: DotFpsState, delta: float) -> void:
 	var target := -clampf(
 		lateral / strafe_roll_reference, -1.0, 1.0
 	) * strafe_roll
+
+	if state.is_sliding():
+		target += slide_roll
 
 	var t := 1.0 - exp(-strafe_roll_response * delta)
 	_roll = lerpf(_roll, target, t)
@@ -326,12 +338,15 @@ func note_landing(impact: float) -> void:
 
 
 func _apply_fov(state: DotFpsState, delta: float) -> void:
-	if fov_speed_gain <= 0.0:
+	if fov_speed_gain <= 0.0 and slide_fov_gain <= 0.0:
 		_camera.fov = base_fov
 		return
 
 	var ratio := clampf(state.horizontal_speed() / fov_speed_reference, 0.0, 1.0)
 	var target := base_fov + fov_speed_gain * ratio
+
+	if state.is_sliding():
+		target += slide_fov_gain
 
 	var t := 1.0 - exp(-fov_response * delta)
 	_fov = lerpf(_fov, target, t)

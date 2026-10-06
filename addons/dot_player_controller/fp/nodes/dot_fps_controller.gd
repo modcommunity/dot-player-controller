@@ -67,6 +67,17 @@ signal surface_changed(from: StringName, to: StringName)
 ## Emitted when the player starts or stops being crouched.
 signal crouch_changed(crouched: bool)
 
+## Emitted when a slide starts or ends. See [member DotFpsTunables.slide_enabled].
+##
+## [b]Not during a prediction replay[/b], unlike [signal crouch_changed]: these are the
+## edges a game hangs a sound and a camera effect on, and a replayed tick is one the
+## player already heard. A correction that replays across the start would otherwise play
+## the slide twice.
+signal slide_changed(sliding: bool)
+
+## Emitted when the launch ability fires. Not during a replay, for the same reason.
+signal launched()
+
 ## Emitted when a modifier starts or stops applying, on whichever peer simulates.
 signal modifier_added(id: StringName)
 signal modifier_removed(id: StringName)
@@ -704,6 +715,8 @@ func simulate_tick(tick: int, delta: float) -> void:
 	var before_fall := state.velocity.y
 	var before_crouched := state.is_crouched()
 	var before_surface := state.surface
+	var before_sliding := state.is_sliding()
+	var before_launches := motor.launches
 
 	_on_pre_simulate(tick, delta)
 
@@ -712,6 +725,13 @@ func simulate_tick(tick: int, delta: float) -> void:
 	_tick = tick
 	_publish(before_mode, before_y, before_fall)
 	_report_changes(before_crouched, before_surface)
+
+	if not _replaying:
+		if state.is_sliding() != before_sliding:
+			slide_changed.emit(state.is_sliding())
+
+		if motor.launches != before_launches:
+			launched.emit()
 
 	# Not during a replay: a replayed tick is one the statistics have already seen,
 	# and counting it again gives a client on a lossy link a jump count that climbs

@@ -117,6 +117,23 @@ var ground_ticks: int = 0
 ## Buttons on the previous command, for edge detection.
 var previous_buttons: int = 0
 
+## Seconds into the current slide, or -1.0 when not sliding.
+##
+## [b]In the state, like every timer[/b], because a slide changes friction and steering
+## for as long as it lasts, and a rewind that restored the position without it would
+## replay the next second of a slide as a crouch-walk. See [member DotFpsTunables.slide_enabled].
+var slide_time: float = -1.0
+
+## Seconds before another slide may start. 0 when one may.
+var slide_cooldown_left: float = 0.0
+
+## Seconds before the launch ability may be used again. 0 when it may.
+##
+## Not replicated, like the jump timers: the server decides whether a launch happened, and
+## the snapshot carries the velocity it produced. A client whose copy is a tick out is
+## corrected by that velocity, which is the part a player sees.
+var launch_cooldown_left: float = 0.0
+
 ## Ticks simulated. Diagnostic; not compared.
 var tick: int = 0
 
@@ -143,6 +160,10 @@ func is_grounded() -> bool:
 
 func is_crouched() -> bool:
 	return crouch_fraction > 0.001
+
+
+func is_sliding() -> bool:
+	return slide_time >= 0.0
 
 
 func speed() -> float:
@@ -172,6 +193,9 @@ func copy_from(other: DotFpsState) -> void:
 	time_since_jump = other.time_since_jump
 	ground_ticks = other.ground_ticks
 	previous_buttons = other.previous_buttons
+	slide_time = other.slide_time
+	slide_cooldown_left = other.slide_cooldown_left
+	launch_cooldown_left = other.launch_cooldown_left
 	tick = other.tick
 
 
@@ -207,6 +231,9 @@ func equals(other: DotFpsState, epsilon: float = 0.0001) -> bool:
 		and absf(time_since_jump - other.time_since_jump) <= epsilon
 		and absf(time_since_jump_pressed - other.time_since_jump_pressed) <= epsilon
 		and ground_ticks == other.ground_ticks
+		and absf(slide_time - other.slide_time) <= epsilon
+		and absf(slide_cooldown_left - other.slide_cooldown_left) <= epsilon
+		and absf(launch_cooldown_left - other.launch_cooldown_left) <= epsilon
 	)
 
 
@@ -229,6 +256,10 @@ func describe() -> Dictionary:
 		"surface": String(surface) if surface != &"" else "-",
 		"modifiers": modifiers.size(),
 		"airborne_for": "%.2f s" % time_since_grounded,
+		"slide": ("%.2f s" % slide_time) if is_sliding() else (
+			"cooldown %.2f s" % slide_cooldown_left if slide_cooldown_left > 0.0 else "-"
+		),
+		"launch": ("cooldown %.1f s" % launch_cooldown_left) if launch_cooldown_left > 0.0 else "ready",
 	}
 
 

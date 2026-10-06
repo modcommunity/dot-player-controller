@@ -88,6 +88,11 @@ var _surface: DotFpsSurface = null
 ## Ticks simulated by this motor. Diagnostic.
 var ticks_simulated: int = 0
 
+## Slides started and launches made by this motor, replays included. Diagnostic: the
+## controller's signals are what a game should react to, because they skip replays.
+var slides: int = 0
+var launches: int = 0
+
 ## Ticks where the collide-and-slide ran out of iterations with motion left.
 ##
 ## Non-zero means the player is in geometry tight enough that the slide could not
@@ -396,8 +401,13 @@ func simulate(
 	_categorise_ground(state)
 
 	var jumped := _try_jump(state, command, delta)
+	var launched := _try_launch(state, command)
 
-	if state.mode == DotFpsState.Mode.GROUND and not jumped:
+	# After the jump and the launch, because both end a slide by leaving the ground, and
+	# before friction, because a slide is what decides which friction this tick gets.
+	_update_slide(state, command, delta, jumped or launched)
+
+	if state.mode == DotFpsState.Mode.GROUND and not jumped and not launched:
 		_apply_friction(state, delta)
 	elif tunables.air_friction > 0.0:
 		_apply_air_friction(state, delta)
@@ -413,7 +423,7 @@ func simulate(
 		state.velocity.y -= tunables.gravity * _effects.gravity * delta
 
 	_clamp_velocity(state)
-	_move(state, delta, jumped)
+	_move(state, delta, jumped or launched)
 
 	# After the move, so the next tick starts from the truth rather than from where
 	# the player was before sliding into a wall or off a ledge.
@@ -500,6 +510,9 @@ func _advance_timers(
 		state.time_since_jump_pressed = 0.0
 	else:
 		state.time_since_jump_pressed += delta
+
+	state.slide_cooldown_left = maxf(state.slide_cooldown_left - delta, 0.0)
+	state.launch_cooldown_left = maxf(state.launch_cooldown_left - delta, 0.0)
 
 
 # --- Noclip ----------------------------------------------------------------
@@ -947,6 +960,143 @@ func _try_jump(
 	return true
 
 
+# --- Launch ----------------------------------------------------------------
+
+## The launch ability: [member DotFpsTunables.launch_button] throws the player upward.
+##
+## [b]On the press, not the hold[/b], and read from [member DotFpsState.previous_buttons]
+## like the jump buffer, so a replay of the same commands launches on the same tick. The
+## upward speed REPLACES a lower one rather than adding to it: added, a launch at the top
+## of a jump would go half again as high as one from the ground, and the height of an
+## escape would depend on when in a jump it was pressed.
+##
+## A stun ([code]deny_jump[/code] or [code]deny_move[/code]) refuses it, for the reason a
+## stun refuses a jump: an ability that escapes a freeze is a way out of every freeze.
+func _try_launch(state: DotFpsState, command: DotFpsCommand) -> bool:
+	if not tunables.launch_enabled or tunables.launch_button <= 0:
+		return false
+
+	if _effects.deny_jump or _effects.deny_move:
+		return false
+
+	if state.launch_cooldown_left > 0.0:
+		return false
+
+	var pressed := (command.buttons & ~state.previous_buttons) & tunables.launch_button
+
+	if pressed == 0:
+		return false
+
+	if not tunables.launch_from_air and not (
+		state.mode == DotFpsState.Mode.GROUND
+		or state.time_since_grounded <= tunables.coyote_time
+	):
+		return false
+
+	state.velocity.y = maxf(state.velocity.y, tunables.launch_velocity)
+
+	if tunables.launch_forward > 0.0:
+		var forward := _view_basis(state.yaw, 0.0).forward
+		forward.y = 0.0
+
+		if forward.length_squared() > 0.0:
+			state.velocity += forward.normalized() * tunables.launch_forward
+
+	# What a jump does on leaving the ground, for the same reasons: AIR now so this tick's
+	# move does not snap the player back onto the floor, and coyote time spent so the
+	# ground they left cannot be jumped from again in mid-air.
+	state.mode = DotFpsState.Mode.AIR
+	state.time_since_grounded = 1000.0
+	state.launch_cooldown_left = tunables.launch_cooldown
+	launches += 1
+
+	return true
+
+
+# --- Sliding ---------------------------------------------------------------
+
+## Starts, carries and ends a slide.
+##
+## [b]A slide is a crouch with different friction and steering, and nothing else.[/b] The
+## collider is the crouched one because the crouch button is held — [method _update_crouch]
+## already did that this tick — so a slide goes under what a crouch goes under and stands
+## up where a crouch does. What changes is [member DotFpsTunables.slide_friction] in place
+## of [member DotFpsTunables.friction] and [member DotFpsTunables.slide_accelerate] in
+## place of [member DotFpsTunables.accelerate], read by [method _apply_friction] and
+## [method _apply_wish_move] from [method DotFpsState.is_sliding].
+##
+## It starts on the crouch PRESS, grounded, at [member DotFpsTunables.slide_min_speed] or
+## more: holding crouch and then running is a crouch-walk, which is what anybody holding
+## crouch expects. It ends on releasing crouch, on leaving the ground, at
+## [member DotFpsTunables.slide_duration], or below [member DotFpsTunables.slide_end_speed];
+## whatever crouch is still held carries on as an ordinary crouch.
+func _update_slide(
+	state: DotFpsState,
+	command: DotFpsCommand,
+	delta: float,
+	left_ground: bool
+) -> void:
+	if not tunables.slide_enabled:
+		# A slide in progress when a server turns sliding off ends rather than freezing
+		# its friction for good.
+		if state.is_sliding():
+			_end_slide(state)
+		return
+
+	if state.is_sliding():
+		state.slide_time += delta
+
+		if (
+			left_ground
+			or state.mode != DotFpsState.Mode.GROUND
+			or not command.is_pressed(DotFpsCommand.BUTTON_CROUCH)
+			or state.slide_time >= tunables.slide_duration
+			or state.horizontal_speed() < tunables.slide_end_speed
+			or _effects.deny_move
+		):
+			_end_slide(state)
+
+		return
+
+	if left_ground or state.mode != DotFpsState.Mode.GROUND:
+		return
+
+	if state.slide_cooldown_left > 0.0:
+		return
+
+	if not tunables.can_crouch or _effects.deny_crouch or _effects.deny_move:
+		return
+
+	var pressed := (
+		(command.buttons & ~state.previous_buttons) & DotFpsCommand.BUTTON_CROUCH
+	) != 0
+
+	if not pressed:
+		return
+
+	if tunables.slide_requires_sprint and not command.is_pressed(DotFpsCommand.BUTTON_SPRINT):
+		return
+
+	var speed := state.horizontal_speed()
+
+	if speed < tunables.slide_min_speed or speed <= 0.0:
+		return
+
+	state.slide_time = 0.0
+	slides += 1
+
+	if tunables.slide_boost > 0.0 and speed < tunables.slide_max_speed:
+		var boosted := minf(speed + tunables.slide_boost, tunables.slide_max_speed)
+		var scale := boosted / speed
+		state.velocity.x *= scale
+		state.velocity.z *= scale
+
+
+func _end_slide(state: DotFpsState) -> void:
+	state.slide_time = -1.0
+	state.slide_cooldown_left = tunables.slide_cooldown
+
+
 # --- Acceleration ----------------------------------------------------------
 
 func _apply_friction(state: DotFpsState, delta: float) -> void:
@@ -967,8 +1117,12 @@ func _apply_friction(state: DotFpsState, delta: float) -> void:
 	if tunables.edge_friction > 1.0 and _near_ledge(state):
 		edge = tunables.edge_friction
 
+	# A slide swaps the base friction rather than scaling it, so a surface and a modifier
+	# still scale a slide the way they scale a walk: ice is slicker to slide on too.
+	var base := tunables.slide_friction if state.is_sliding() else tunables.friction
+
 	var drop := (
-		control * tunables.friction * _surface.friction_scale
+		control * base * _surface.friction_scale
 		* _effects.friction * edge * delta
 	)
 
@@ -1021,11 +1175,14 @@ func _apply_wish_move(
 		# Along the slope rather than through it, so walking up a ramp does not spend
 		# most of the acceleration pushing into the surface for the slide to discard.
 		direction = _project_on_slope(direction, state.ground_normal)
+		var ground_accel := (
+			tunables.slide_accelerate if state.is_sliding() else tunables.accelerate
+		)
 		accelerate(
 			state,
 			direction,
 			target,
-			tunables.accelerate * _surface.accelerate_scale * _effects.accelerate,
+			ground_accel * _surface.accelerate_scale * _effects.accelerate,
 			delta
 		)
 	else:

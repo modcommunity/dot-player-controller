@@ -136,6 +136,8 @@ all fall out of the same acceleration function rather than being special-cased:
   to zero.
 - **Ground snapping** so walking down slopes and stairs does not give you air physics
   every other tick.
+- **Sliding**, off by default: crouch pressed at a run slides on low friction with an optional burst of speed, for `slide_duration` or until released, slowed, or airborne, then a cooldown. Every number is a tunable, the burst included (`slide_boost` 0 for none). `DotFpsView` widens the view and rolls it slightly while sliding.
+- **A launch ability**, off by default: a command button of the game's choosing (`launch_button`) throws the player upward, and optionally forward, on a cooldown. A stun refuses it.
 
 Everything above is a value in `DotFpsTunables`, which a dedicated server can set from
 a JSON file, the environment or the command line without a rebuild.

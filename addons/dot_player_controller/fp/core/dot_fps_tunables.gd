@@ -283,6 +283,80 @@ extends DotConfig
 ## How quickly noclip velocity settles toward the wish velocity, per second.
 @export_range(0.1, 100.0, 0.1) var noclip_accelerate: float = 12.0
 
+@export_group("Sliding")
+
+## Whether pressing crouch while running starts a slide.
+##
+## [b]Off by default, and that is the whole compatibility story.[/b] Every number below
+## is read only while this is on, so a game that never sets it simulates exactly what it
+## did before sliding existed. It is still in [method fingerprint] like everything else,
+## because two peers that disagree about it disagree about where a crouching runner goes.
+@export var slide_enabled: bool = false
+
+## Horizontal speed, in m/s, a grounded player needs for a crouch press to start a slide
+## rather than an ordinary crouch.
+@export_range(0.0, 100.0, 0.1) var slide_min_speed: float = 6.0
+
+## Speed added along the run when a slide starts, in m/s. 0 for a slide with no burst.
+@export_range(0.0, 50.0, 0.1) var slide_boost: float = 3.0
+
+## The boost never takes horizontal speed past this, in m/s.
+##
+## [b]A cap on the boost, not on the slide.[/b] A player already faster than this (off a
+## ramp, out of a bunny-hop) keeps that speed and gets no burst; a cap that clamped them
+## down to it would make sliding a way to lose speed, which nobody presses a key for.
+@export_range(0.0, 100.0, 0.1) var slide_max_speed: float = 13.0
+
+## Ground friction while sliding, in place of [member friction]. Low, so a slide carries.
+@export_range(0.0, 20.0, 0.05) var slide_friction: float = 0.8
+
+## Acceleration toward the wish direction while sliding, in place of [member accelerate].
+##
+## It steers rather than speeds up: the wish speed while sliding is the crouched one,
+## which a sliding player is already well past, so [method DotFpsMotor.accelerate] adds
+## nothing along the run and only bends it. 0 locks the direction.
+@export_range(0.0, 100.0, 0.1) var slide_accelerate: float = 2.0
+
+## The longest a slide lasts, in seconds, before it settles into an ordinary crouch.
+@export_range(0.05, 10.0, 0.05) var slide_duration: float = 1.0
+
+## A slide that slows below this horizontal speed, in m/s, ends early.
+@export_range(0.0, 50.0, 0.1) var slide_end_speed: float = 3.0
+
+## Seconds after a slide ends before another can start.
+@export_range(0.0, 10.0, 0.05) var slide_cooldown: float = 0.5
+
+## Whether a slide also needs the sprint button held.
+@export var slide_requires_sprint: bool = false
+
+@export_group("Launch")
+
+## Whether [member launch_button] throws the player into the air.
+##
+## Off by default for the same reason as [member slide_enabled]. An ability rather than a
+## [DotFpsModifier] because it is an impulse, and a modifier is a multiplier.
+@export var launch_enabled: bool = false
+
+## The command button that launches, as a [DotFpsCommand] button bit
+## ([code]BUTTON_USER_0[/code] is 32). 0 means no button does.
+##
+## [b]A setting rather than a new bit[/b], because every bit on the wire is already
+## spoken for: the user bits are each game's own, and a game picks the one it has free.
+@export_range(0, 255, 1) var launch_button: int = 0
+
+## Upward speed a launch sets, in m/s. It replaces a lower vertical speed rather than
+## adding to it, so a launch at the top of a jump goes as high as one from the ground.
+@export_range(0.0, 100.0, 0.1) var launch_velocity: float = 13.0
+
+## Speed added along the view's heading, in m/s, flat. 0 for straight up.
+@export_range(0.0, 100.0, 0.1) var launch_forward: float = 0.0
+
+## Seconds between launches.
+@export_range(0.0, 600.0, 0.1) var launch_cooldown: float = 8.0
+
+## Whether a launch works in mid-air. Off, it needs the ground (or coyote time).
+@export var launch_from_air: bool = true
+
 
 func env_prefix() -> String:
 	return "DOT_FPS_"
