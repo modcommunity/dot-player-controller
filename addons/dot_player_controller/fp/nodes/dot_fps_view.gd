@@ -137,6 +137,13 @@ var external_offset: Vector3 = Vector3.ZERO
 ## added to the camera itself was overwritten before it was ever drawn.
 var external_angles: Vector3 = Vector3.ZERO
 
+## A multiplier on the field of view, applied after everything else. Where a weapon's aim
+## zoom goes (0.3 is a strong scope), for the same reason as [member external_angles]:
+## [method apply] writes the lens every frame. Applied after the speed widening's smoothing
+## rather than inside it, because the aim eases itself and smoothing it twice makes a scope
+## arrive late.
+var external_fov_scale: float = 1.0
+
 var _body: Node3D = null
 var _head: Node3D = null
 var _camera: Camera3D = null
@@ -338,8 +345,10 @@ func note_landing(impact: float) -> void:
 
 
 func _apply_fov(state: DotFpsState, delta: float) -> void:
+	var scale := clampf(external_fov_scale, 0.01, 1.0) if is_finite(external_fov_scale) else 1.0
+
 	if fov_speed_gain <= 0.0 and slide_fov_gain <= 0.0:
-		_camera.fov = base_fov
+		_camera.fov = base_fov * scale
 		return
 
 	var ratio := clampf(state.horizontal_speed() / fov_speed_reference, 0.0, 1.0)
@@ -350,7 +359,7 @@ func _apply_fov(state: DotFpsState, delta: float) -> void:
 
 	var t := 1.0 - exp(-fov_response * delta)
 	_fov = lerpf(_fov, target, t)
-	_camera.fov = _fov
+	_camera.fov = _fov * scale
 
 
 ## Tells the view the simulation stepped up by [param height] metres.
