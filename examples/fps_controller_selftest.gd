@@ -18,7 +18,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 57
+const CHECKS := 58
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -562,8 +562,19 @@ func _test_mask_set_after_setup() -> void:
 		controller.simulate_tick(i + 1, STEP)
 
 	_check(controller.body.collision_mask == 3, "the body sweeps the tunables' mask", "body %d" % controller.body.collision_mask)
+
 	_check(controller.state.is_grounded() and controller.state.position.y > -0.1,
 		"and the player stands on the layer it added", "y %.2f" % controller.state.position.y)
+
+	# A style rebuilds the tunables from the base: set_collision_mask is the way that survives.
+	# The order the bug needs: a style first (the base is taken, the live tunables become a
+	# copy), then the mask, then another style (rebuilt from the base).
+	var _first := controller.set_style(DotFpsStyle.new())
+	controller.set_collision_mask(1 | 4)
+	var _styled := controller.set_style(DotFpsStyle.new())
+	controller.simulate_tick(91, STEP)
+	_check(controller.tunables.collision_mask == 5 and controller.body.collision_mask == 5,
+		"and set_collision_mask survives a style", "tunables %d body %d" % [controller.tunables.collision_mask, controller.body.collision_mask])
 
 	world.queue_free()
 	await get_tree().process_frame

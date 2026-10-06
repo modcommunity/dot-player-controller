@@ -578,6 +578,23 @@ func set_style(new_style: DotFpsStyle) -> DotResult:
 	return DotResult.success(null)
 
 
+## The collision layers this player's movement sweeps, set so it survives a style.
+##
+## [b]Use this rather than writing `tunables.collision_mask`.[/b] A style rebuilds
+## [member tunables] from the base copy taken at the first setup, so a mask written on the
+## live tunables lasts until the next [method set_style] and then reverts to whatever the
+## base had: game-playground's connected clients had their style set straight after the
+## join and walked through every prop for it (game-g2gfast kept a base copy of its own to
+## avoid exactly this). The base, the live tunables and the body all take it.
+func set_collision_mask(mask: int) -> void:
+	if _base_tunables != null:
+		_base_tunables.collision_mask = mask
+	if tunables != null:
+		tunables.collision_mask = mask
+	if body != null:
+		body.collision_mask = mask
+
+
 ## Switches movement mode, running the mode's exit and enter hooks.
 func set_mode(mode: int) -> void:
 	if motor != null:
