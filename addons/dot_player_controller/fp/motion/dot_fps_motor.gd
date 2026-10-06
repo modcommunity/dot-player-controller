@@ -2052,6 +2052,15 @@ func _snap_to_ground(
 	if not hit.hit or not _is_floor(hit.normal):
 		return
 
+	# Over a crest, still carrying the climb, and fast enough: a launch, not a snap. Left in
+	# the air with every bit of its speed (`crest_launch_speed_scale`).
+	if (
+		tunables.crest_launch_speed_scale > 0.0
+		and state.velocity.dot(hit.normal) > LEAVING_SPEED
+		and state.velocity.length() >= tunables.max_speed * tunables.crest_launch_speed_scale
+	):
+		return
+
 	state.position += probe * hit.fraction
 	state.mode = DotFpsState.Mode.GROUND
 	state.ground_normal = hit.normal

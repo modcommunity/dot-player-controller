@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 254
+const CHECKS := 258
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 40
+const SECTIONS := 41
 
 var _passed := 0
 var _failed := 0
@@ -79,6 +79,7 @@ func _run() -> void:
 	_test_dash()
 	await _test_physics_body()
 	await _test_physics_slope()
+	await _test_crest_launch()
 	await _test_physics_bank()
 	await _test_physics_displacement_crease()
 	await _test_physics_kerb()
@@ -2609,6 +2610,72 @@ func _test_physics_slope() -> void:
 		"and is not thrown off the crest",
 		"%.3f m above the plateau" % above_plateau
 	)
+
+	world.queue_free()
+	_done()
+
+
+## The crest launch threshold (`crest_launch_speed_scale`), both sides, on the same ramp:
+## at the default, a player at running speed walks onto the plateau (the section above);
+## with the threshold under their speed they are thrown off the top; at 0 never.
+func _test_crest_launch() -> void:
+	_section("a fast crest launches, a slow one does not")
+
+	var world := Node3D.new()
+	add_child(world)
+	var length := 12.0
+	var rise := length * tan(deg_to_rad(20.0))
+	for spec in [
+		[BoxShape3D.new(), Vector3(40.0, 1.0, 80.0), Vector3(0.0, -0.5, 0.0)],
+		[BoxShape3D.new(), Vector3(8.0, rise, 10.0), Vector3(0.0, rise * 0.5, -length - 5.0)],
+	]:
+		var b := StaticBody3D.new()
+		var cs := CollisionShape3D.new()
+		(spec[0] as BoxShape3D).size = spec[1]
+		cs.shape = spec[0]
+		b.add_child(cs)
+		b.position = spec[2]
+		world.add_child(b)
+	var wedge := ConvexPolygonShape3D.new()
+	wedge.points = PackedVector3Array([
+		Vector3(-4.0, 0.0, 0.0), Vector3(4.0, 0.0, 0.0),
+		Vector3(-4.0, 0.0, -length), Vector3(4.0, 0.0, -length),
+		Vector3(-4.0, rise, -length), Vector3(4.0, rise, -length),
+	])
+	var wb := StaticBody3D.new()
+	var wcs := CollisionShape3D.new()
+	wcs.shape = wedge
+	wb.add_child(wcs)
+	world.add_child(wb)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	var body := DotFpsPhysicsBody.new()
+	if not _check(body.bind(world).ok, "the physics body binds to the ramp"):
+		world.queue_free()
+		return
+
+	var thrown := {}
+	for scale in [0.5, 0.0]:
+		var t := _tunables()
+		t.crest_launch_speed_scale = scale
+		var motor := DotFpsMotor.new(t, body)
+		var s := DotFpsState.new()
+		s.position = Vector3(0.0, 0.0, 2.0)
+		s.mode = DotFpsState.Mode.GROUND
+		for _i in range(4):
+			motor.simulate(s, DotFpsCommand.new(), STEP)
+		var above := 0.0
+		for _i in range(150):
+			motor.simulate(s, _command(1.0), STEP)
+			if s.position.z < -length:
+				above = maxf(above, s.position.y - rise)
+		thrown[scale] = above
+
+	_check(float(thrown[0.5]) > 0.1, "with the threshold under their speed, the crest throws them",
+		"%.3f m above the plateau" % float(thrown[0.5]))
+	_check(float(thrown[0.0]) < 0.05, "and at 0, never", "%.3f m above the plateau" % float(thrown[0.0]))
+	_check(is_equal_approx(DotFpsTunables.new().crest_launch_speed_scale, 1.25), "the default launches only past running speed")
 
 	world.queue_free()
 	_done()

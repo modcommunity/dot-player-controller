@@ -206,6 +206,17 @@ extends DotConfig
 ## direction that leaves them inside the geometry rather than outside it.
 @export_range(2, 8, 1) var max_slide_planes: int = 5
 
+## Speed, as a multiple of [member max_speed], above which the crest of a walkable ramp
+## launches the player instead of holding them to the floor past it. 0 never launches.
+##
+## A bhop or surf player taking a ramp at speed expects to leave its top, and one running up
+## it expects to walk onto the plateau: the threshold is what tells the two apart. Since the
+## walkable-slope fix every crest held everybody to the floor, which is the second half and
+## not the first. At 1.25 a player at their running speed stays grounded and one carrying
+## hop speed over the crest is thrown, with their speed. A server that wants the old
+## behaviour back sets 0.
+@export_range(0.0, 10.0, 0.01) var crest_launch_speed_scale: float = 1.25
+
 @export_group("Crouching")
 
 ## Standing collision height, in metres. The capsule's total height.
