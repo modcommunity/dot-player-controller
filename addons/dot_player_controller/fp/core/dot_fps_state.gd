@@ -134,6 +134,10 @@ var slide_cooldown_left: float = 0.0
 ## corrected by that velocity, which is the part a player sees.
 var launch_cooldown_left: float = 0.0
 
+## Seconds before the dash may be used again. Replicated with the launch's; see
+## [DotFpsNetSync].
+var dash_cooldown_left: float = 0.0
+
 ## Ticks simulated. Diagnostic; not compared.
 var tick: int = 0
 
@@ -196,6 +200,7 @@ func copy_from(other: DotFpsState) -> void:
 	slide_time = other.slide_time
 	slide_cooldown_left = other.slide_cooldown_left
 	launch_cooldown_left = other.launch_cooldown_left
+	dash_cooldown_left = other.dash_cooldown_left
 	tick = other.tick
 
 
@@ -234,6 +239,7 @@ func equals(other: DotFpsState, epsilon: float = 0.0001) -> bool:
 		and absf(slide_time - other.slide_time) <= epsilon
 		and absf(slide_cooldown_left - other.slide_cooldown_left) <= epsilon
 		and absf(launch_cooldown_left - other.launch_cooldown_left) <= epsilon
+		and absf(dash_cooldown_left - other.dash_cooldown_left) <= epsilon
 	)
 
 

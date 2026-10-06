@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 244
+const CHECKS := 254
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 39
+const SECTIONS := 40
 
 var _passed := 0
 var _failed := 0
@@ -76,6 +76,7 @@ func _run() -> void:
 	_test_replay_determinism()
 	_test_slide()
 	_test_launch()
+	_test_dash()
 	await _test_physics_body()
 	await _test_physics_slope()
 	await _test_physics_bank()
@@ -1938,9 +1939,10 @@ func _test_net_sync_round_trip() -> void:
 	# previous tick's buttons (8) ride in the flags, tick-exact, because without them a
 	# rewind replayed a launch as no launch and game-arena measured 3.2 m between the ends.
 	# Under four bytes per player per snapshot.
+	# 25 since the dash's cooldown (12 bits) joined them the same night.
 	_check(
-		DotFpsNetSync.estimated_state_bits() < 184,
-		"a full state update stays under 23 bytes",
+		DotFpsNetSync.estimated_state_bits() < 200,
+		"a full state update stays under 25 bytes",
 		"%d bits" % DotFpsNetSync.estimated_state_bits()
 	)
 
@@ -2293,6 +2295,91 @@ func _test_launch() -> void:
 	_check(not amnesiac.equals(full, 0.0001),
 		"negative control: a replay that forgets the cooldown diverges",
 		"diverged %.6f m" % amnesiac.divergence(full))
+	_done()
+
+
+## The dash: a press throws the player along the way they steer, on a cooldown.
+func _test_dash() -> void:
+	_section("dash")
+
+	var button := DotFpsCommand.BUTTON_SPRINT
+
+	var off_motor := _motor(_tunables())
+	var off := _standing(off_motor)
+	off_motor.simulate(off, _command(1.0, 0.0, 0.0, button), STEP)
+	_check(off.horizontal_speed() < 3.0, "the dash is off unless a game turns it on")
+
+	var t := _tunables()
+	t.dash_enabled = true
+	t.dash_button = button
+	t.dash_speed = 16.0
+	t.dash_cooldown = 2.0
+	var motor := _motor(t)
+
+	var s := _standing(motor)
+	motor.simulate(s, _command(0.0, 1.0, 0.0, button), STEP)
+	var heading := DotFpsMotor.new(t, DotFpsFlatBody.with_floor(0.0))._view_basis(0.0, 0.0).right
+	_check(
+		s.horizontal_speed() > 15.0 and Vector2(s.velocity.x, s.velocity.z).normalized().dot(Vector2(heading.x, heading.z)) > 0.95,
+		"a dash throws the player along the way they steer (%.1f m/s)" % s.horizontal_speed()
+	)
+	_check(not s.is_grounded() and s.velocity.y > 0.0, "and lifts them off the ground so friction does not eat it")
+
+	var still := _standing(motor)
+	motor.simulate(still, _command(0.0, 0.0, 90.0, button), STEP)
+	var view := DotFpsMotor.new(t, DotFpsFlatBody.with_floor(0.0))._view_basis(90.0, 0.0).forward
+	_check(
+		Vector2(still.velocity.x, still.velocity.z).normalized().dot(Vector2(view.x, view.z)) > 0.95,
+		"with nothing held it goes along the view's heading"
+	)
+
+	var fast := _standing(motor)
+	fast.velocity = Vector3(0.0, 0.0, -25.0)
+	motor.simulate(fast, _command(1.0, 0.0, 0.0, button), STEP)
+	_check(fast.horizontal_speed() > 24.0, "a player already faster keeps their speed: a dash is never a brake (%.1f)" % fast.horizontal_speed())
+
+	motor.simulate(s, _command(), STEP)
+	var before := s.horizontal_speed()
+	# No movement held: holding against a dash in the air brakes it, legitimately, and that
+	# is air control, not a second dash.
+	motor.simulate(s, _command(0.0, 0.0, 0.0, button), STEP)
+	_check(s.dash_cooldown_left > 0.0 and absf(s.horizontal_speed() - before) < 2.0, "the cooldown refuses a second dash",
+		"cooldown %.2f, speed %.2f -> %.2f, dashes %d" % [s.dash_cooldown_left, before, s.horizontal_speed(), motor.dashes])
+
+	var stun := DotFpsModifier.make(&"stun")
+	stun.deny_move = true
+	var stunned_motor := _motor(t)
+	stunned_motor.register_modifier(stun)
+	var stunned := _standing(stunned_motor)
+	stunned_motor.add_modifier(stunned, &"stun")
+	stunned_motor.simulate(stunned, _command(1.0, 0.0, 0.0, button), STEP)
+	_check(stunned.horizontal_speed() < 1.0, "a stun refuses it")
+
+	var commands: Array[DotFpsCommand] = []
+	for i in range(300):
+		commands.append(_command(0.7, sin(float(i) * 0.1), float(i) * 0.5, button if i % 60 == 5 else 0))
+	var full_motor := _motor(t)
+	var full := _standing(full_motor)
+	var snapshot: DotFpsState = null
+	for i in range(commands.size()):
+		full_motor.simulate(full, commands[i], STEP)
+		if i == 100:
+			snapshot = full.duplicate_state()
+	var replay := snapshot.duplicate_state()
+	_run_window(_motor(t), replay, commands, 101, commands.size())
+	_check(replay.equals(full, 0.0001), "replaying across dashes reproduces the run")
+	var amnesiac := snapshot.duplicate_state()
+	amnesiac.dash_cooldown_left = 0.0
+	amnesiac.previous_buttons = 0
+	_run_window(_motor(t), amnesiac, commands, 101, commands.size())
+	_check(not amnesiac.equals(full, 0.0001) or snapshot.dash_cooldown_left == 0.0,
+		"negative control: a replay that forgets the cooldown diverges")
+
+	var packed := DotFpsState.new()
+	packed.dash_cooldown_left = 1.5
+	var unpacked := DotFpsState.new()
+	DotFpsNetSync.unpack_flags(unpacked, DotFpsNetSync.pack_flags(packed))
+	_check(is_equal_approx(unpacked.dash_cooldown_left, 1.5), "the dash's cooldown travels in the flags")
 	_done()
 
 

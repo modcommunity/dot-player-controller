@@ -92,6 +92,7 @@ var ticks_simulated: int = 0
 ## controller's signals are what a game should react to, because they skip replays.
 var slides: int = 0
 var launches: int = 0
+var dashes: int = 0
 
 ## Ticks where the collide-and-slide ran out of iterations with motion left.
 ##
@@ -402,6 +403,7 @@ func simulate(
 
 	var jumped := _try_jump(state, command, delta)
 	var launched := _try_launch(state, command)
+	launched = _try_dash(state, command) or launched
 
 	# After the jump and the launch, because both end a slide by leaving the ground, and
 	# before friction, because a slide is what decides which friction this tick gets.
@@ -513,6 +515,7 @@ func _advance_timers(
 
 	state.slide_cooldown_left = maxf(state.slide_cooldown_left - delta, 0.0)
 	state.launch_cooldown_left = maxf(state.launch_cooldown_left - delta, 0.0)
+	state.dash_cooldown_left = maxf(state.dash_cooldown_left - delta, 0.0)
 
 
 # --- Noclip ----------------------------------------------------------------
@@ -1011,6 +1014,52 @@ func _try_launch(state: DotFpsState, command: DotFpsCommand) -> bool:
 	launches += 1
 
 	return true
+
+
+# --- Dash ------------------------------------------------------------------
+
+## The dash: [member DotFpsTunables.dash_button] throws the player along the way they
+## are steering, or along the view's heading with nothing held. On the press, refused by
+## a stun, on a cooldown, the launch's shape exactly; returns whether it left the ground.
+func _try_dash(state: DotFpsState, command: DotFpsCommand) -> bool:
+	if not tunables.dash_enabled or tunables.dash_button <= 0:
+		return false
+
+	if _effects.deny_move or state.dash_cooldown_left > 0.0:
+		return false
+
+	if ((command.buttons & ~state.previous_buttons) & tunables.dash_button) == 0:
+		return false
+
+	var grounded := state.mode == DotFpsState.Mode.GROUND
+	if not tunables.dash_from_air and not grounded:
+		return false
+
+	var basis := _view_basis(state.yaw, 0.0)
+	var direction := basis.right * command.move.x + basis.forward * command.move.y
+	direction.y = 0.0
+	if direction.length_squared() < 0.0001:
+		direction = basis.forward
+		direction.y = 0.0
+	direction = direction.normalized()
+
+	var flat := Vector3(state.velocity.x, 0.0, state.velocity.z)
+	var along := flat.dot(direction)
+	var across := flat - direction * along
+	var speed := maxf(along, tunables.dash_speed)
+	var dashed := direction * speed + across
+	state.velocity.x = dashed.x
+	state.velocity.z = dashed.z
+	state.dash_cooldown_left = tunables.dash_cooldown
+	dashes += 1
+
+	if tunables.dash_lift > 0.0:
+		state.velocity.y = maxf(state.velocity.y, tunables.dash_lift)
+		state.mode = DotFpsState.Mode.AIR
+		state.time_since_grounded = 1000.0
+		return true
+
+	return false
 
 
 # --- Sliding ---------------------------------------------------------------

@@ -78,6 +78,9 @@ signal slide_changed(sliding: bool)
 ## Emitted when the launch ability fires. Not during a replay, for the same reason.
 signal launched()
 
+## Emitted when the dash fires. Not during a replay.
+signal dashed()
+
 ## Emitted when a modifier starts or stops applying, on whichever peer simulates.
 signal modifier_added(id: StringName)
 signal modifier_removed(id: StringName)
@@ -717,6 +720,7 @@ func simulate_tick(tick: int, delta: float) -> void:
 	var before_surface := state.surface
 	var before_sliding := state.is_sliding()
 	var before_launches := motor.launches
+	var before_dashes := motor.dashes
 
 	_on_pre_simulate(tick, delta)
 
@@ -732,6 +736,9 @@ func simulate_tick(tick: int, delta: float) -> void:
 
 		if motor.launches != before_launches:
 			launched.emit()
+
+		if motor.dashes != before_dashes:
+			dashed.emit()
 
 	# Not during a replay: a replayed tick is one the statistics have already seen,
 	# and counting it again gives a client on a lossy link a jump count that climbs

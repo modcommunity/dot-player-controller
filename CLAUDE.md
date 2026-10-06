@@ -477,6 +477,7 @@ Nothing here should require a fork.
 | Anything inside the tick — triggers, mode switches | `_on_pre_simulate` / `_on_post_simulate` |
 | Refusing input — a cutscene, a respawn freeze | `_accept_command` |
 | A slide off a crouch press at a run | `DotFpsTunables.slide_*` (`slide_enabled` first); `DotFpsView.slide_fov_gain` / `slide_roll`; `slide_changed` |
+| A dash along the way the player steers |  `DotFpsTunables.dash_*` (`dash_button` as with the launch; a game with no sprint can use the sprint bit); `dashed` |
 | An ability that throws the player into the air | `DotFpsTunables.launch_*`, with `launch_button` set to a command bit the game has free; `launched` |
 | An administrator's noclip, freeze, speed or gravity | `admin_abilities` on every machine, then `DotFpsAdminModifiers` on the server |
 | Reacting to movement | `landed`, `jumped`, `stepped_up`, `crouch_changed`, `surface_changed`, `modifier_added` / `modifier_removed`, `mode_changed` |
@@ -499,6 +500,8 @@ correlated with it.
 
 **`slide_time`, `slide_cooldown_left` and `launch_cooldown_left` are in `DotFpsState` AND in the snapshot**, packed into `net_flags` with the previous tick's buttons. The first version left them out "like the jump timers", and game-arena's net suite measured what that costs: the client predicts a launch and starts the cooldown, a snapshot from before the launch arrives, the rewind keeps the client's CURRENT cooldown and CURRENT buttons, and the replay reaches the press with the cooldown running and the key already down — no launch, and 3.2 m between the ends. `DotFpsNetSync.pack_flags` now carries all three timers in sixty-fourths of a second (a tick at the family's usual rate) and `previous_buttons`, which every press edge is detected against; that also closes the same hole for a buffered jump. In the flags word rather than as new properties because every game already declares `net_flags` and reads its width from `FLAG_BITS`; a full state update is 23 bytes where it was 20. Both sections in `movement_selftest` replay from a snapshot in the middle of the thing and carry a negative control that drops the field, which must diverge. `slide_changed` and `launched` are **not** emitted during a prediction replay, unlike `crouch_changed`: they are where a game hangs a sound, and a replayed tick is one the player already heard.
 
+**The dash is the launch's shape sideways** (2026-10-06): a press of `dash_button` sets the horizontal speed along the move direction (the view's heading with nothing held) to at least `dash_speed`, never less than the player already has along it, and adds `dash_lift` so ground friction does not eat it on the first tick. Its cooldown travels in `net_flags` (12 more bits; a full state update is 25 bytes). Holding against a dash in the air brakes it, at the air-acceleration rate, which is air control and not a bug: the suite's first cooldown check strafed against the dash and read the brake as a second dash.
+
 ### Validating
 
 ```bash
@@ -506,7 +509,7 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-godot --headless --path . res://examples/movement_selftest.tscn     # 244 checks
+godot --headless --path . res://examples/movement_selftest.tscn     # 254 checks
 godot --headless --path . res://examples/controller_selftest.tscn   # 106 checks
 godot --headless --path . res://examples/fps_controller_selftest.tscn # 55 checks
 godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks

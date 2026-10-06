@@ -98,7 +98,11 @@ const SLIDE_COOLDOWN_SHIFT := SLIDE_SHIFT + SLIDE_BITS
 ## jump, or a slide) never happened in the replay.
 const BUTTONS_SHIFT := SLIDE_COOLDOWN_SHIFT + SLIDE_COOLDOWN_BITS
 
-const FLAG_BITS := BUTTONS_SHIFT + DotFpsCommand.BUTTON_BITS
+## The dash's cooldown, the launch's reason and width.
+const DASH_BITS := 12
+const DASH_SHIFT := BUTTONS_SHIFT + DotFpsCommand.BUTTON_BITS
+
+const FLAG_BITS := DASH_SHIFT + DASH_BITS
 
 ## Most modifiers that can be active at once, and the width of the replicated mask.
 const MODIFIER_BITS := 32
@@ -205,6 +209,7 @@ static func pack_flags(state: DotFpsState) -> int:
 	flags |= slide << SLIDE_SHIFT
 	flags |= _quantise(state.slide_cooldown_left, SLIDE_COOLDOWN_BITS) << SLIDE_COOLDOWN_SHIFT
 	flags |= (state.previous_buttons & ((1 << DotFpsCommand.BUTTON_BITS) - 1)) << BUTTONS_SHIFT
+	flags |= _quantise(state.dash_cooldown_left, DASH_BITS) << DASH_SHIFT
 
 	return flags
 
@@ -220,6 +225,7 @@ static func unpack_flags(state: DotFpsState, flags: int) -> void:
 		_field(flags, SLIDE_COOLDOWN_SHIFT, SLIDE_COOLDOWN_BITS) / TIMER_SCALE
 	)
 	state.previous_buttons = (flags >> BUTTONS_SHIFT) & ((1 << DotFpsCommand.BUTTON_BITS) - 1)
+	state.dash_cooldown_left = _field(flags, DASH_SHIFT, DASH_BITS) / TIMER_SCALE
 
 
 ## Seconds as sixty-fourths, clamped into [param bits]. A cooldown longer than the field

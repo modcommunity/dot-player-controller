@@ -357,6 +357,30 @@ extends DotConfig
 ## Whether a launch works in mid-air. Off, it needs the ground (or coyote time).
 @export var launch_from_air: bool = true
 
+@export_group("Dash")
+
+## Whether [member dash_button] throws the player along the way they are moving.
+## Off by default, like the launch and for the same reason.
+@export var dash_enabled: bool = false
+
+## The command button that dashes, as a [DotFpsCommand] button bit. 0 means none. A game
+## with no sprint can give it the sprint bit, which is already on the wire.
+@export_range(0, 255, 1) var dash_button: int = 0
+
+## Horizontal speed a dash sets along its direction, in m/s. A player already faster
+## along it keeps their speed: a dash is never a brake.
+@export_range(0.0, 100.0, 0.1) var dash_speed: float = 16.0
+
+## Upward speed a dash adds, in m/s, so a dash from the ground leaves it for a moment and
+## ground friction does not eat it on the first tick.
+@export_range(0.0, 20.0, 0.1) var dash_lift: float = 2.5
+
+## Seconds between dashes.
+@export_range(0.0, 600.0, 0.1) var dash_cooldown: float = 3.0
+
+## Whether a dash works in mid-air.
+@export var dash_from_air: bool = true
+
 
 func env_prefix() -> String:
 	return "DOT_FPS_"
