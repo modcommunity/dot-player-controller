@@ -724,6 +724,14 @@ func simulate_tick(tick: int, delta: float) -> void:
 
 	_on_pre_simulate(tick, delta)
 
+	# The body copied the mask once, when it was built, and a game that sets the tunables'
+	# mask after setup -- which is when a game knows its physics layout -- was sweeping the
+	# old one: game-playground's players walked through every prop for weeks, with the
+	# tunables reading the right mask the whole time. Handed over every tick, so the
+	# tunables are the one place the mask lives.
+	if body != null and body.collision_mask != tunables.collision_mask:
+		body.collision_mask = tunables.collision_mask
+
 	motor.simulate(state, current_command, delta)
 
 	_tick = tick

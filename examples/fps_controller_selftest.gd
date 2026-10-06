@@ -18,13 +18,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 55
+const CHECKS := 57
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 11
+const SECTIONS := 12
 
 var _passed := 0
 var _failed := 0
@@ -44,6 +44,7 @@ func _run() -> void:
 
 	await _test_zero_configuration()
 	await _test_external_drive()
+	await _test_mask_set_after_setup()
 	await _test_collider_follows_crouch()
 	await _test_noclip_gate()
 	await _test_admin_abilities()
@@ -525,6 +526,44 @@ func _test_external_drive() -> void:
 		"a starved tick with nothing held repeats the last view, not north",
 		"yaw %.1f pitch %.1f" % [controller.state.yaw, controller.state.pitch]
 	)
+
+	world.queue_free()
+	await get_tree().process_frame
+	_done()
+
+
+## The mask a game sets on the tunables AFTER setup is the one the body sweeps. Games set it
+## then, because that is when they know their physics layout, and the body used to keep the
+## mask it copied when it was built: game-playground's players walked through every prop.
+func _test_mask_set_after_setup() -> void:
+	_section("a mask set after setup is the one swept")
+
+	var world := Node3D.new()
+	add_child(world)
+	# The only floor is on layer 2, which the default mask (1) does not see.
+	var floor := StaticBody3D.new()
+	floor.collision_layer = 2
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(20.0, 1.0, 20.0)
+	shape.shape = box
+	floor.add_child(shape)
+	floor.position = Vector3(0.0, -0.5, 0.0)
+	world.add_child(floor)
+
+	var controller := _make_player(world, DotFpsController.Drive.EXTERNAL)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	controller.tunables.collision_mask = 1 | 2
+	controller.teleport(Vector3(0.0, 1.0, 0.0))
+	for i in range(90):
+		controller.apply_command(_command(0.0))
+		controller.simulate_tick(i + 1, STEP)
+
+	_check(controller.body.collision_mask == 3, "the body sweeps the tunables' mask", "body %d" % controller.body.collision_mask)
+	_check(controller.state.is_grounded() and controller.state.position.y > -0.1,
+		"and the player stands on the layer it added", "y %.2f" % controller.state.position.y)
 
 	world.queue_free()
 	await get_tree().process_frame

@@ -603,3 +603,7 @@ symptom was the camera.
 A consumer also has to **wait one frame** before reading `active_id()`: the default is
 activated deferred, so on the frame the switch is built the active id is still empty, which
 is neither controller.
+
+## The body sweeps the tunables' mask, every tick (2026-10-06)
+
+`DotFpsController.simulate_tick` hands `tunables.collision_mask` to its `body` before the motor runs. The body copied the mask once, in `_make_body`, and every game sets the mask after setup (that is when it knows its physics layout: game-arena, game-g2gfast, game-playground, mg-deathrun, mg-wipeout and mg-smash-copter all do `controller.tunables.collision_mask = …`). So the body kept 1, the world layer only, and game-playground's players walked through every prop, NPC and vehicle with the tunables reading the right mask the whole time; it was found by a player standing on a platform for the first time and falling through it. `fps_controller_selftest`'s *a mask set after setup is the one swept* (armed: body 1, the player falls to -21.75).
