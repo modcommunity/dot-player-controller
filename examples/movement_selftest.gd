@@ -24,7 +24,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 240
+const CHECKS := 244
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -1877,6 +1877,37 @@ func _test_net_sync_round_trip() -> void:
 				% DotFpsState.mode_name(mode, motor)
 		)
 
+	# The slide and launch timers ride in the same word, and must not disturb the mode or
+	# crouch below them. Without them a rewind kept the client's own cooldown and refused
+	# a launch the server made (game-arena measured 3.2 m apart).
+	var timed := DotFpsState.new()
+	timed.mode = DotFpsState.Mode.AIR
+	timed.crouch_held = true
+	timed.launch_cooldown_left = 7.25
+	timed.slide_time = 0.5
+	timed.slide_cooldown_left = 0.25
+	var untimed := DotFpsState.new()
+	DotFpsNetSync.unpack_flags(untimed, DotFpsNetSync.pack_flags(timed))
+	_check(
+		is_equal_approx(untimed.launch_cooldown_left, 7.25)
+			and is_equal_approx(untimed.slide_time, 0.5)
+			and is_equal_approx(untimed.slide_cooldown_left, 0.25),
+		"the slide and launch timers round-trip to the tick",
+		"%.4f %.4f %.4f" % [untimed.launch_cooldown_left, untimed.slide_time, untimed.slide_cooldown_left]
+	)
+	_check(untimed.mode == DotFpsState.Mode.AIR and untimed.crouch_held,
+		"without disturbing the mode or the crouch bit")
+	var idle := DotFpsState.new()
+	DotFpsNetSync.unpack_flags(idle, DotFpsNetSync.pack_flags(DotFpsState.new()))
+	_check(not idle.is_sliding() and idle.launch_cooldown_left == 0.0,
+		"and a player doing neither arrives doing neither")
+	var pressed := DotFpsState.new()
+	pressed.previous_buttons = DotFpsCommand.BUTTON_USER_0 | DotFpsCommand.BUTTON_CROUCH
+	var restored_buttons := DotFpsState.new()
+	DotFpsNetSync.unpack_flags(restored_buttons, DotFpsNetSync.pack_flags(pressed))
+	_check(restored_buttons.previous_buttons == pressed.previous_buttons,
+		"and the buttons every press is detected against arrive with it")
+
 	# The active modifier set travels as a mask, so membership and order both have
 	# to come back — the aggregate is a product and the order it is taken in is part
 	# of the determinism contract.
@@ -1903,9 +1934,13 @@ func _test_net_sync_round_trip() -> void:
 	DotFpsNetSync.unpack_modifiers(empty, 0)
 	_check(empty.modifiers.is_empty(), "and an empty mask clears the set")
 
+	# 23 bytes since 2026-10-06, from 20: the slide and launch timers (26 bits) and the
+	# previous tick's buttons (8) ride in the flags, tick-exact, because without them a
+	# rewind replayed a launch as no launch and game-arena measured 3.2 m between the ends.
+	# Under four bytes per player per snapshot.
 	_check(
-		DotFpsNetSync.estimated_state_bits() < 160,
-		"a full state update stays under 20 bytes",
+		DotFpsNetSync.estimated_state_bits() < 184,
+		"a full state update stays under 23 bytes",
 		"%d bits" % DotFpsNetSync.estimated_state_bits()
 	)
 

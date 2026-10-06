@@ -65,7 +65,40 @@ const MODE_MASK := (1 << MODE_BITS) - 1
 ## Crouch is held, in the bit above the mode.
 const FLAG_CROUCH_HELD := 1 << MODE_BITS
 
-const FLAG_BITS := MODE_BITS + 1
+## The slide and launch timers, packed above the crouch bit, in sixty-fourths of a second.
+##
+## [b]Replicated, unlike the jump timers, and the reason is measured.[/b] A rewind restores
+## what the snapshot carries and replays from it, and everything else keeps the client's
+## CURRENT value. For the launch that is fatal: the client predicts the launch and starts
+## its cooldown, a snapshot from before the launch arrives, the replay reaches the press
+## with the cooldown already running and refuses it — and the client sits on the ground
+## while the server's player is four metres up. game-arena's net suite measured 3.2 m of
+## it before these bits existed. A slide in progress is the same shape at lower stakes.
+##
+## [b]In the flags word rather than a new property[/b], because every game that wires this
+## declares [code]net_flags[/code] already and reads its width from here; a new property
+## would be a new [code]var[/code] in every game's net behaviour. 1/64 s is a tick at the
+## family's usual rate, so a cooldown counted down a tick at a time quantises exactly.
+const TIMER_SCALE := 64.0
+const LAUNCH_BITS := 12
+const SLIDE_BITS := 7
+const SLIDE_COOLDOWN_BITS := 7
+
+## A slide_time of this many sixty-fourths means "not sliding".
+const NOT_SLIDING := (1 << SLIDE_BITS) - 1
+
+const LAUNCH_SHIFT := MODE_BITS + 1
+const SLIDE_SHIFT := LAUNCH_SHIFT + LAUNCH_BITS
+const SLIDE_COOLDOWN_SHIFT := SLIDE_SHIFT + SLIDE_BITS
+
+## The buttons of the command the snapshot's tick applied, which is what every press is
+## detected against ([member DotFpsState.previous_buttons]). [b]Not sending it was the
+## second half of the same bug[/b]: a rewind kept the client's CURRENT buttons, so with the
+## key still held the replayed press tick saw no edge at all and the launch (or a buffered
+## jump, or a slide) never happened in the replay.
+const BUTTONS_SHIFT := SLIDE_COOLDOWN_SHIFT + SLIDE_COOLDOWN_BITS
+
+const FLAG_BITS := BUTTONS_SHIFT + DotFpsCommand.BUTTON_BITS
 
 ## Most modifiers that can be active at once, and the width of the replicated mask.
 const MODIFIER_BITS := 32
@@ -154,7 +187,8 @@ static func state_specs() -> Array[Dictionary]:
 
 ## Bits one full state update costs, before dot-net's own framing.
 static func estimated_state_bits() -> int:
-	# position 3x16 + velocity 3x12 + yaw 12 + pitch 9 + crouch 6 + flags + modifiers
+	# position 3x16 + velocity 3x12 + yaw 12 + pitch 9 + crouch 6 + flags (mode, crouch,
+	# and the slide and launch timers) + modifiers
 	return 48 + 36 + 12 + 9 + 6 + FLAG_BITS + MODIFIER_BITS
 
 
@@ -164,12 +198,39 @@ static func pack_flags(state: DotFpsState) -> int:
 	if state.crouch_held:
 		flags |= FLAG_CROUCH_HELD
 
+	flags |= _quantise(state.launch_cooldown_left, LAUNCH_BITS) << LAUNCH_SHIFT
+	var slide := NOT_SLIDING if not state.is_sliding() else mini(
+		_quantise(state.slide_time, SLIDE_BITS), NOT_SLIDING - 1
+	)
+	flags |= slide << SLIDE_SHIFT
+	flags |= _quantise(state.slide_cooldown_left, SLIDE_COOLDOWN_BITS) << SLIDE_COOLDOWN_SHIFT
+	flags |= (state.previous_buttons & ((1 << DotFpsCommand.BUTTON_BITS) - 1)) << BUTTONS_SHIFT
+
 	return flags
 
 
 static func unpack_flags(state: DotFpsState, flags: int) -> void:
 	state.crouch_held = (flags & FLAG_CROUCH_HELD) != 0
 	state.mode = flags & MODE_MASK
+
+	state.launch_cooldown_left = _field(flags, LAUNCH_SHIFT, LAUNCH_BITS) / TIMER_SCALE
+	var slide := _field(flags, SLIDE_SHIFT, SLIDE_BITS)
+	state.slide_time = -1.0 if slide == NOT_SLIDING else slide / TIMER_SCALE
+	state.slide_cooldown_left = (
+		_field(flags, SLIDE_COOLDOWN_SHIFT, SLIDE_COOLDOWN_BITS) / TIMER_SCALE
+	)
+	state.previous_buttons = (flags >> BUTTONS_SHIFT) & ((1 << DotFpsCommand.BUTTON_BITS) - 1)
+
+
+## Seconds as sixty-fourths, clamped into [param bits]. A cooldown longer than the field
+## holds is sent as the longest it can say: the client may then predict an ability a few
+## ticks early, and the next snapshot takes it back.
+static func _quantise(seconds: float, bits: int) -> int:
+	return clampi(roundi(maxf(seconds, 0.0) * TIMER_SCALE), 0, (1 << bits) - 1)
+
+
+static func _field(flags: int, shift: int, bits: int) -> float:
+	return float((flags >> shift) & ((1 << bits) - 1))
 
 
 ## The active modifier set as a bit per registered index.

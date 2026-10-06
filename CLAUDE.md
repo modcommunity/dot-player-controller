@@ -497,7 +497,7 @@ correlated with it.
 
 **The launch is an ability rather than a `DotFpsModifier`**, because it is an impulse and a modifier is a multiplier. It sets the vertical speed rather than adding to it, so a launch at the top of a jump goes no higher than one from the ground. **Its button is a setting, not a new bit**: every bit on the wire is spoken for (the user bits are each game's own), so `launch_button` names whichever one the game has free. A stun (`deny_jump` / `deny_move`) refuses it.
 
-**`slide_time`, `slide_cooldown_left` and `launch_cooldown_left` are in `DotFpsState`** and not replicated, exactly like the jump timers: the server decides, and the snapshot carries the velocity that resulted. Both sections in `movement_selftest` replay from a snapshot in the middle of the thing and carry a negative control that drops the field from the snapshot, which must diverge. `slide_changed` and `launched` are **not** emitted during a prediction replay, unlike `crouch_changed`: they are where a game hangs a sound, and a replayed tick is one the player already heard.
+**`slide_time`, `slide_cooldown_left` and `launch_cooldown_left` are in `DotFpsState` AND in the snapshot**, packed into `net_flags` with the previous tick's buttons. The first version left them out "like the jump timers", and game-arena's net suite measured what that costs: the client predicts a launch and starts the cooldown, a snapshot from before the launch arrives, the rewind keeps the client's CURRENT cooldown and CURRENT buttons, and the replay reaches the press with the cooldown running and the key already down — no launch, and 3.2 m between the ends. `DotFpsNetSync.pack_flags` now carries all three timers in sixty-fourths of a second (a tick at the family's usual rate) and `previous_buttons`, which every press edge is detected against; that also closes the same hole for a buffered jump. In the flags word rather than as new properties because every game already declares `net_flags` and reads its width from `FLAG_BITS`; a full state update is 23 bytes where it was 20. Both sections in `movement_selftest` replay from a snapshot in the middle of the thing and carry a negative control that drops the field, which must diverge. `slide_changed` and `launched` are **not** emitted during a prediction replay, unlike `crouch_changed`: they are where a game hangs a sound, and a replayed tick is one the player already heard.
 
 ### Validating
 
@@ -506,7 +506,7 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-godot --headless --path . res://examples/movement_selftest.tscn     # 240 checks
+godot --headless --path . res://examples/movement_selftest.tscn     # 244 checks
 godot --headless --path . res://examples/controller_selftest.tscn   # 106 checks
 godot --headless --path . res://examples/fps_controller_selftest.tscn # 55 checks
 godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks
