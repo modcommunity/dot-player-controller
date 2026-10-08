@@ -469,7 +469,7 @@ Nothing here should require a fork.
 | How one kind of ground behaves | `DotFpsSurface` in a `DotFpsSurfaceSet` |
 | How a collider maps to a surface | Node metadata or a group; override `DotFpsController._resolve_surface_id` |
 | A temporary effect — pad, slow field, stun, launcher | `DotFpsModifier`, registered in `_register_extensions` |
-| A new movement mode (ladders, swimming, vehicles) | `DotFpsMoveMode` subclass, `DotFpsMotor.register_mode` |
+| A new movement mode (ladders, swimming, vehicles) | `DotFpsMoveMode` subclass, in `DotFpsController.extra_modes` (registered on every setup, so it survives a style) or `_register_extensions` |
 | Collision source (heightfield, BSP, a server with no render world) | `DotFpsBody` subclass, assigned by overriding `DotFpsController._make_body` |
 | Input devices, action names, a bot, a demo | `DotFpsSampler`; `DotFpsTouchSampler` for touch |
 | Extra actions (fire, use, reload) | `BUTTON_USER_0..2`, already on the wire |
@@ -511,7 +511,7 @@ find . -name '*.gd' -not -path './.godot/*' | while read f; do
 done
 godot --headless --path . res://examples/movement_selftest.tscn     # 271 checks
 godot --headless --path . res://examples/controller_selftest.tscn   # 106 checks
-godot --headless --path . res://examples/fps_controller_selftest.tscn # 55 checks
+godot --headless --path . res://examples/fps_controller_selftest.tscn # 60 checks
 godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks
 godot --headless --path . res://examples/surf_physics_selftest.tscn # 24 checks
 ```
@@ -620,4 +620,4 @@ Since the walkable-slope fix (803308f) `_snap_to_ground` held every player to th
 - with nothing pressed the player drifts to float with the head `float_depth` above the feet at the surface;
 - a jump with the waist within `exit_reach` of the surface sets the upward speed to `exit_speed`, enough to get over an edge.
 
-`_uses_crouch` is false, so the collider does not change size underwater. `movement_selftest`'s *swimming* (8) covers: in at the waist, floating to the surface, diving, forward at swim speed, out with a jump and the climb's speed, and a dry player left alone. game-playground is the first user.
+`_uses_crouch` is false, so the collider does not change size underwater. `movement_selftest`'s *swimming* (8) covers: in at the waist, floating to the surface, diving, forward at swim speed, out with a jump and the climb's speed, and a dry player left alone. game-playground is the first user, through `DotFpsController.extra_modes`: a mode registered by hand on the motor is lost the first time a style rebuilds it, and `fps_controller_selftest` asserts it survives two.

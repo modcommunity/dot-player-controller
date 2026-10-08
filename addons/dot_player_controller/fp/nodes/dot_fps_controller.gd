@@ -308,6 +308,12 @@ func setup() -> DotResult:
 
 	_register_extensions()
 
+	# A host's own modes, after a subclass's, in list order: the same order on every machine
+	# and on every rebuild (a style rebuilds the motor, which would otherwise drop them).
+	for extra: Variant in extra_modes:
+		if extra is DotFpsMoveMode:
+			var _id := motor.register_mode(extra)
+
 	# After the game's own, so turning this on does not renumber a game's modifiers.
 	if admin_abilities:
 		var _count := DotFpsAdminModifiers.register(motor)
@@ -451,6 +457,12 @@ static func _descendant_ref(type: StringName) -> DotNodeRef:
 ## [/codeblock]
 func _register_extensions() -> void:
 	pass
+
+
+## Movement modes a host adds without subclassing (water, a ladder), registered on every
+## [method setup] straight after [method _register_extensions], in this order. Every
+## machine must list the same modes in the same order: the mode id is on the wire.
+var extra_modes: Array[DotFpsMoveMode] = []
 
 
 ## Maps a collider to a surface id, for the motor.

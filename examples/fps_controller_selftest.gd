@@ -18,7 +18,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 58
+const CHECKS := 60
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -575,6 +575,17 @@ func _test_mask_set_after_setup() -> void:
 	controller.simulate_tick(91, STEP)
 	_check(controller.tunables.collision_mask == 5 and controller.body.collision_mask == 5,
 		"and set_collision_mask survives a style", "tunables %d body %d" % [controller.tunables.collision_mask, controller.body.collision_mask])
+
+	# A host's own mode, without subclassing: registered on every setup, so a style's rebuilt
+	# motor still has it, under the same id.
+	var swim := DotFpsSwimMode.new()
+	controller.extra_modes = [swim]
+	var _with := controller.set_style(DotFpsStyle.new())
+	var first_id := controller.motor.mode_id_of(&"swim")
+	var _again := controller.set_style(DotFpsStyle.new())
+	_check(first_id >= DotFpsState.FIRST_CUSTOM_MODE, "a host's extra mode is registered by setup", str(first_id))
+	_check(controller.motor.mode_id_of(&"swim") == first_id and controller.motor.mode_for(first_id) == swim,
+		"and survives the motor a style rebuilds, under the same id")
 
 	world.queue_free()
 	await get_tree().process_frame
