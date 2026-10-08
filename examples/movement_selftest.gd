@@ -30,7 +30,7 @@ const CHECKS := 271
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 41
+const SECTIONS := 42
 
 var _passed := 0
 var _failed := 0
@@ -679,6 +679,7 @@ func _test_swimming() -> void:
 	dry.mode = DotFpsState.Mode.GROUND
 	swim.update(motor, dry)
 	_check(dry.mode == DotFpsState.Mode.GROUND, "a player outside every volume is left alone")
+	_done()
 
 
 func _test_surfaces() -> void:
