@@ -509,7 +509,7 @@ godot --headless --path . --import
 find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
-godot --headless --path . res://examples/movement_selftest.tscn     # 254 checks
+godot --headless --path . res://examples/movement_selftest.tscn     # 271 checks
 godot --headless --path . res://examples/controller_selftest.tscn   # 106 checks
 godot --headless --path . res://examples/fps_controller_selftest.tscn # 55 checks
 godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks
@@ -562,9 +562,7 @@ class's.
 
 ### Things deliberately not here
 
-- **Ladders, swimming, vehicles.** `DotFpsMoveMode` is the hook; the modes
-  themselves are a game's own decision about feel. The self-test ships a ladder as a
-  worked example of the interface, not as something to use.
+- **Ladders and vehicles.** `DotFpsMoveMode` is the hook; the modes themselves are a game's own decision about feel. The self-test ships a ladder as a worked example of the interface, not as something to use. **Swimming is here since 2026-10-07** (`fp/motion/dot_fps_swim_mode.gd`, below), because three kinds of map in the family wanted water and the hard part of it, determinism, is this addon's.
 - **Weapons, health, hit detection.** dot-net's lag compensation rewinds positions;
   what to trace is a game's concern.
 - **Camera shake, weapon sway, procedural lean.** `DotFpsView` has bob, a landing
@@ -613,3 +611,13 @@ is neither controller.
 ## A fast crest launches (2026-10-06, `[slope-crest-1]`)
 
 Since the walkable-slope fix (803308f) `_snap_to_ground` held every player to the floor past a ramp's crest, which is right for a run up it and wrong for a hop over it. `DotFpsTunables.crest_launch_speed_scale` (1.25, a multiple of `max_speed`, Christian's pick) is the line: over a crest still carrying the climb, a player at or above it is left in the air with all of their speed, and one below is laid onto the floor as before. 0 restores always-grounded. `movement_selftest`'s *a fast crest launches, a slow one does not* (with the threshold under the walker's speed they are thrown, at 0 never; armed: without the branch, 0.014 m above the plateau), and the physics-slope section still walks onto the plateau at the default. game-g2gfast exposes it as `sv_crestlaunch`. Every first-person game's suites were re-run green with it.
+
+## Swimming (2026-10-07)
+
+`DotFpsSwimMode` is the first built-in custom mode. **Water is a list of axis-aligned boxes** (`volumes`) the game hands over from its map, never an `Area3D`: overlap signals arrive after the physics step on the main loop, and a client replaying ticks of prediction cannot ask an area where it was. A box list answers any question any number of times, the same on both ends. **Entering is the game's once-a-tick call** (`update(motor, state)`, from wherever it runs per-tick logic that also runs during a prediction replay), when the waist (`waist`, 1 m above the feet) is in a volume. **Leaving is the mode's own**, the moment the waist is out: it hands the player to AIR and the motor's own modes take over. In the water:
+- the wish follows the view (pitch included);
+- jump swims up and crouch dives;
+- with nothing pressed the player drifts to float with the head `float_depth` above the feet at the surface;
+- a jump with the waist within `exit_reach` of the surface sets the upward speed to `exit_speed`, enough to get over an edge.
+
+`_uses_crouch` is false, so the collider does not change size underwater. `movement_selftest`'s *swimming* (8) covers: in at the waist, floating to the surface, diving, forward at swim speed, out with a jump and the climb's speed, and a dry player left alone. game-playground is the first user.

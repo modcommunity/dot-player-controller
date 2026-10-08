@@ -24,7 +24,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 263
+const CHECKS := 271
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -57,6 +57,7 @@ func _run() -> void:
 	_test_air_strafing()
 	_test_speed_modifiers()
 	_test_surfaces()
+	_test_swimming()
 	_test_modifiers()
 	_test_custom_mode()
 	_test_crouch_headroom()
@@ -617,6 +618,67 @@ func _test_speed_modifiers() -> void:
 		"a disabled ability ignores its button"
 	)
 	_done()
+
+
+## DotFpsSwimMode: water as a list of boxes. In at the waist, up with jump, down with
+## crouch, floating with the head out when nothing is pressed, out at the surface with a
+## jump, and back to AIR the moment the waist leaves the water.
+func _test_swimming() -> void:
+	_section("swimming")
+
+	var t := _tunables()
+	var motor := _motor(t, DotFpsFlatBody.with_floor(-6.0))
+	var swim := DotFpsSwimMode.new()
+	# A pool 5 m deep with its surface at y 0, the floor of the world 6 m down.
+	swim.volumes = [AABB(Vector3(-20.0, -5.0, -20.0), Vector3(40.0, 5.0, 40.0))]
+	var id := motor.register_mode(swim)
+	_check(id >= DotFpsState.FIRST_CUSTOM_MODE, "it registers as a mode")
+
+	var s := DotFpsState.new()
+	s.position = Vector3(0.0, -3.0, 0.0)
+	s.mode = DotFpsState.Mode.AIR
+	swim.update(motor, s)
+	_check(s.mode == id, "a player whose waist is in the water swims")
+
+	var idle := DotFpsCommand.new()
+	for _i in range(int(4.0 / STEP)):
+		motor.simulate(s, idle, STEP)
+		swim.update(motor, s)
+	var head := s.position.y + swim.float_depth
+	_check(s.mode == id and absf(head - 0.0) < 0.25, "letting go floats them up, head at the surface",
+		"feet %.2f, surface 0" % s.position.y)
+
+	var dive := DotFpsCommand.new()
+	dive.set_button(DotFpsCommand.BUTTON_CROUCH, true)
+	var before := s.position.y
+	for _i in range(int(1.0 / STEP)):
+		motor.simulate(s, dive, STEP)
+	_check(s.position.y < before - 1.5, "crouch dives", "%.2f -> %.2f" % [before, s.position.y])
+
+	var forward := DotFpsCommand.new()
+	forward.move = Vector2(0.0, 1.0)
+	for _i in range(int(2.0 / STEP)):
+		motor.simulate(s, forward, STEP)
+	var flat := Vector2(s.velocity.x, s.velocity.z).length()
+	_check(flat > swim.swim_speed * 0.8 and flat <= swim.swim_speed + 0.01, "forward swims at swim speed, slower than running",
+		"%.2f m/s" % flat)
+
+	var up := DotFpsCommand.new()
+	up.set_button(DotFpsCommand.BUTTON_JUMP, true)
+	for _i in range(int(3.0 / STEP)):
+		motor.simulate(s, up, STEP)
+		swim.update(motor, s)
+		if s.mode != id:
+			break
+	_check(s.mode == DotFpsState.Mode.AIR, "jump at the surface climbs out, and the water hands them to the air",
+		"mode %d at %.2f" % [s.mode, s.position.y])
+	_check(s.velocity.y >= swim.exit_speed * 0.5, "with the climb's speed", "%.2f" % s.velocity.y)
+
+	var dry := DotFpsState.new()
+	dry.position = Vector3(30.0, -6.0, 0.0)
+	dry.mode = DotFpsState.Mode.GROUND
+	swim.update(motor, dry)
+	_check(dry.mode == DotFpsState.Mode.GROUND, "a player outside every volume is left alone")
 
 
 func _test_surfaces() -> void:
