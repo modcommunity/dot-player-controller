@@ -24,7 +24,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 258
+const CHECKS := 263
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -621,6 +621,34 @@ func _test_speed_modifiers() -> void:
 
 func _test_surfaces() -> void:
 	_section("surfaces")
+
+	# Read off a dot-physics surface, duck-typed: the fields DotPhysicsSurface has.
+	var mud_physics := FakePhysicsSurface.new()
+	mud_physics.id = &"mud"
+	mud_physics.traction = 1.2
+	mud_physics.move_scale = 0.6
+	mud_physics.dampening = 2.5
+	mud_physics.jump_scale = 0.8
+	var mud := DotFpsSurface.from_physics(mud_physics)
+	_check(mud.id == &"mud" and is_equal_approx(mud.friction_scale, 1.2) and is_equal_approx(mud.accelerate_scale, 0.6),
+		"a surface read off dot-physics takes traction as friction and move_scale as acceleration")
+	_check(is_equal_approx(mud.max_speed_scale, 0.625) and is_equal_approx(mud.jump_scale, 0.8),
+		"its dampening lowers the top speed, and its jump carries over", "%.3f" % mud.max_speed_scale)
+	var ice_physics := FakePhysicsSurface.new()
+	ice_physics.id = &"ice"
+	ice_physics.traction = 0.1
+	_check(is_equal_approx(DotFpsSurface.from_physics(ice_physics).max_speed_scale, 1.0),
+		"ice, with no dampening, keeps its top speed")
+	var water_physics := FakePhysicsSurface.new()
+	water_physics.id = &"water"
+	water_physics.liquid = true
+	_check(not DotFpsSurface.from_physics(water_physics).standable, "a liquid is not stood on")
+	var whole := FakePhysicsSet.new()
+	whole.surfaces = [mud_physics, ice_physics, water_physics]
+	var converted := DotFpsSurfaceSet.from_physics(whole)
+	_check(converted.has_surface(&"mud") and converted.has_surface(&"water")
+		and converted.get_surface(&"unknown").friction_scale == 1.0,
+		"and a whole set converts, falling back to plain ground")
 
 	var ice := DotFpsSurface.make(&"ice")
 	ice.friction_scale = 0.02
@@ -3496,3 +3524,20 @@ func _test_physics_body() -> void:
 
 	world.queue_free()
 	_done()
+
+
+## The fields `DotFpsSurface.from_physics` reads off a dot-physics `DotPhysicsSurface`,
+## which this addon does not depend on.
+class FakePhysicsSurface:
+	extends RefCounted
+	var id: StringName = &""
+	var traction: float = 1.0
+	var move_scale: float = 1.0
+	var dampening: float = 0.0
+	var jump_scale: float = 1.0
+	var liquid: bool = false
+
+
+class FakePhysicsSet:
+	extends RefCounted
+	var surfaces: Array = []

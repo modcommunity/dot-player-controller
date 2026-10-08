@@ -79,6 +79,32 @@ static func make(p_id: StringName) -> DotFpsSurface:
 	return s
 
 
+## A movement surface read off a dot-physics `DotPhysicsSurface`, so a game that uses both
+## reads one number per material ("a game that uses both should be reading one number",
+## dot-physics' own note). Duck-typed: this addon does not depend on dot-physics.
+##
+## - `traction` is the friction scale (ice 0.1);
+## - `move_scale` is the acceleration scale;
+## - the top speed comes down with `dampening`, the extra velocity a material takes off on
+##   contact: 1 - 0.15 per unit, never under 0.4 (mud 2.5 -> 0.63, sand 1.2 -> 0.82, snow
+##   0.8 -> 0.88). Ice keeps its top speed, which is what makes it ice and not mud;
+## - `jump_scale` carries over (rubber 1.8, mud 0.8);
+## - a `liquid` is not stood on.
+static func from_physics(surface: Object) -> DotFpsSurface:
+	var s := DotFpsSurface.new()
+	if surface == null:
+		return s
+	s.id = surface.get("id")
+	s.material_tag = s.id
+	s.friction_scale = float(surface.get("traction"))
+	s.accelerate_scale = float(surface.get("move_scale"))
+	s.max_speed_scale = clampf(1.0 - float(surface.get("dampening")) * 0.15, 0.4, 1.0)
+	var jump: Variant = surface.get("jump_scale")
+	s.jump_scale = float(jump) if jump != null else 1.0
+	s.standable = not bool(surface.get("liquid")) if surface.get("liquid") != null else true
+	return s
+
+
 func describe() -> Dictionary:
 	return {
 		"id": String(id),

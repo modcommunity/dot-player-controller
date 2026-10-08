@@ -71,6 +71,20 @@ func has_surface(id: StringName) -> bool:
 	return _by_id.has(id)
 
 
+## Every surface of a dot-physics `DotPhysicsSurfaceSet` (anything with a `surfaces` array
+## of `DotPhysicsSurface`s), through [method DotFpsSurface.from_physics]. Its fallback is
+## the plain default, not the physics set's fallback material: an untagged floor is normal
+## ground to walk on whatever it is made of.
+static func from_physics(physics_set: Object) -> DotFpsSurfaceSet:
+	var out := DotFpsSurfaceSet.new()
+	var list: Variant = physics_set.get("surfaces") if physics_set != null else null
+	if list is Array:
+		for each: Variant in list:
+			if each is Object:
+				var _added := out.add(DotFpsSurface.from_physics(each))
+	return out
+
+
 func add(surface: DotFpsSurface) -> DotFpsSurfaceSet:
 	surfaces.append(surface)
 	_built = false
