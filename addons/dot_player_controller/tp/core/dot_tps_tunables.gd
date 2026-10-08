@@ -113,7 +113,7 @@ func env_prefix() -> String:
 
 
 func cli_prefix() -> String:
-	return "tps-"
+	return "--tps-"
 
 
 func validate() -> DotResult:
