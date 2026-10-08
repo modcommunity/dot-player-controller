@@ -27,13 +27,13 @@ extends Node3D
 ## are on can tell you so.
 
 const STEP := 1.0 / 128.0
-const CHECKS := 26
+const CHECKS := 29
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 6
+const SECTIONS := 7
 
 var _passed := 0
 var _failed := 0
@@ -162,6 +162,7 @@ func _run() -> void:
 	await _test_a_standing_player_is_left_alone()
 	await _test_leaving_a_surface_is_not_blocked()
 	await _test_a_surfer_leaves_a_face_over_its_far_end()
+	await _test_a_reversed_rest_normal_is_turned_round()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -498,4 +499,70 @@ func _test_a_surfer_leaves_a_face_over_its_far_end() -> void:
 		"and every rider is still past 20 m/s 2 m beyond the edge",
 		"; ".join(detail)
 	)
+	_done()
+
+
+# --- A rest normal pointing into the face ([ramp-pop-1]) -------------------
+
+## Capsules resting a hair off a 52 degree slab, at the spots the engine answers wrongly.
+func _resting_on_slab(normal: Vector3, support: float) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	for i in 400:
+		var gap := (i % 20) * 0.0001 - 0.0005
+		var p := Vector3((i / 20) * 0.37 - 3.0, 0.0, ((i * 7) % 13) * 0.3 - 2.0)
+		p -= normal * normal.dot(p)
+		out.append(p + normal * (support + gap))
+	return out
+
+
+func _test_a_reversed_rest_normal_is_turned_round() -> void:
+	_section("a rest normal reported into the face is turned round, and nobody is pushed through")
+
+	await _clear()
+	# A thin slab, the shape an imported ramp brush is: Godot's resting query reverses
+	# the normal for some capsules resting on it (game-g2gfast surf_mesa, 2026-10-08).
+	var r := deg_to_rad(52.0)
+	var normal := _normal_for(52.0)
+	var sb := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(20.0, 0.5, 20.0)
+	cs.shape = box
+	sb.add_child(cs)
+	sb.transform = Transform3D(Basis.from_euler(Vector3(-r, 0.0, 0.0)), -normal * 0.25)
+	add_child(sb)
+	await _settle()
+
+	var body := DotFpsPhysicsBody.for_node(self)
+	var support := DotFpsBody.capsule_support(normal, _t.stand_height, _t.radius)
+	var raw_reversed := 0
+	var reported_reversed := 0
+	var worst := 0.0
+	for centre in _resting_on_slab(normal, support):
+		var raw := body._raw_rest_contact(centre, _t.stand_height, _t.radius)
+		if raw.hit and raw.normal.dot(normal) < 0.0:
+			raw_reversed += 1
+		var rest := body.rest_contact(centre, _t.stand_height, _t.radius)
+		if rest.hit and rest.normal.dot(normal) < 0.0:
+			reported_reversed += 1
+			worst = maxf(worst, rest.depth)
+
+	# The guard on the guard: if the engine stops doing it, this section proves nothing.
+	_check(raw_reversed > 0, "the engine still reverses some resting normals on this slab",
+		"%d" % raw_reversed)
+	_check(reported_reversed == 0, "rest_contact reports none of them reversed",
+		"%d reversed, deepest %.3f m" % [reported_reversed, worst])
+
+	# The motor's view: a capsule resting on the face is never moved INTO it. Before the
+	# fix _depenetrate pushed these a full step through the slab.
+	var motor := DotFpsMotor.new(_t, body)
+	var deepest := -INF
+	for centre in _resting_on_slab(normal, support):
+		var s := DotFpsState.new()
+		s.position = centre - Vector3.UP * (_t.stand_height * 0.5)
+		s.mode = DotFpsState.Mode.AIR
+		motor._depenetrate(s, _t.stand_height)
+		deepest = maxf(deepest, _penetration(s.position, normal))
+	_check(deepest < 0.001, "depenetration never pushes a resting capsule into the face",
+		"%.3f m past it" % deepest)
 	_done()

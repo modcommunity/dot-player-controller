@@ -34,6 +34,12 @@ So nothing clips the velocity, gravity keeps pulling, and the player accelerates
 
 And the measurement is **penetration, not speed.** A player sinking through a ramp has a plausible speed, a plausible position and a clean stuck count. The only thing they do not have is clearance, and nothing but a geometric test of the capsule against the face it is on can say so.
 
+## A resting normal that points into the face (2026-10-08, `[ramp-pop-1]`)
+
+`get_rest_info` sometimes reports a capsule resting on a face with that face's normal **reversed**: same contact point, normal pointing into the solid, and a depth measured along it of nearly the whole capsule. On game-g2gfast's surf_mesa a rider a skin off a ramp brush, not moving between two queries, read clear on one tick and 57 units deep the next. `_depenetrate` then pushed them a full step (its clamp) INTO the ramp, and the next tick measured that real overlap and pushed them back: a two-tick dip that a recording shows as one frame of the view jumping, many times a ride. That was "the ramps are jumpy". It reproduces on a plain 20 m x 0.5 m box at 52 degrees (11 of 131 resting capsules), so it is the engine's and not the map's.
+
+**The tell is that the capsule's centre is past the contact plane** (depth over the support along the normal), which a resting contact never is. A genuine embed of more than half the capsule looks the same, so `_turn_round_flipped` does not assume: it moves the capsule out along the reversed normal and believes the reversal only if it is clear there (`FLIP_CHECK_CLEARANCE`). No upper bound on depth: the flipped reports came out a few millimetres past the whole capsule, inside the shapes' margin. `rest_contact` and `sweep` (whose contact normal is the same query at `unsafe`) both go through it; `flipped_normals` counts it. game-g2gfast's `tools/ramp_bump_probe.tscn` measured the ride: 300 surf_mesa rides, steps off the smooth line by more than 17 units went from 3,200 to 10, all bumps over 1 unit from 9.5% of ramp ticks to 2.6%. `surf_physics_selftest`'s last section (armed: without the turn-round, 3 reversed and a capsule pushed 0.4 m through the slab).
+
 ## The one idea
 
 **A switch between two controllers carries position, velocity and view — and nothing else.**
@@ -513,7 +519,7 @@ godot --headless --path . res://examples/movement_selftest.tscn     # 271 checks
 godot --headless --path . res://examples/controller_selftest.tscn   # 106 checks
 godot --headless --path . res://examples/fps_controller_selftest.tscn # 60 checks
 godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks
-godot --headless --path . res://examples/surf_physics_selftest.tscn # 24 checks
+godot --headless --path . res://examples/surf_physics_selftest.tscn # 29 checks
 ```
 
 All four exit non-zero on failure. **`surf_selftest` and `surf_physics_selftest` are not alternatives** — the first is the motor against geometry whose answer is known, the second is the same properties against the collision backend the games actually run on, and the bug that made the second necessary was invisible to the first for as long as it existed. **Run the check-only pass before the scenes**:

@@ -241,6 +241,15 @@ func sweep(
 		result.normal = -motion.normalized()
 		return result
 
+	# The rest query at `unsafe` is the one [method rest_contact] makes, and its normal
+	# can come back reversed the same way. Reversed here, the slide clips the velocity
+	# INTO the face it met. The depth is borrowed only for the check: a sweep reports none.
+	var at_contact := from + motion * unsafe
+	result.depth = maxf(result.normal.dot(result.point - (at_contact - result.normal
+		* DotFpsBody.capsule_support(result.normal, height, radius))), 0.0)
+	_turn_round_flipped(result, at_contact, height, radius)
+	result.depth = 0.0
+
 	# [b]A contact reported late.[/b] Against a large convex, cast_motion's `safe` can be
 	# centimetres past the real contact (`[sweep-1]`: a 40 m wall let a capsule 5 cm
 	# into it, a 164 m wall 11 cm). The rest query at `unsafe` knows how deep `unsafe`
@@ -385,6 +394,72 @@ func _blocking_rest_contact(
 
 
 func rest_contact(at: Vector3, height: float, radius: float) -> Hit:
+	var result := _raw_rest_contact(at, height, radius)
+
+	if not result.hit:
+		return result
+
+	_turn_round_flipped(result, at, height, radius)
+	return result
+
+
+## Turns [param result] round when its normal points into the surface it came from.
+## Shared by [method rest_contact] and [method sweep], which read the same engine answer.
+func _turn_round_flipped(result: Hit, at: Vector3, height: float, radius: float) -> void:
+
+	# [b]A contact normal can come back pointing INTO the surface the capsule rests on
+	# (`[ramp-pop-1]`, 2026-10-08).[/b] A rider on game-g2gfast's surf_mesa, a skin off a
+	# ramp brush and not moving between the two queries, was reported clear on one tick
+	# and on the next 57 units deep along the face's exact reverse: the same contact
+	# point, the normal flipped. Depth is measured along the normal, so a flipped normal
+	# turns a resting contact into an embed of nearly the capsule's whole thickness, and
+	# [method DotFpsMotor._depenetrate] pushed the player a full step INTO the ramp; the
+	# next tick measured the real 18-unit overlap and pushed them back out. A two-tick dip
+	# that a recording shows as one frame of the view jumping off the face and back, many
+	# times a ride -- "the ramps are jumpy". It fired on 231 of 270 rides in
+	# game-g2gfast's tools/ramp_bump_probe.
+	#
+	# The tell is that the capsule's centre lies past the contact plane: depth over the
+	# support along the normal. A real resting contact never does that, and the reversed
+	# normal then measures [code]2 * support - depth[/code], a shallow contact. But a
+	# genuine embed of more than half the capsule does too, and there the engine's normal
+	# is the right way out. So the reversed answer is TRIED, not assumed: kept only when
+	# the capsule moved out along it is clear of whatever it touched.
+	#
+	# No upper bound on the depth, and the reversed depth floors at zero: the flipped
+	# reports measured a few millimetres PAST the whole capsule (56.99 units against a
+	# 56.8 span), because the contact point sits inside the shapes' margin. The probe below
+	# is what tells a flip from a capsule really buried behind a face, at any depth.
+	var support := DotFpsBody.capsule_support(result.normal, height, radius)
+
+	if result.depth <= support:
+		return
+
+	var reversed_depth := maxf(support * 2.0 - result.depth, 0.0)
+	var probe := at - result.normal * (reversed_depth + FLIP_CHECK_CLEARANCE)
+	var after := _raw_rest_contact(probe, height, radius)
+
+	if after.hit and after.depth > FLIP_CHECK_CLEARANCE:
+		return
+
+	result.normal = -result.normal
+	result.depth = reversed_depth
+	flipped_normals += 1
+
+
+## How clear the capsule has to be, moved out along a reversed normal, for the reversal
+## to be believed. Half a millimetre: well inside any skin a motor keeps, and well above
+## the noise of a resting contact.
+const FLIP_CHECK_CLEARANCE := 0.0005
+
+## Rest contacts whose normal came back pointing into the surface and was turned round.
+## See [method rest_contact]. Non-zero on any imported map with sloped brushes; a count
+## that is zero where riders are depenetrating every tick is this check not running.
+var flipped_normals: int = 0
+
+
+## One [method PhysicsDirectSpaceState3D.get_rest_info], taken as the engine reports it.
+func _raw_rest_contact(at: Vector3, height: float, radius: float) -> Hit:
 	var result := Hit.miss()
 
 	if _space == null and not revalidate():
