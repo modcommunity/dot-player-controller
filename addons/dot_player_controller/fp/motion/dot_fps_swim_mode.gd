@@ -46,6 +46,13 @@ var exit_speed: float = 5.0
 ## How close to the surface the waist must be for that jump to count, metres.
 var exit_reach: float = 0.5
 
+## What a player who presses nothing does, m/s downward. 0 (the default) drifts them to
+## [member float_depth], head out of the water; above 0 they sink at this speed instead,
+## which is what the competitive shooters' water does (60 units/s) and what a timer map
+## built for them expects: a pit full of water is climbed out of by holding jump, and a
+## player who lets go goes back down.
+var idle_sink_speed: float = 0.0
+
 
 func _name() -> StringName:
 	return &"swim"
@@ -101,6 +108,8 @@ func _simulate(
 
 	if vertical != 0.0:
 		wish.y += vertical * swim_speed
+	elif command.move == Vector2.ZERO and idle_sink_speed > 0.0:
+		wish.y = -idle_sink_speed
 	elif command.move == Vector2.ZERO:
 		# Nothing pressed: drift to floating, head a little out of the water.
 		var floating := surface - float_depth
@@ -120,4 +129,5 @@ func describe() -> Dictionary:
 	var out := super.describe()
 	out["volumes"] = volumes.size()
 	out["swim_speed"] = swim_speed
+	out["idle_sink_speed"] = idle_sink_speed
 	return out
