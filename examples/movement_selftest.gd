@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 271
+const CHECKS := 273
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 42
+const SECTIONS := 43
 
 var _passed := 0
 var _failed := 0
@@ -78,6 +78,7 @@ func _run() -> void:
 	_test_slide()
 	_test_launch()
 	_test_dash()
+	_test_flat_rest_axis()
 	await _test_physics_body()
 	await _test_physics_slope()
 	await _test_crest_launch()
@@ -242,6 +243,24 @@ func _run_ticks(
 
 
 # --- Assertions ------------------------------------------------------------
+
+## A capsule a few millimetres into a long wall is pushed straight back out of it, not
+## along it. `[fps-flat-rest-axis-1]`: the flat body kept each box's LARGEST axis.
+func _test_flat_rest_axis() -> void:
+	_section("a flat body pushes out along the shallowest axis")
+	var body := DotFpsFlatBody.new()
+	# A wall 64 m long in x, 1 m thick in z, 4 m tall; the capsule's face 6 mm into it.
+	var _added := body.add_box(AABB(Vector3(-32.0, 0.0, -1.0), Vector3(64.0, 4.0, 1.0)))
+	var radius := 0.35
+	var height := 1.8
+	var at := Vector3(3.0, height * 0.5 + 0.01, radius - 0.006)
+	var hit := body.rest_contact(at, height, radius)
+	_check(hit.hit and hit.normal.is_equal_approx(Vector3(0.0, 0.0, 1.0)),
+		"the push is out of the wall's face", "normal %s" % str(hit.normal))
+	_check(hit.hit and absf(hit.depth - 0.006) < 0.0005,
+		"by the 6 mm it is in, not the 32 m along it", "%.4f m" % hit.depth)
+	_done()
+
 
 func _section(title: String) -> void:
 	_entered += 1

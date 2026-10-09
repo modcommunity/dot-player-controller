@@ -344,24 +344,37 @@ func rest_contact(at: Vector3, height: float, radius: float) -> Hit:
 			deepest = depth
 			best = _rest_hit(plane.normal, depth, plane_id(i))
 
+	var bounds := _bounds(at, height, radius)
+
 	for i in range(boxes.size()):
 		var box := boxes[i]
-		var bounds := _bounds(at, height, radius)
 		if not bounds.intersects(box):
 			continue
 
-		# The smallest push along any axis that separates them. Anything larger moves
-		# the player further than the overlap and through whatever is on the far side.
+		# [b]Within ONE box, the axis that separates them soonest[/b] -- anything larger moves
+		# the player further than the overlap, and through whatever is on the far side. This
+		# loop used to keep the LARGEST axis of each box (every axis competed against the
+		# running deepest), the opposite of what this comment said: a capsule 6 mm into a
+		# 64 m wall was "deepest" along the wall, and the motor's depenetration slid it a
+		# step along the wall every tick. A server never ends a tick inside a box, so it
+		# hid; a predicting client does, rounded a few millimetres in by the wire, and
+		# game-arena's launch along a wall drifted 2.8 m from the server
+		# (`[fps-flat-rest-axis-1]`).
+		var least := INF
+		var normal := Vector3.ZERO
 		for axis in range(3):
 			var out_positive := box.position[axis] + box.size[axis] - bounds.position[axis]
 			var out_negative := bounds.position[axis] + bounds.size[axis] - box.position[axis]
 			var depth := minf(out_positive, out_negative)
-			if depth <= 0.0 or depth <= deepest:
-				continue
-			var n := Vector3.ZERO
-			n[axis] = 1.0 if out_positive < out_negative else -1.0
-			deepest = depth
-			best = _rest_hit(n, depth, box_id(i))
+			if depth > 0.0 and depth < least:
+				least = depth
+				normal = Vector3.ZERO
+				normal[axis] = 1.0 if out_positive < out_negative else -1.0
+
+		# Across boxes, the deepest of those: the one that most needs resolving first.
+		if least < INF and least > deepest:
+			deepest = least
+			best = _rest_hit(normal, least, box_id(i))
 
 	return best
 
