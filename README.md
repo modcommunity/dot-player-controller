@@ -22,7 +22,7 @@ addons/dot_player_controller/
 
 The base moves nothing. `fp/` and `tp/` are the two shipped implementations, and a vehicle, a ladder, a spectator camera and a cutscene rail are the same shape.
 
-**`fp/` was `dot-fps-controller`.** Every `class_name` is unchanged — `DotFpsController`, `DotFpsMotor`, `DotFpsTunables` and the rest — because `class_name` is global in Godot and renaming one is a breaking change for every project that has it installed, to gain nothing: `DotFps` still says exactly what it is. Its documentation is kept whole, further down and in `CLAUDE.md`.
+**`fp/` was `dot-fps-controller`.** Every `class_name` is unchanged — `DotFpsController`, `DotFpsMotor`, `DotFpsTunables` and the rest — because `class_name` is global in Godot and renaming one is a breaking change for every project that has it installed, to gain nothing: `DotFps` still says exactly what it is. Its documentation is kept whole, further down and in `docs/`.
 
 A game that wants only one half can delete the other folder; the plugin skips a node type whose script is not there, so a trimmed install is a supported shape rather than a broken one.
 
@@ -160,7 +160,7 @@ Five hooks, and none of them need a fork:
   demo playback.
 
 All three of the first group are part of the simulation, so all three replicate and
-survive a prediction replay. `CLAUDE.md` explains what that constrained.
+survive a prediction replay. `docs/extending.md` explains what that constrained.
 
 ### Networking
 
@@ -169,7 +169,7 @@ instead is the hard part: a simulation that reproduces itself exactly when repla
 a command that packs to 49 bits, a state object with nothing left outside it, and
 `DotFpsNetSync`, which says what to replicate and at what precision.
 
-Joining the two is about thirty lines in your game. `CLAUDE.md` has the whole thing.
+Joining the two is about thirty lines in your game. `docs/networking.md` has the whole thing.
 
 `DotFpsTunables.fingerprint()` is worth wiring up on day one: a client whose movement
 config differs from the server's diverges every tick, and the symptom is

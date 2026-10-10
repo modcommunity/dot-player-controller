@@ -52,7 +52,7 @@ extends RefCounted
 ## [/codeblock]
 ##
 ## The full worked example, including the [code]DotNetInput[/code] subclass, is in
-## this project's CLAUDE.md.
+## this project's docs/networking.md.
 
 ## Bits the movement mode occupies in the packed flags. See [method pack_flags].
 ##

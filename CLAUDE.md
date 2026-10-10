@@ -1,629 +1,85 @@
 # dot-player-controller
 
-Everything that drives a player: the shared contract, first-person movement, third-person movement.
+Everything that drives a player: an abstract controller contract with a switch that hands one controller to the next, a first-person movement model (`fp/`, which was `dot-fps-controller`) built to be predicted and replayed, and a third-person controller with an orbit rig (`tp/`).
 
-Read the family-wide conventions in [`../../CLAUDE.md`](../../CLAUDE.md) first — no autoloads, `DotNodeRef` instead of scene paths, `DotResult` for anything fallible, `Dot`-prefixed class names, layered configuration, `describe()` on anything stateful. This file is only what is specific to controllers.
+Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is specific to controllers. The reasoning is in [docs/](docs/README.md): open the file for what you are touching.
 
+## Read before
 
-## A recovery that detects the problem and then guarantees it
-
-`_categorise_ground` has a branch for a player who is inside geometry: a swept query cannot report anything useful about a shape that starts in solid — Godot's answers "no collision", which reads as "nothing below me" — so a player embedded by a fraction of a millimetre looks airborne, falls, embeds further, and leaves the level. The branch asks the one question a sweep cannot (`body.overlaps`) and keeps them grounded.
-
-**It was half a recovery, and the missing half is why anybody noticed.** Staying grounded stops the fall out of the world and does nothing about being inside the floor. The probe still starts in geometry next tick, still reports nothing, and still arrives at the same branch — so it answers GROUND for ever, keeps a stale `ground_normal`, and skips the one call that could have lifted the player out, because `_move` runs `_snap_to_ground` **only when this function says they are not grounded**. An absorbing state: every route in is a bug somewhere else, and there was no route out at all. Reported as "I bhop and go through the floor and then get stuck".
-
-`_lift_clear` is the other half. Straight up, never further than a step, doubling the lift each try so it is about nine overlap queries rather than several hundred; if it clears, the ordinary probe finds the floor again on the same tick, and if it does not, the old answer stands. It cannot affect a player who is not already embedded, which today means a player who is already permanently stuck.
-
-**`embedded_ticks` and `lifted_ticks` exist because nothing outside the simulation can count this.** An overlap test from a probe reports 70% of bhopping players "inside solid" — a capsule resting a millimetre above a floor overlaps it, shapes have margins, and standing on the ground *is* an overlap. The distinction that matters is the one this function already makes and had no way to report: the ground probe found nothing **and** the player is in something. Two probes were written against the outside view and both produced large, plausible, monotonic numbers that measured nothing.
-
-
-## The surface a swept query stops being able to see
-
-`_categorise_ground`'s recovery above is about a **floor**. The same engine behaviour on a **ramp** is worse, was invisible for longer, and could not be counted by any of the instruments written for the floor case.
-
-`cast_motion` ignores any collider the shape already overlaps. That is reasonable — a shape starting inside something has no *first* contact to report — and it makes contact with a surf ramp an absorbing state, because surfing **is** a continuous overlap. Measured on 4.7.2 against a 60° face: a capsule 2 cm clear is reported correctly, at the right fraction, with the right normal; the same capsule touching it, or 1 mm, 1 cm, 20 cm or 50 cm inside it, is free space at every one of those depths. The ramp does not become hard to see. It stops existing, and nothing brings it back.
-
-So nothing clips the velocity, gravity keeps pulling, and the player accelerates through the inside of the level: **0.83 m of penetration in 96 ticks and still growing, 20 m over 256.** Through all of it `stuck_ticks`, `duplicate_plane_ticks`, `embedded_ticks` and `lifted_ticks` read **zero**. From the motor's point of view nothing went wrong, and that is not an oversight in the counters — `embedded_ticks` and `_lift_clear` are both reached only from the branch of `_categorise_ground` that requires the player to have been GROUNDED last tick, and **a player on a surf ramp is never grounded, by design, because that is what makes it surf.** The one recovery this motor had could not run on the one surface that needed it.
-
-`DotFpsBody.rest_contact` is the question a sweep cannot answer. `get_rest_info` reports the resting surface's own normal and, measured against its contact point, the exact penetration — verified to four decimal places from 0 to 1 m. `DotFpsPhysicsBody.sweep` consults it when `cast_motion` sees nothing, and returns a fraction-0 hit **only when the motion goes into that surface**: a capsule inside something is usually also trying to leave it — the tick after a push, a step up, a crouch under a lip — and blocking the way out pins a player against the thing they are escaping.
-
-**And `cast_motion` is also wrong the other way on a large convex, which `sweep` now checks for twice.** A late contact: its `safe` can be centimetres past the real contact (a 40 m wall let a capsule 5 cm in), so `sweep` measures how deep `unsafe` is from the rest query it already makes there and, past `LATE_CONTACT_DEPTH` (0.5 mm), backs the fraction off by that depth over the rate of approach. And no contact at all: on a 164 m wall about one sideways sweep in a hundred saw nothing and ended 11 cm inside, so after the resting check and the downward ray, `_end_overlap_fallback` asks for a rest contact at the END of the move and backs off the same way. That costs one more query per unobstructed sweep. A first rest query that finds nothing at `unsafe` is retried 1, 2 and 4 mm deeper before `sweep` falls back to `-motion` as the normal. That fallback clipped the velocity to zero, and it stopped a surfer dead on a bank (`[bank-hang-1]`) and again at the far end of a pitched face, where the capsule grazes the edge it is leaving and no query along the motion can name it (`[fps-face-edge-stop]`). So `-motion` is gone: a graze nothing can name is asked `_end_overlap_fallback`'s question instead — does the move END inside something it goes into. movement_selftest's two physics-body sections at the end assert the first three (`[sweep-1]`, `[bank-hang-1]`); surf_physics_selftest's last section rides three slabs off their far ends.
-
-`_depenetrate` is the other half, and it is `_lift_clear` generalised. Lifting straight up is right for a floor and wrong for a ramp, where the shortest way out is mostly sideways and pushing up climbs along the inside of the face instead of leaving it. It pushes along the contact normal by the measured depth plus a skin, clamped to a step per tick — the clamp is what makes a wrong answer survivable, since a bad normal that moves a player a centimetre is a glitch and the same normal unclamped against a deep embed throws them across the level. A genuine deep embed takes a few ticks and converges, because each one is measured afresh. It costs one query per tick per player, which is real on a full server and is worth it: the cheaper question (`overlaps`) cannot tell a player resting on a floor from one buried in it, so it answers yes for almost everybody and buys nothing. `depenetrated_ticks` counts it.
-
-**`surf_selftest` could not have caught any of this, by construction.** It runs against `DotFpsFlatBody` — analytic geometry, one possible cause per failure, no scene, no physics step — and every one of those reasons is still good. It proved every surf property this motor has, 52 checks green, while the game was visibly broken, because the bug was never in the motor: it was in the one component that suite *replaces*. A suite that substitutes the component under suspicion cannot see a bug in it, and nothing about a green run tells you which component that is. `surf_physics_selftest` is the same properties against real `StaticBody3D` geometry and `DotFpsPhysicsBody`; revert the fix and it fails six checks with the player 20 m inside the ramp. **Run both.**
-
-And the measurement is **penetration, not speed.** A player sinking through a ramp has a plausible speed, a plausible position and a clean stuck count. The only thing they do not have is clearance, and nothing but a geometric test of the capsule against the face it is on can say so.
-
-## A resting normal that points into the face (2026-10-08, `[ramp-pop-1]`)
-
-`get_rest_info` sometimes reports a capsule resting on a face with that face's normal **reversed**: same contact point, normal pointing into the solid, and a depth measured along it of nearly the whole capsule. On game-g2gfast's surf_mesa a rider a skin off a ramp brush, not moving between two queries, read clear on one tick and 57 units deep the next. `_depenetrate` then pushed them a full step (its clamp) INTO the ramp, and the next tick measured that real overlap and pushed them back: a two-tick dip that a recording shows as one frame of the view jumping, many times a ride. That was "the ramps are jumpy". It reproduces on a plain 20 m x 0.5 m box at 52 degrees (11 of 131 resting capsules), so it is the engine's and not the map's.
-
-**The tell is that the capsule's centre is past the contact plane** (depth over the support along the normal), which a resting contact never is. A genuine embed of more than half the capsule looks the same, so `_turn_round_flipped` does not assume: it moves the capsule out along the reversed normal and believes the reversal only if it is clear there (`FLIP_CHECK_CLEARANCE`). No upper bound on depth: the flipped reports came out a few millimetres past the whole capsule, inside the shapes' margin. `rest_contact` and `sweep` (whose contact normal is the same query at `unsafe`) both go through it; `flipped_normals` counts it. game-g2gfast's `tools/ramp_bump_probe.tscn` measured the ride: 300 surf_mesa rides, steps off the smooth line by more than 17 units went from 3,200 to 10, all bumps over 1 unit from 9.5% of ramp ticks to 2.6%. `surf_physics_selftest`'s last section (armed: without the turn-round, 3 reversed and a capsule pushed 0.4 m through the slab).
-
-## The one idea
-
-**A switch between two controllers carries position, velocity and view — and nothing else.**
-
-That sentence is the reason this addon exists as something separate from the two controllers that implement it. The alternative — one controller knowing how to become the other — means a first-person motor's state has to be convertible into a third-person motor's, and it is not: the fields have no counterpart and any mapping is a lie. What genuinely survives a view change is where the player is, how fast they are going and where they are looking, and everything else starting fresh is *correct*. Getting out of a vehicle should not restore the air-strafe you were in the middle of.
-
-## It was three addons
-
-`dot-player-controller-fp` (which was `dot-fps-controller`) and `dot-player-controller-tp` were separate repositories and are now folders. Neither was ever pushed, so there is nothing to go and read: the reason is that nobody installed either half without the base, the base is useless alone, and the split bought two repositories and two `plugin.cfg` files.
-
-Every `class_name` survived it. `DotFpsController`, `DotFpsMotor`, `DotTpsController`, `DotTpsCameraRig` — all unchanged, because `class_name` is global in Godot and renaming one breaks every project that has the addon installed.
-
-A game may delete `fp/` or `tp/`. `dot_player_controller_plugin.gd` skips a type whose script is absent, so a trimmed install is supported rather than merely tolerated.
+| Read | Before |
+| --- | --- |
+| [docs/README.md](docs/README.md) | the index |
+| [docs/design.md](docs/design.md) | the base contract, the switch, the third-person half, anything outside `fp/` |
+| [docs/motor.md](docs/motor.md) | `fp/motion/` or `fp/core/`: determinism, surf and hops, steps and slopes, jump reach, styles, statistics |
+| [docs/collision.md](docs/collision.md) | `DotFpsBody`, `DotFpsPhysicsBody`, sweeps, embeds, ramps, ground checks |
+| [docs/extending.md](docs/extending.md) | surfaces, modifiers, admin abilities, custom modes, swimming, slide/launch/dash, the plug-in table |
+| [docs/networking.md](docs/networking.md) | wiring a controller to dot-net, `DotFpsNetSync`, `net_flags`, `render_state` |
+| [docs/testing.md](docs/testing.md) | adding a check, or believing a green run |
+| [docs/history.md](docs/history.md) | a movement bug that "cannot be happening"; what each fix was and how it looked |
 
 ## Layout
 
-```
-addons/dot_player_controller/
-  core/
-    dot_player_intent.gd              one tick of intent, and its wire form
-    dot_player_look.gd                yaw and pitch, accumulated and clamped
-  nodes/
-    dot_player_controller.gd          the abstract base: five methods to override
-    dot_player_controller_switch.gd   exactly one driving, and the handover
-  fp/
-    core/ motion/ nodes/ net/         first-person: see the sections below
-  tp/
-    core/ nodes/                      third-person, and the camera rig
-```
-
-Six self-test scenes, one project: `controller_selftest` (the base), `movement_selftest` and `surf_selftest` and `surf_physics_selftest` and `fps_controller_selftest` (first person), `tps_selftest` (third person). **Run all six.** `controller_selftest` is the main scene and is the one a careless check runs alone.
-
-`fp/motion/` may not reference `fp/nodes/`, and `tp/core/` may not reference `tp/nodes/`. That direction of dependency is what keeps each simulation testable without a scene, and it is the first thing to break when somebody adds a "convenient" reference to the controller.
-
-## Three name collisions already paid for here
-
-**`Btn`, not `Button`.** `Button` is a native class — the `Control` — and GDScript refuses the shadowing outright. Caught here rather than in a subclass, where the error would have been reported against the file that *used* it.
-
-**`CONTROLLER_CHANNEL`, not `CHANNEL`.** `DotPlayerComponent` already declares `CHANNEL`, and a constant that shadows a parent's is a parse error.
-
-**`transform_3d()`, not `transform()`.** `DotPlayerComponent extends Node`, so `transform` is free today — and would not be the moment anybody made a controller extend `Node3D`. See `docs/gdscript-hazards.md` on properties that shadow inherited methods: the error is reported against the *using* file and `--check-only` on the declaring one says nothing.
-
-## The two orderings that matter
-
-**Activate, then hand over.** A real controller resets its motor in `_on_activated`. Passing the state first means the reset wipes it, and the symptom is a player who stops dead every time they change view — which reads as a physics bug. The switch does `incoming.activate()` and *then* `incoming.adopt_state(...)`, and the suite checks `resets == 1` at the point the state has landed.
-
-**The default is activated deferred.** A switch's `_ready` can run before its siblings', so their `controller_id` may still be whatever the scene had. `call_deferred("_activate_default")` is one frame later, when every node in the subtree has read its own exports.
-
-## A frozen controller still ticks
-
-`drive()` with `input_enabled = false` applies an *empty* intent rather than returning early. Gravity, friction and world forces are all things a frozen player should still be subject to; a controller that skipped the tick leaves them hanging in mid-air, which is the warm-up-freeze bug every game ships once.
-
-The return value distinguishes "frozen" from "moved nowhere", so a caller can tell them apart without reading a flag it would have to know about.
-
-## `input_enabled` and `active` are different things
-
-A player frozen during a countdown is still on their own controller and still has their camera. A controller that deactivated instead would hand the player to nothing, and the switch would have no one driving. Freezing is a level; activity is an identity.
-
-## What does not go on the wire
-
-`DotPlayerIntent.to_dict` sends the accumulated angles and *not* the look delta, and does not send an empty `look` key either — a field sent and ignored is a field somebody will eventually start reading. The reasoning is in the class documentation and is worth repeating: a server integrating deltas reconstructs an angle the client already knows, and one lost packet makes them disagree about it permanently.
-
-## What this does not do
-
-It does not sample input. A sampler belongs with the controller that knows what its own actions are called, and dot-ui owns rebinding. It does not own a camera. It does not know what a body is beyond the default read/write pair, which handles a `CharacterBody3D` or a `CharacterBody2D` and is overridable precisely because most controllers have their own idea.
-
-## The first-person half
-
-What follows is `dot-fps-controller`'s own CLAUDE.md, kept whole. It is the reasoning behind a movement model that has been paid for in bugs, and the merge is not a reason to lose it. Paths have been re-rooted under `fp/`; nothing else was changed.
-
-### The one idea
-
-**The simulation is a pure function of (state, command, delta, world).**
-
-Everything else here follows from that. It is what lets a client apply input immediately and a server correct it a round trip later without the two disagreeing — and it is a property that has to be designed in, because nothing about GDScript enforces it and nothing about a single-player game reveals when it is broken.
-
-Concretely:
-
-- `DotFpsMotor` never reads the keyboard, the wall clock, an unseeded random stream, the frame rate, or a node's transform. Time comes from `delta`, intent comes from the command, the world comes from `DotFpsBody`.
-- Every timer in `DotFpsState` counts simulated seconds. `Time.get_ticks_msec()` appears nowhere in `fp/motion/`.
-- `DotFpsState` holds *everything* the simulation reads between ticks. A field left on the controller node is not restored by a rewind, so the replay starts from a state the server never computed and the correction is measured against a fiction.
-- Sampling lives in `DotFpsSampler`, separately, so a replay does not accidentally call `Input.is_action_pressed` and get what the player is holding *now*.
-
-`examples/movement_selftest.gd::_test_replay_determinism` is the test that guards this. It runs 400 mixed commands, snapshots at tick 250, replays the last 150 from the snapshot, and requires the same endpoint — which is exactly the shape of reconciliation. It also runs a negative control, because a test that cannot fail is not a test.
-
-### Surf, bunny-hopping and what they needed
-
-Surf is not a feature. It is what this movement model does on a face too steep to
-stand on,
-and the only question is whether the collide-and-slide gets out of the way. Three
-things here decide whether it does, and one of them was wrong:
-
-**A ramp steeper than `max_slope_angle` must not ground the player.** It already did
-not — `_categorise_ground` requires `_is_floor` — so the player stays in `Mode.AIR`,
-gets gravity and air acceleration, and the slide clips their velocity along the face.
-That is surf, in full, and nothing needed adding for it.
-
-**The seam between two ramps did need adding.** `_slide` used to clip against each
-contact normal in turn, which is not the same as finding a direction that satisfies
-both: at a seam the vector clipped against the first ramp points into the second, and
-the vector clipped against the second points back into the first. The player arrives
-at 20 m/s and stops dead in the corner. `_resolve_planes` is the classic
-`TryPlayerMove`: keep every plane touched this move, take the first clipped direction
-that re-enters none of the others, and when there is none, go along the crease — the
-cross product of the two normals, which is parallel to both faces by construction.
-`crease_slide` turns it off, which is what the self-test's negative control uses.
-
-**Touching the same plane twice must not zero the velocity.** The first version of
-the plane list treated a repeated normal as "stuck" and stopped the player. A player
-who begins a tick a fraction of a millimetre inside a ramp — which happens on every
-spawn onto one and after every prediction correction — was then brought to a dead
-stop on a surface they should have been accelerating down. A duplicate plane is one
-that has already been satisfied: keep the velocity. A *full* plane
-list is a real corner and does stop them.
-
-**And stopping the move there was the next freeze.** Until 2026-09-24 the duplicate broke the loop with the rest of the tick unspent, and a surfer pressed into a bank — resting on the face, velocity already in it — met the face again at fraction zero on the second leg every tick: position fixed, velocity intact, not grounded, not stuck, only `duplicate_plane_ticks` rising (game-g2gfast measured 697 of 1,786 ticks on one bank). The rest of the tick is now spent in ONE leg along the plane lifted a skin off it, velocity untouched. Returning to the loop instead was tried and is worse: a real contact's near-copy normals fill the plane list and zero the velocity in a corner that is not there. `movement_selftest`'s "pressed into a bank" section is the guard, on a physics body because the flat body never produces the contact. **And that leg could still go nowhere** (`[arrive-3]`, 2026-09-29): a grazing leg that ends with the capsule exactly touching a face leaves it where cast_motion blocks every sweep at the first bisection step, the lifted one included, and on a displacement whose triangles are a fraction of a degree apart the rest query names the face underneath — a duplicate. A surf bot hung at 75 u/s for 3,470 ticks. `_leave_face` now lifts straight off the face by one, two, then four skins as its own leg and spends the rest from there; velocity untouched, at most four millimetres. `movement_selftest`'s "displacement crease" section carries the seven triangles to nine digits (rounded to five, the freeze does not happen) and fails 127 of 128 ticks without it.
-
-**Walking up a slope is not leaving the ground.** `_categorise_ground`, `_try_jump` and `_snap_to_ground` all measure "moving away" (`LEAVING_SPEED`) along the floor normal rather than along +Y — before 2026-09-24 nothing in the family could walk up any slope under `max_slope`. A jump still leaves: `_try_jump` sets AIR itself. At a ramp's crest the velocity is laid along the new floor so a walker is not thrown into the air.
-
-**Landing on a slope while moving uphill is the same question, asked of an airborne player.** The slide lays a landing velocity along the face, so walking pace onto 13° is 0.4 m/s upward; `_categorise_ground` used to leave any airborne player rising over `LEAVING_SPEED` in AIR without a query, and they glided up the slope at air speed until a tick happened to end inside the probe (13 ticks from 0.1 m in the suite, over a second in one game). Now an airborne player rising slower than **half a jump's launch** (`jump_velocity() * 0.5`) is probed and landed when the velocity lies in a walkable floor's plane. Above that line the query is still skipped, and that line is load-bearing: without it a jump up a 40° ramp at 10 m/s is landed on the tick it leaves (0 of 31 ticks airborne). A game with no jump (`jump_height` 0) keeps the old `LEAVING_SPEED` line.
-
-**A step's landing on a kerb's edge is judged by the kerb, not the capsule.** The rounded bottom landing on a corner reports the sphere's normal; `_floor_beyond_edge` asks a thin probe past the contact instead, **and refuses a floor more than `step_height` above where the step started** — without that it accepted any kerb whose top it could see, because the across leg's slide rides the hemisphere up the corner and the down leg rests on it above the lifted feet (step_height 0.45 went over 0.5 m and 0.7 m kerbs, stopped only at 1.0). **The ground check asks it too, but only for a player moving onto the floor beyond** (`_standable_normal`: horizontal velocity toward the contact). The step leaves the capsule hanging on the kerb's corner, and while the ground check read the corner's own normal that was AIR, and the next air slide turned the run into a climb: at 15 m/s a 0.34 m kerb threw the player to 1.07 m (0.49 at 7 m/s). A player standing on a ledge, walking off one or running along one is not moving onto the floor beyond the edge and still gets the capsule's answer. Measured identical before and after: walking off a 1 m ledge at 3, 7 and 15 m/s, diagonally, and standing balanced 0.05-0.3 m past an edge. Steep faces answer no to the probe, so surf is untouched (all four motor suites and game-playground's `headless_playground`, surf runs included, give the same results).
-
-**And a kerb a centimetre over `step_height` is a wall, at every speed** (2026-09-26). With step_height 0.45, a 10 m kerb run down its middle was still climbed at 0.46 m (3, 4, 10, 15, 20, 25 m/s) and 0.5 m (10, 20, 25, to 2.1 m), three ways at once. The step lifted by a full `step_height` from the feet, which a grounded player can carry up to the ground probe's 2 cm above the floor — it now measures the hover with one short down sweep and lifts only to `step_height` above the floor. The height limit was asked only of `_floor_beyond_edge`, and a capsule landing on the corner with its axis a quarter-metre short meets it at about 41 degrees, which is a floor — every landing is now refused whose contact is more than `step_height` above the floor it left. And a walker a hair inside the kerb's face (a step that dropped back beside it leaves 0.1 mm) was lifted straight up out of it by the ground check's `_lift_clear`, 0.13 m, and stepped over from there — `_lift_clear` now runs only when the probe saw nothing, since straight up is not out of a wall. A step is also only taken when it gains more than two skins, because the rounded bottom slides a millimetre past a corner the straight side could not and that millimetre is inside the face once it drops. **The last change needed a fix in `DotFpsFlatBody`**: its `Hit.point` was the swept centre, not the contact, so the new height question refused every step on it and `movement_selftest`'s stairs failed; it now returns the box's support point against the normal. `movement_selftest`'s kerb section asserts 0.46 and 0.5 m are walls at 3, 10 and 20 m/s; against the old motor five of those six fail.
-
-`bhop_speed_cap_scale` is the landing cap those shooters added (they ship
-1.104), off here because a movement game that caps hop speed has no bunny-hopping.
-`edge_friction` is `sv_edgefriction`, off because it costs a query per grounded tick.
-
-### How far a jump goes
-
-`DotFpsTunables` answers it: `jump_apex()`, `climb_limit(margin = CLIMB_MARGIN)` (nine tenths of the apex, the highest top face a standing player is asked to jump onto), `jump_airtime(rise)` and `jump_reach(rise, speed = max_speed)`, plus the static `airtime_for(gravity, jump_height, rise)` / `reach_for(speed, gravity, jump_height, rise)` for a map that keeps its own constants and has no tunables in front of it. **`rise` is the whole point**: the airtime everybody writes down is the time back to the height you left, and on a course that climbs it is about 30% too long — which is how two games shipped courses nobody could finish. It uses the descending root, holds ground speed through the air (holding forward adds nothing past `max_air_wish_speed`), and gives no credit for the capsule's radius. `movement_selftest`'s "jump reach" section checks it against a running jump in the motor, not against another copy of the formula.
-
-It exists because four games had copied it: game-playground (`PlaygroundMap.jump_reach`), game-arena (`ArenaMap.jump_reach` / `climb_limit`), game-g2gfast (`game/g2g_reach.gd` `airtime` / `run_reach` / `apex` / `climb_limit`, in genre units) and mg-buses-from-hell (`game/bfh_reach.gd` `jump_reach` / `climb_limit`), with mg-smash-copter's `ScPlayer.jump_reach` a fifth. None of them has been changed to call it yet.
-
-### Styles
-
-`DotFpsStyle` is what a timer server means by the word: sideways,
-half-sideways, backwards, low gravity, prebhop. It does exactly two things, and
-`DotFpsController.set_style` does both in the right order:
-
-- `apply_to(base)` returns a **derived** `DotFpsTunables`, never mutating the base.
-  The controller keeps `_base_tunables` and always derives from it, because deriving
-  from the previous style's output compounds the scales — switch to low gravity and
-  back and you land in a quarter of it.
-- `filter_command(cmd)` clears the keys the style forbids, **in place, on both
-  machines, before the motor sees it, and idempotently** because a prediction replay
-  runs it again over stored commands. Filtering only on the server makes the client
-  predict movement the server will not produce.
-
-Scales rather than absolute values, for the reason `DotFpsSurface` uses them: a style
-holding an absolute `max_speed` silently stops tracking the base the first time
-somebody retunes it. The two exceptions are `air_accelerate` and
-`max_air_wish_speed`, where the pair *is* the style and a scale would mean nothing.
-
-**`timescale` is not applied by `apply_to`.** Scaling the simulation means scaling
-`delta`, which is the host's tick loop's decision — and on a server it has to be the
-same decision for every player or the tick counter stops meaning anything.
-
-The ranking half of a style — ranked or not, points multiplier, minimum time — is
-`DotTimerStyle` in dot-timer. Movement lives where the motor is; records live where
-the records are; a game pairs them by id.
-
-### Statistics
-
-`DotFpsStats` is the HUD line every bhop player watches: jumps, strafes, **sync**,
-perfect hops, average and peak speed. Two decisions in it are load-bearing:
-
-- **Counted per simulated tick and not per frame**, so two players on different
-  monitors get the same sync for the same run.
-- **Not observed during a prediction replay.** A replayed tick is one the statistics
-  have already seen, and counting it again gives a client on a lossy link a jump
-  count that climbs by itself. The server's copy is what a record is filed with.
-
-`DotFpsState.ground_ticks` exists for this and is counted in **ticks**: a perfect hop
-is a jump that leaves on the tick of the landing, and deriving that from a seconds
-timer scores the same run differently at 64 Hz and at 128 Hz.
-
-`DotFpsFlatBody` grew half-space planes and `add_ramp` so all of this is testable
-without a physics world — a surf ramp is one large sloped face and needs nothing else.
-
-### Why the collision goes through DotFpsBody
-
-Three reasons, and the second and third were both found the hard way:
-
-1. **Testing.** The determinism test needs thousands of ticks against known geometry.
-   `DotFpsFlatBody` makes it arithmetic; a failure has one possible cause.
-2. **`move_and_slide` keeps state.** The floor normal and velocity it remembers
-   between calls are not restored by a rewind. The motor does its own
-   collide-and-slide over a stateless query instead.
-3. **A server does not need a rendering physics world**, and a game whose collision
-   is a heightfield or a BSP can implement `DotFpsBody` against that directly.
-
-### Swept queries are the sharp edge
-
-Three separate bugs in this project came from the same place, and all three were
-found by running the examples rather than by reading the code:
-
-- **`cast_motion` reports no collision when a move ends exactly touching.** Correct in
-  isolation — touching is not overlapping. Fatal in practice: land so your feet come
-  to rest at precisely the floor's height and every subsequent downward sweep also
-  reports nothing, so you are never grounded again and sink through the world at a
-  constant rate. It takes one tick where the fall distance equals the remaining gap.
-- **A swept query's precision is proportional to its length.** The binary search stops
-  at a tolerance of roughly a percent of the motion, so a 35 cm ground probe can
-  return a "safe" distance that overlaps by 3 mm. That is how the ground snap put the
-  player *below* the floor it was snapping onto.
-- **`Vector3` components are 32-bit and GDScript arithmetic is 64-bit.** A player
-  standing exactly on `y = 0` has feet at `-2.4e-8` once the centre has been through
-  a `Vector3`. `DotFpsFlatBody` required `feet >= floor_y` and every ground probe
-  missed — nothing was ever grounded, friction and ground acceleration never ran, the
-  player capped at the air-control speed and slowly sank. One epsilon, four symptoms,
-  none of which pointed at the epsilon.
-
-`DotFpsMotor._sweep` is the answer to the first two: every query sweeps a margin
-further than asked and gives the distance back, where the margin is
-`max(skin_width, length * SWEEP_TOLERANCE)`. `_categorise_ground` carries a fourth
-defence — if the swept probe misses but the capsule *overlaps* something and the
-player was grounded last tick, they stay grounded. A swept query cannot say anything
-useful about a shape that starts inside geometry, and the failure mode without that
-check is falling out of the level.
-
-**And a grounded player is kept a skin clear of the floor, because exactly touching is a fourth one.** Every query stops a skin short, so the motor never puts a player exactly on a surface — but a spawn at the floor's height does, and a player the ground check finds a floor under is never snapped, so nothing moved them off it. From exactly touching, `cast_motion` reports the floor as an obstacle to a *horizontal* move at fraction ~0 in about one position in five (none at 0.2 mm clear); the slide met that plane twice and stopped every tick with the velocity intact — a runner at 12 m/s spawned on a floor's centre line froze in front of every kerb from 0.1 to 0.45 m. `_keep_skin` lifts a grounded player whose floor is under half a skin away back to a skin, straight up.
-
-**The ground snap only runs when the player has actually left the ground.** That is
-not an optimisation. Running the longest, least precise query in the tick on a player
-who is already standing still re-derived a correct position from the worst available
-measurement, and moved them a fraction of a millimetre down each time.
-
-### What the rewrite changed, and why
-
-The original was a single-player controller. The problems were not style:
-
-| Was | Now |
+| Path | What |
 | --- | --- |
-| Movement ran in `_process`, so the simulation was frame-rate dependent | Fixed-tick, accumulated from frame time, bounded against stalls |
-| `Input.is_action_pressed` read inside the controller | `DotFpsCommand`, sampled once per tick by `DotFpsSampler` |
-| `vel = settings.max_velocity` assigned a float to a `Vector3` | `limit_length`, with a NaN check that logs and resets |
-| Ground `accelerate` applied its increment three times in a loop | Once, as the model says |
-| Air jump used `mul * max(0, vel.y)`, so it was zero at rest | One jump path, `sqrt(2 * g * h)` |
-| One `speed_multiplier`, reset to 1 by whichever modifier was released | Derived from held buttons each tick; most restrictive wins |
-| `is_crouched` was read but never assigned | `crouch_fraction` and `crouch_held`, both simulated |
-| Crouch lerped a camera offset; the collider never changed and standing up never checked | Collider resizes; standing up is refused without headroom |
-| `snap` was computed and never used | Ground snapping, so slopes are not ice |
-| No stair stepping | `step_height`, with the down-leg floor test |
-| `can_noclip` documented as "not yet implemented" | Implemented, gated twice |
-| Yaw applied to the camera, so the body never turned | Yaw on the body, pitch on the camera |
-| States loaded by `load(base_dir + "/states/" + name + ".gd")` | Direct references; no runtime path construction |
-| `class_name Player`, `Player_Input` — global names | `Dot`-prefixed throughout |
-| Not an addon | `addons/dot_player_controller/fp/` with a `plugin.cfg` |
-| README documented `player_shift`; the project defined `player_sprint` | One set of names, registered at runtime, overridable |
-
-### The three extension systems, and the rule they share
-
-Surfaces, modifiers and custom modes all change the simulation, so all three are
-bound by the same constraint as everything else here: **a client and a server must
-reach the same answer, and a replay must reproduce it.** That single requirement
-decided every interesting part of their design.
-
-### Surfaces
-
-`DotFpsSurface` scales what the tunables already say — friction, acceleration, speed
-cap, jump — rather than replacing them, so retuning the base feel does not silently
-leave every surface behind.
-
-**The hard part is the mapping, not the table.** The obvious way to answer "what am I
-standing on" is to look up the collider the ground probe hit, but a collider's
-instance id is process-local: the client and the server get different numbers for the
-same floor. Any mapping keyed on it produces two machines that disagree about
-friction, which is a divergence prediction cannot reconcile and which only shows up
-on some surfaces. So the mapping goes through node metadata or a group — scene data
-both machines load from the same file. `DotFpsController._resolve_surface_id` does
-that, and caches it, because the answer only changes when the player steps onto a
-different collider.
-
-`push` is worth a warning that is also in its own docs: it is an acceleration and it
-competes with friction, which is applied as though the player were moving at least
-`stop_speed`. A push below `stop_speed * friction` cannot move a standing player at
-all. With the shipped defaults that threshold is 24 m/s², which is a lot more than
-the number most people would first type.
-
-### Modifiers
-
-**Definitions are configuration; the active set is state.** A prediction rewind
-restores `DotFpsState` and replays from it, so a modifier held anywhere else vanishes
-on the first correction. The definition — how much faster, for how long — is the same
-on every machine and never changes, so it stays out.
-
-`DotFpsState.modifiers` is **sorted by index**, and that is load-bearing rather than
-tidy: the aggregate is a product, floating-point multiplication is not associative,
-and two machines applying the same set in different orders reach answers that differ
-in the last bits. That is exactly the drift that makes a reconciliation never settle.
-
-Effects multiply so they compose in any order; denials (`deny_jump`, `deny_move`) are
-sticky so nothing can multiply a stun back off.
-
-**What travels is a 32-bit mask of active indices, and not the expiry tick.** That is
-a deliberate trade: the effect while a modifier is active is predicted exactly, and
-only its *end* can be late, by up to one snapshot interval. Sending expiries would
-cost a varint each to fix something a player cannot feel. Revisit it if a game ever
-has a modifier whose expiry frame matters.
-
-Registration order defines the indices, and the indices are what replicate — so
-`register_modifier` must be called in the same order on every machine.
-`_register_extensions` exists to give that a fixed place; registering conditionally
-(only on the server, only in one game mode) gives two peers different ids for the
-same modifier, and the symptom is a power-up that works for some players.
-
-### What an administrator does to somebody's movement
-
-`DotFpsAdminModifiers` is noclip, freeze, a speed step and a gravity step, and **every one of them is a `DotFpsModifier`**, because that is the only shape of server decision this motor's prediction already carries. The alternatives were tried in the suite before being refused:
-
-- **Setting `state.mode = NOCLIP` on the server** reaches the client in the next snapshot, and the client's own `_update_noclip` then drops the player to AIR on every replayed tick, because the client's `can_noclip` is false — correctly, since a client's copy of the tunables is not a permission. That is rubber-banding between flying and falling, with every server-side number right. `movement_selftest`'s admin section keeps this as its negative control: the naive version must *fail* to predict, or the positive check proves nothing.
-- **Changing a tunable** is the same bug by another route, and also a fingerprint mismatch.
-
-`DotFpsModifier.forces_noclip` is the one new field, read in `_update_noclip` **before** the ability gate so it wins over `can_noclip` and over the player's own button. `_simulate_noclip` now honours `deny_move`, so a frozen player who is also noclipped stays frozen — the ordinary order an admin does the two in.
-
-Two costs, both deliberate. **The multipliers are a ladder** (`SPEED_STEPS`, `GRAVITY_STEPS`) because only membership travels and a value made up at runtime is one the client has never heard of; `set_speed` returns the step it picked so the admin is told. **`admin_abilities` must be on for every player on every machine**, because registration order is the wire contract — the modifiers register straight after `_register_extensions` so a game's own indices do not move, and `DotFpsAdminModifiers` refuses rather than registering on the spot for a controller built without them.
-
-### Custom modes
-
-`DotFpsMoveMode` is how a game adds a ladder, water, a grapple or a vehicle seat
-without forking the motor. Ground, air and noclip stay built in because they are what
-the tunables describe; everything else is a decision about feel.
-
-**A mode owns its whole tick** — gravity, acceleration, collision — because a ladder
-that had gravity applied behind its back would have to cancel a force it never asked
-for. The motor exposes `accelerate`, `move_and_slide`, `probe`, `would_overlap`,
-`categorise_ground`, `effects()` and `surface()` so a mode gets the same skin-margin
-and step handling as the built-ins, which is where all the collision bugs were.
-
-**Nothing may be stored on the mode object.** One mode instance serves every player
-using it, and a rewind does not restore it. State goes in `DotFpsState`.
-
-### Wiring it to dot-net
-
-dot-net is **not** a dependency and is **not** imported. That is the family rule, and
-in GDScript it is not merely a preference: a script that *mentions* a `class_name` the
-project does not have fails to parse and takes everything referencing it down too.
-The same reason `DotTransportENet` reaches ENet through `ClassDB.instantiate`.
-
-So `DotFpsCommand.write`/`read` take a `Variant` writer and call `DotNetWriter`'s
-methods by name, and `DotFpsNetSync` describes the replicated properties as strings a
-bridge resolves with `DotNetVar.Type[name]`. `examples/movement_selftest.gd::FakeWire`
-checks that contract without the dependency present — a typo in a method name would
-otherwise only show up in a host game.
-
-The bridge a game writes, in full:
-
-```gdscript
-class_name PlayerInput extends DotNetInput
-
-var command := DotFpsCommand.new()
-
-func _write(w: DotNetWriter) -> void:
-    command.write(w)
-
-func _read(r: DotNetReader) -> void:
-    command.read(r)
-
-func _sanitise() -> void:
-    # Not optional. Everything here came from a client.
-    command.sanitise()
-
-func _equals(other: DotNetInput) -> bool:
-    return other is PlayerInput and command.equals((other as PlayerInput).command)
-```
-
-```gdscript
-class_name PlayerNet extends DotNetBehaviour
-
-@export var controller: DotFpsController
-
-var net_position: Vector3
-var net_velocity: Vector3
-var net_yaw: float
-var net_pitch: float
-var net_crouch: float
-var net_flags: int
-
-func _register_net_vars() -> void:
-    for spec in DotFpsNetSync.state_specs():
-        var declaration := replicate(spec.property, DotNetVar.Type[spec.type])
-        if spec.bits > 0:
-            declaration.bits(spec.bits)
-        if spec.interpolated:
-            declaration.interpolated()
-
-func _net_ready() -> void:
-    # SHARED authority: the owner predicts, the server corrects. The controller
-    # simulates on both and only receives on everyone else's copy.
-    controller.drive = (
-        DotFpsController.Drive.EXTERNAL if identity.can_simulate()
-        else DotFpsController.Drive.REMOTE
-    )
-    # Never from the client's own config, and never from the tunables the client
-    # sent. This is the server's decision about this player.
-    controller.allow_noclip = false
-
-func _net_apply_input(input: DotNetInput, _tick: int) -> void:
-    controller.apply_command((input as PlayerInput).command)
-
-func _net_simulate(tick: int, delta: float) -> void:
-    controller.simulate_tick(tick, delta)
-    DotFpsNetSync.pull(controller.state, self)
-
-func _net_state_applied(_tick: int) -> void:
-    DotFpsNetSync.push(self, controller.state)
-```
-
-Three things that are easy to get wrong:
-
-- **`_net_state_applied` must restore the whole state**, which is what
-  `DotFpsNetSync.push` does. Reconciliation adopts the server's answer and replays
-  every unacknowledged command on top of it; anything not restored makes the replay
-  start somewhere the server never was.
-- **`delta` must be the tick duration** on both sides, and `tick_rate` must match.
-  It is an input to the simulation.
-- **Compare `DotFpsTunables.fingerprint()` at connect time.** A client with different
-  movement values diverges every tick and it looks exactly like packet loss.
-  `DotFpsNetSync.differences()` names the property that differs.
-
-### Where a game plugs in
-
-Nothing here should require a fork.
-
-| To change | Where |
-| --- | --- |
-| Which node anything attaches to | `DotNodeRef` on the controller and the view |
-| Movement feel | `DotFpsTunables`, per instance or per JSON file |
-| How far a jump carries a player, for sizing a gap or a ledge | `DotFpsTunables.jump_reach` / `climb_limit` / `jump_airtime`, or the static `reach_for` / `airtime_for` |
-| A named variation on it — sideways, low gravity, prebhop | `DotFpsStyle`, via `DotFpsController.set_style` |
-| How one kind of ground behaves | `DotFpsSurface` in a `DotFpsSurfaceSet` |
-| How a collider maps to a surface | Node metadata or a group; override `DotFpsController._resolve_surface_id` |
-| A temporary effect — pad, slow field, stun, launcher | `DotFpsModifier`, registered in `_register_extensions` |
-| A new movement mode (ladders, swimming, vehicles) | `DotFpsMoveMode` subclass, in `DotFpsController.extra_modes` (registered on every setup, so it survives a style) or `_register_extensions` |
-| Collision source (heightfield, BSP, a server with no render world) | `DotFpsBody` subclass, assigned by overriding `DotFpsController._make_body` |
-| Input devices, action names, a bot, a demo | `DotFpsSampler`; `DotFpsTouchSampler` for touch |
-| Extra actions (fire, use, reload) | `BUTTON_USER_0..2`, already on the wire |
-| Camera behaviour, view bob, landing kick, strafe roll | `DotFpsView` exports, or a subclass |
-| Anything inside the tick — triggers, mode switches | `_on_pre_simulate` / `_on_post_simulate` |
-| Refusing input — a cutscene, a respawn freeze | `_accept_command` |
-| A slide off a crouch press at a run | `DotFpsTunables.slide_*` (`slide_enabled` first); `DotFpsView.slide_fov_gain` / `slide_roll`; `slide_changed` |
-| A dash along the way the player steers |  `DotFpsTunables.dash_*` (`dash_button` as with the launch; a game with no sprint can use the sprint bit); `dashed` |
-| An ability that throws the player into the air | `DotFpsTunables.launch_*`, with `launch_button` set to a command bit the game has free; `launched` |
-| An administrator's noclip, freeze, speed or gravity | `admin_abilities` on every machine, then `DotFpsAdminModifiers` on the server |
-| Reacting to movement | `landed`, `jumped`, `stepped_up`, `crouch_changed`, `surface_changed`, `modifier_added` / `modifier_removed`, `mode_changed` |
-
-`BUTTON_USER_*` exists so a game's own actions ride in the command it already sends,
-in tick order with movement, rather than in a second message that has to be
-correlated with it.
-
-**A walker pressed into a face too steep to stand on stays on the floor** (`[steep-climb-1]`, 2026-09-29). A capsule's rounded bottom touches a face that leans back before its feet leave the floor, so the ground probe reported the face and the walker went to AIR at its foot; air acceleration then crawled them 2.5 m up a 70° face and over a 60° one. Two halves, both needed: `_categorise_ground` and `_snap_to_ground` re-ask a steep hit with four half-radius capsules inside the player's footprint (`_quadrant_floor`, the quadrant ground test the genre's reference movement code uses), and a grounded non-jump `_move` drops the lift a steep face's slide added along the floor normal (`MoveResult.met_steep_face`). **An airborne player still ramp-crawls** a steep face at roughly the genre's rate; that half is genre-correct and left alone. A jump into a sheer face peaks at a jump. `movement_selftest`'s steep-face section holds both at 60/70/80/90°.
-
-**A downward probe grazing a face is not a floor** (`[jumping-into-crate-1]`, 2026-10-02). A capsule beside a vertical face, a hair from it, moving down, makes `cast_motion` report a contact that no rest query along the motion can name (`get_rest_info` empty at `unsafe` and at the 1/2/4 mm retries), and `DotFpsPhysicsBody.sweep`'s last resort was the motion's reverse -- which for the ground probe is straight UP, a perfect floor made of nothing. In mg-buses-from-hell a runner jumping beside a column of 1 m crates that had settled 4-5 degrees off square was grounded at its apex by the top crate's corner 2 cm away, jumped again, and climbed the stack a crate at a time (2.02 m with a 1.15 m jump in tonight's probe; 2.98 m of a 3 m face on 2026-09-26). A plain box never did it because nothing stood proud of its face. For a mostly-downward motion that last resort is now `_downward_ray_fallback` -- the floor under the axis, or a miss: a graze does not stop a fall. Sideways sweeps keep the reverse-of-motion guess. `movement_selftest`'s "a downward sweep grazing a crate's side" rebuilds the three crates to nine digits; against the old body it fires (normal (0, 1, 0)). The other five suites, mg-buses-from-hell's three and mg-smash-copter's `headless_run` are unchanged.
-
-### Sliding and the launch
-
-**Both are off by default, and that is the whole compatibility story.** Every `slide_*` and `launch_*` number is read only behind `slide_enabled` / `launch_enabled`, so a game that never sets them simulates what it did before they existed — all six suites and every game's numbers unchanged. They are still in `fingerprint()` like everything else: two peers that disagree about them disagree about where a crouching runner goes.
-
-**A slide is a crouch with different friction and steering, and nothing else.** It starts on the crouch PRESS, grounded, at `slide_min_speed`; crouch already held when the speed arrives (a push, a ramp) is a crouch, because that is what a player holding crouch expects. The collider is the crouched one because crouch is held, so a slide goes under what a crouch goes under and stands up where a crouch would. While it lasts, `slide_friction` replaces `friction` (surfaces and modifiers still scale it — ice is slicker to slide on too) and `slide_accelerate` replaces `accelerate`; the wish speed is the crouched one, which a sliding player is already past, so acceleration bends the run rather than speeding it up. `slide_boost` is capped by `slide_max_speed` and a player already faster gets no burst rather than being slowed to it. Measured: from a 10.5 m/s sprint, 13.3 m/s at the start and 10.75 m covered in 1.5 s, against 4.77 m for a crouch from the same run.
-
-**The launch is an ability rather than a `DotFpsModifier`**, because it is an impulse and a modifier is a multiplier. It sets the vertical speed rather than adding to it, so a launch at the top of a jump goes no higher than one from the ground. **Its button is a setting, not a new bit**: every bit on the wire is spoken for (the user bits are each game's own), so `launch_button` names whichever one the game has free. A stun (`deny_jump` / `deny_move`) refuses it.
-
-**`slide_time`, `slide_cooldown_left` and `launch_cooldown_left` are in `DotFpsState` AND in the snapshot**, packed into `net_flags` with the previous tick's buttons. The first version left them out "like the jump timers", and game-arena's net suite measured what that costs: the client predicts a launch and starts the cooldown, a snapshot from before the launch arrives, the rewind keeps the client's CURRENT cooldown and CURRENT buttons, and the replay reaches the press with the cooldown running and the key already down — no launch, and 3.2 m between the ends. `DotFpsNetSync.pack_flags` now carries all three timers in sixty-fourths of a second (a tick at the family's usual rate) and `previous_buttons`, which every press edge is detected against; that also closes the same hole for a buffered jump. In the flags word rather than as new properties because every game already declares `net_flags` and reads its width from `FLAG_BITS`; a full state update is 23 bytes where it was 20. Both sections in `movement_selftest` replay from a snapshot in the middle of the thing and carry a negative control that drops the field, which must diverge. `slide_changed` and `launched` are **not** emitted during a prediction replay, unlike `crouch_changed`: they are where a game hangs a sound, and a replayed tick is one the player already heard.
-
-**The dash is the launch's shape sideways** (2026-10-06): a press of `dash_button` sets the horizontal speed along the move direction (the view's heading with nothing held) to at least `dash_speed`, never less than the player already has along it, and adds `dash_lift` so ground friction does not eat it on the first tick. Its cooldown travels in `net_flags` (12 more bits; a full state update is 25 bytes). Holding against a dash in the air brakes it, at the air-acceleration rate, which is air control and not a bug: the suite's first cooldown check strafed against the dash and read the brake as a second dash.
-
-### Validating
-
-```bash
-godot --headless --path . --import
-find . -name '*.gd' -not -path './.godot/*' | while read f; do
-    godot --headless --path . --check-only --script "res://${f#./}"
-done
-godot --headless --path . res://examples/movement_selftest.tscn     # 271 checks
-godot --headless --path . res://examples/controller_selftest.tscn   # 106 checks
-godot --headless --path . res://examples/fps_controller_selftest.tscn # 60 checks
-godot --headless --path . res://examples/surf_selftest.tscn         # 52 checks
-godot --headless --path . res://examples/surf_physics_selftest.tscn # 29 checks
-```
-
-All four exit non-zero on failure. **`surf_selftest` and `surf_physics_selftest` are not alternatives** — the first is the motor against geometry whose answer is known, the second is the same properties against the collision backend the games actually run on, and the bug that made the second necessary was invisible to the first for as long as it existed. **Run the check-only pass before the scenes**:
-a script that fails to parse makes the scene fail to load, and the process then hangs
-rather than exiting, because nothing ever reaches `get_tree().quit()`.
-
-Two GDScript hazards that cost time here, both already in the family CLAUDE.md and
-both hit again:
-
-- `var x := arr[i].f()` where the array is untyped is a **parse error**, not a
-  warning. `Array.duplicate()` returns an untyped array.
-- **Lambdas capture locals by value.** `var n := 0` incremented inside a signal
-  handler stays zero outside it, so a test asserting on the count reports a failure
-  for a signal that fired perfectly. Capture an `Array` instead.
-
-### Rendering between ticks, and the guard that made it unreachable
-
-`render_state()` interpolates the position and crouch between the last two ticks, so
-motion is smooth at a frame rate that is not the tick rate. It has done that since this
-addon was written, and **its guard was `if drive != Drive.LOCAL: return state`**.
-
-`Drive.LOCAL` is the drive no networked game uses. Under dot-net a controller is
-`Drive.EXTERNAL` — the netcode owns the tick — so for every client of every game in this
-family the function returned the raw tick state, and `_accumulator` is only advanced by
-the LOCAL loop, so even reaching it would have blended at a constant alpha of zero.
-
-Measured in game-g2gfast's browser client at 60 frames against a 128-tick server: the
-drawn position advanced 74 mm on six frames out of seven and 112 mm on the seventh, a
-47% change in apparent speed eight times a second. That was the whole of a "the game is
-very jittery in the browser" report, on a client whose every simulated number was right.
-
-Two things it now needs from a host, and neither is this addon's to enforce:
-
-- **Step the controller once per physics frame.** The derived alpha is
-  `Engine.get_physics_interpolation_fraction()`, which is a fraction through a *physics
-  frame* and only a fraction through a tick while the engine's physics rate equals
-  `tick_rate`. A host that runs two ticks on one physics frame and three on the next
-  gets no benefit at all — measured, not assumed.
-- **Do not call it for a `Drive.REMOTE` player.** Its position arrives already
-  interpolated from the network and its `_previous_state` is never updated, so blending
-  would drag it backwards every frame. `render_state` refuses that drive itself.
-
-Pass an explicit alpha to override the derivation; `examples/fps_controller_selftest.gd`
-does, because the fraction's source is the host's business and the blend is this
-class's.
-
-### Things deliberately not here
-
-- **Ladders and vehicles.** `DotFpsMoveMode` is the hook; the modes themselves are a game's own decision about feel. The self-test ships a ladder as a worked example of the interface, not as something to use. **Swimming is here since 2026-10-07** (`fp/motion/dot_fps_swim_mode.gd`, below), because three kinds of map in the family wanted water and the hard part of it, determinism, is this addon's.
-- **Weapons, health, hit detection.** dot-net's lag compensation rewinds positions;
-  what to trace is a game's concern.
-- **Camera shake, weapon sway, procedural lean.** `DotFpsView` has bob, a landing
-  kick and strafe roll; the rest is cosmetic and every game wants different ones.
-- **On-screen touch controls.** `DotFpsTouchSampler` turns fingers into commands and
-  deliberately ships no art or layout — a virtual stick that draws itself is one
-  nobody can restyle. A game draws its own and calls `hold()`.
-- **Moving platforms.** They need a velocity frame the player inherits, and doing that
-  deterministically across a client and a server needs the platform to be part of the
-  replicated simulation — which is dot-net's problem, not this one's.
-- **A character mesh or animation.** `DotFpsController` publishes position, yaw, pitch
-  and crouch; driving an `AnimationTree` from those is a game's own layer.
-
-## Two things the third-person half got wrong, and neither could fail in its own suite
-
-**`DotTpsCameraRig` never excluded the body it hangs off.** `SpringArm3D` excludes nothing
-unless told, and the rig is a child of the player — so on any game whose player is a
-`CharacterBody3D`, which is every game this controller can drive, the arm collides on its
-first millimetre and collapses to the margin. The camera then sits at the shoulder pivot,
-inside the character, at every distance and every angle, with `camera_distance` and every
-other tunable reading exactly as configured.
-
-`tps_selftest` builds no physics world, so its arm collides with nothing and reports the
-full length: **the check passed for the one reason it could not fail.** What found it was
-a rendered frame — game-playground's `tools/screenshot_views.sh`, on the first game in this
-family whose player body is a collision object.
-
-**A controller's id must be set before the switch enters the tree.**
-`DotPlayerControllerSwitch._ready` defers `_activate_default` deliberately — a sibling's
-`_ready` may not have run yet — but it calls `refresh()` immediately, and a controller
-still carrying an empty `controller_id` at that moment is registered under its class name
-instead. `default_controller` then names something that is not there and the switch falls
-back to whatever it found first. The consuming game opened in the wrong view and the only
-symptom was the camera.
-
-A consumer also has to **wait one frame** before reading `active_id()`: the default is
-activated deferred, so on the frame the switch is built the active id is still empty, which
-is neither controller.
-
-## The body sweeps the tunables' mask, every tick (2026-10-06)
-
-`DotFpsController.simulate_tick` hands `tunables.collision_mask` to its `body` before the motor runs. The body copied the mask once, in `_make_body`, and every game sets the mask after setup (that is when it knows its physics layout: game-arena, game-g2gfast, game-playground, mg-deathrun, mg-wipeout and mg-smash-copter all do `controller.tunables.collision_mask = …`). So the body kept 1, the world layer only, and game-playground's players walked through every prop, NPC and vehicle with the tunables reading the right mask the whole time; it was found by a player standing on a platform for the first time and falling through it. `fps_controller_selftest`'s *a mask set after setup is the one swept* (armed: body 1, the player falls to -21.75).
-
-**And a style threw it away.** `set_style` rebuilds `tunables` from the base copy taken at the first setup, so a mask written on the live tunables after a style had been set reverted at the next one; game-playground's clients set a style straight after the join and every connected player walked through every prop. `DotFpsController.set_collision_mask(mask)` sets the base, the live tunables and the body, and is the way to set it (game-g2gfast kept a base copy of its own for the same reason). The selftest sets a style, the mask, then another style (armed: a plain write reverts to 3).
-
-## A fast crest launches (2026-10-06, `[slope-crest-1]`)
-
-Since the walkable-slope fix (803308f) `_snap_to_ground` held every player to the floor past a ramp's crest, which is right for a run up it and wrong for a hop over it. `DotFpsTunables.crest_launch_speed_scale` (1.25, a multiple of `max_speed`, Christian's pick) is the line: over a crest still carrying the climb, a player at or above it is left in the air with all of their speed, and one below is laid onto the floor as before. 0 restores always-grounded. `movement_selftest`'s *a fast crest launches, a slow one does not* (with the threshold under the walker's speed they are thrown, at 0 never; armed: without the branch, 0.014 m above the plateau), and the physics-slope section still walks onto the plateau at the default. game-g2gfast exposes it as `sv_crestlaunch`. Every first-person game's suites were re-run green with it.
-
-## Swimming (2026-10-07)
-
-`DotFpsSwimMode` is the first built-in custom mode. **Water is a list of axis-aligned boxes** (`volumes`) the game hands over from its map, never an `Area3D`: overlap signals arrive after the physics step on the main loop, and a client replaying ticks of prediction cannot ask an area where it was. A box list answers any question any number of times, the same on both ends. **Entering is the game's once-a-tick call** (`update(motor, state)`, from wherever it runs per-tick logic that also runs during a prediction replay), when the waist (`waist`, 1 m above the feet) is in a volume. **Leaving is the mode's own**, the moment the waist is out: it hands the player to AIR and the motor's own modes take over. In the water:
-- the wish follows the view (pitch included);
-- jump swims up and crouch dives;
-- with nothing pressed the player drifts to float with the head `float_depth` above the feet at the surface;
-- a jump with the waist within `exit_reach` of the surface sets the upward speed to `exit_speed`, enough to get over an edge.
-
-`_uses_crouch` is false, so the collider does not change size underwater. `movement_selftest`'s *swimming* (8) covers: in at the waist, floating to the surface, diving, forward at swim speed, out with a jump and the climb's speed, and a dry player left alone. game-playground is the first user, through `DotFpsController.extra_modes`: a mode registered by hand on the motor is lost the first time a style rebuilds it, and `fps_controller_selftest` asserts it survives two.
+| `addons/dot_player_controller/core/` | `DotPlayerIntent` (one tick of intent and its wire form), `DotPlayerLook` |
+| `addons/dot_player_controller/nodes/` | `DotPlayerController` (abstract base, five methods), `DotPlayerControllerSwitch` |
+| `addons/dot_player_controller/fp/core/` | data: `DotFpsTunables`, `DotFpsState`, `DotFpsCommand`, styles, surfaces, modifiers, admin modifiers, stats |
+| `addons/dot_player_controller/fp/motion/` | the simulation: `DotFpsMotor`, `DotFpsBody` and its flat and physics implementations, `DotFpsMoveMode`, `DotFpsSwimMode` |
+| `addons/dot_player_controller/fp/nodes/` | `DotFpsController`, `DotFpsSampler`, `DotFpsTouchSampler`, `DotFpsView` |
+| `addons/dot_player_controller/fp/net/` | `DotFpsNetSync`: what replicates, at what precision |
+| `addons/dot_player_controller/tp/` | `core/` (motor, state, tunables) and `nodes/` (controller, `DotTpsCameraRig`) |
+| `examples/` | six self-test scenes, `sandbox.tscn` (a course to feel the movement out, not a test) |
+
+## Running and testing
+
+- The family's two steps ([game-dev/CLAUDE.md](../../CLAUDE.md#validating-anything)): `--import`, `--check-only` every script, then run every suite.
+- **Run all six suites**: `controller_selftest`, `movement_selftest`, `surf_selftest`, `surf_physics_selftest`, `fps_controller_selftest`, `tps_selftest`. `controller_selftest` is the main scene and is the one a careless check runs alone. All exit non-zero on failure. [testing](docs/testing.md)
+- `surf_selftest` and `surf_physics_selftest` are **not alternatives**: the first replaces the very component the worst bug was in. [testing](docs/testing.md#flat-body-and-physics-body)
+- Run the check-only pass first: a scene whose script does not parse hangs instead of failing.
+- A change to the motor is not done until the first-person games' suites agree too (game-playground, game-g2gfast, game-arena, mg-buses-from-hell, mg-smash-copter and the other `mg-*`).
+
+## Rules that bite
+
+Short forms; the reasoning is in the linked file.
+
+**Structure**
+
+- `fp/motion/` may not reference `fp/nodes/`; `tp/core/` may not reference `tp/nodes/`. That direction keeps each simulation testable without a scene. [design](docs/design.md#dependency-direction)
+- Every `class_name` is public API (`DotFps*`, `DotTps*`): never rename one. A game may delete `fp/` or `tp/`; the plugin skips a missing type. [design](docs/design.md#it-was-three-addons)
+- Name collisions already paid for: `Btn` not `Button`, `CONTROLLER_CHANNEL` not `CHANNEL`, `transform_3d()` not `transform()`. [design](docs/design.md#three-name-collisions)
+- A switch carries position, velocity and view, nothing else. Activate, THEN `adopt_state`, or the reset wipes it. [design](docs/design.md#the-switch)
+- Set a controller's `controller_id` before the switch enters the tree; read `active_id()` one frame later. [design](docs/design.md#the-switch)
+- `input_enabled = false` still ticks with an empty intent; it is not deactivation. [design](docs/design.md#freezing-is-not-deactivating)
+
+**The first-person simulation**
+
+- The simulation is a pure function of (state, command, delta, world): no `Input`, no wall clock, no unseeded random, no node transform inside `fp/motion/`. [motor](docs/motor.md#the-one-idea)
+- Everything read between ticks lives in `DotFpsState`, or a rewind does not restore it. Nothing is stored on a `DotFpsMoveMode` instance. [motor](docs/motor.md#the-one-idea)
+- Collision goes through `DotFpsBody`, never `move_and_slide` (it keeps state a rewind does not restore). [collision](docs/collision.md#why-collision-goes-through-dotfpsbody)
+- A face steeper than `max_slope_angle` never grounds; that is what surf is. [motor](docs/motor.md#surf-and-hops)
+- A duplicate plane is satisfied, not stuck; a full plane list is a real corner. [motor](docs/motor.md#surf-and-hops)
+- "Moving away" from the ground is measured along the floor normal (`LEAVING_SPEED`), not +Y. [motor](docs/motor.md#slopes-steps-and-kerbs)
+- A step never lifts more than `step_height` above the floor it left; a kerb a centimetre over is a wall. [motor](docs/motor.md#slopes-steps-and-kerbs)
+- `crest_launch_speed_scale` (1.25 x `max_speed`) is the line between being laid over a crest and thrown off it; 0 restores always-grounded. [motor](docs/motor.md#slopes-steps-and-kerbs)
+- Ask `DotFpsTunables.jump_reach(rise)` / `climb_limit()` / `jump_airtime(rise)` (or the static `reach_for` / `airtime_for`) when sizing a gap; never write the airtime back to the height you left. [motor](docs/motor.md#how-far-a-jump-goes)
+- `DotFpsStyle.apply_to` derives from the base tunables, never the previous style; `filter_command` runs on both machines, idempotently. [motor](docs/motor.md#styles)
+- Statistics are counted per simulated tick and never during a replay. [motor](docs/motor.md#statistics)
+
+**Collision**
+
+- `cast_motion` ignores anything the shape already overlaps, misses a contact that ends exactly touching, and is imprecise in proportion to its length; every recovery in `DotFpsPhysicsBody` and the motor exists for one of those. Do not remove one because it looks redundant. [collision](docs/collision.md)
+- A grounded player is kept a skin clear of the floor (`_keep_skin`); the ground snap runs only when the player has left the ground. [collision](docs/collision.md#skins-and-snaps)
+- A downward graze is not a floor (`_downward_ray_fallback`); a steep hit is re-asked inside the footprint (`_quadrant_floor`). [collision](docs/collision.md#steep-faces-and-grazes)
+- A rest normal pointing into the face is turned round only if the turned-round position is clear (`_turn_round_flipped`). [collision](docs/collision.md#a-normal-that-points-into-the-face)
+- Set the collision mask with `DotFpsController.set_collision_mask(mask)`; a plain write to `tunables.collision_mask` reverts at the next style. [extending](docs/extending.md#the-collision-mask)
+
+**Extending and the wire**
+
+- `register_modifier` order is the wire contract: same order on every machine, in `_register_extensions`, never conditionally. The active set is sorted by index. [extending](docs/extending.md#modifiers)
+- Admin abilities are modifiers, and `admin_abilities` must be on for every player on every machine. Never set `state.mode = NOCLIP` or a tunable from the server. [extending](docs/extending.md#admin-abilities)
+- A custom mode goes in `DotFpsController.extra_modes`, which survives a style; one registered by hand on the motor does not. [extending](docs/extending.md#custom-modes-and-swimming)
+- Water is a list of boxes the game hands over, never an `Area3D`. [extending](docs/extending.md#custom-modes-and-swimming)
+- Slide, launch and dash are off by default; their timers ride in `net_flags`, and their signals are not emitted during a replay. [extending](docs/extending.md#slide-launch-and-dash)
+- dot-net is never named: `DotFpsCommand` and `DotFpsNetSync` reach it by method name. `_net_state_applied` restores the whole state; `delta` is the tick; compare `fingerprint()` at connect. [networking](docs/networking.md)
+- `render_state()` needs the host to step once per physics frame at `tick_rate`; never call it for a `Drive.REMOTE` player. [networking](docs/networking.md#rendering-between-ticks)
+- `tps_selftest` has no physics world: anything about the camera rig colliding is only checked by a rendered frame. [design](docs/design.md#the-third-person-half)

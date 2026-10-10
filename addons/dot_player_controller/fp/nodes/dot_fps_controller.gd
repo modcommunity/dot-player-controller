@@ -28,7 +28,7 @@ extends DotPlayerController
 ## and when.
 ##
 ## dot-net is not imported and is not required. See [DotFpsNetSync] and the worked
-## bridge in this project's CLAUDE.md.
+## bridge in this project's docs/networking.md.
 ##
 ## [b]It extends [DotPlayerController], which changes nothing about how it is used.[/b]
 ## Everything above still works with no dot-player node anywhere in the scene: the base
