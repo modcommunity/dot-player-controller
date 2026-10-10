@@ -680,7 +680,14 @@ func _process(delta: float) -> void:
 		return
 
 	if view != null:
-		view.apply(render_state(), motor, delta)
+		var drawn := render_state()
+		# The view as of this frame's mouse, not the last tick's: a frame that ran no tick
+		# would otherwise not turn. See [method DotFpsSampler.look_now].
+		if drive == Drive.LOCAL and sampler != null:
+			var look := sampler.look_now()
+			drawn.yaw = look.x
+			drawn.pitch = look.y
+		view.apply(drawn, motor, delta)
 
 
 # --- Driving from outside --------------------------------------------------
@@ -972,9 +979,10 @@ func render_state(alpha: float = -1.0) -> DotFpsState:
 		_previous_state.crouch_fraction, state.crouch_fraction, alpha
 	)
 
-	# View angles are not interpolated. They come straight from the sampler, which
-	# has already read this frame's mouse motion — blending toward the previous tick
-	# would add a frame of latency to aiming, which is the one place it is felt.
+	# View angles are not interpolated: blending toward the previous tick would add a
+	# frame of latency to aiming, which is the one place it is felt. They are the last
+	# tick's, which on a frame that ran no tick is a frame behind the mouse; a renderer
+	# draws `DotFpsSampler.look_now()` over them for the player it owns.
 	return blended
 
 

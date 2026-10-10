@@ -18,7 +18,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 60
+const CHECKS := 62
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -963,6 +963,27 @@ func _test_local_drive_accumulator() -> void:
 		"but a REMOTE player is left exactly where the network put it"
 	)
 	controller.drive = DotFpsController.Drive.LOCAL
+
+	# [b]The view is drawn from the sampler once a frame, not from the last tick.[/b] A
+	# frame on which no tick ran used to draw the view where the last frame left it while
+	# the mouse moved, and the next one turned double: one frame in nine at 144 Hz against
+	# 128 ticks. `look_now` folds the pending motion in, and the command after it carries
+	# exactly the same view, so the simulation never sees a different yaw.
+	var looker := DotFpsSampler.new(DotFpsTunables.new())
+	looker.tunables.mouse_sensitivity = 0.1
+	var motion := InputEventMouseMotion.new()
+	motion.relative = Vector2(-50.0, 0.0)
+	looker.handle_event(motion)
+	var drawn := looker.look_now()
+	_check(
+		absf(drawn.x - 5.0 * looker.tunables.mouse_sensitivity_x) < 0.001,
+		"look_now turns the view by the mouse motion of this frame, before any tick",
+		"yaw %.3f" % drawn.x
+	)
+	_check(
+		is_equal_approx(looker.sample(STEP).yaw, drawn.x) and is_equal_approx(looker.look_now().x, drawn.x),
+		"and the next command carries that view, turned once and not twice"
+	)
 
 	world.queue_free()
 	await get_tree().process_frame

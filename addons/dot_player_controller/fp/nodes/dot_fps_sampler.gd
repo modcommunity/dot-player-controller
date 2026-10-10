@@ -174,6 +174,27 @@ func _strength(role: String) -> float:
 	return Input.get_action_strength(action)
 
 
+## Folds the mouse motion that has arrived since the last [method sample] into
+## [member yaw] and [member pitch] now, and returns them as (yaw, pitch) in degrees.
+##
+## [b]For drawing the view once per FRAME, which the tick cannot do.[/b] A renderer that
+## draws the simulated state's angles turns the camera only on frames a tick ran on. With
+## the display faster than the tick rate some frames run none -- one in nine at 144 Hz
+## against 128 ticks, nearly half at 240 -- and on those the view does not move while the
+## mouse does, then moves twice as far on the next: measured in game-g2gfast's
+## `headless_feel` as 96 of 864 frames frozen and 96 doubled at 144 Hz. Calling this
+## once a frame and drawing what it returns turns the view on every frame.
+##
+## The commands do not change: the angles are cumulative, so motion folded in here is
+## carried by the next [method sample] exactly as it would have been, and no tick ever
+## sees a different yaw. Suspended, it folds nothing, as [method handle_event] takes
+## nothing.
+func look_now() -> Vector2:
+	if not suspended:
+		_apply_mouse()
+	return Vector2(yaw, pitch)
+
+
 ## Points the view somewhere without a mouse event. For spawning and teleports.
 func look_at_angles(p_yaw: float, p_pitch: float) -> void:
 	yaw = wrapf(p_yaw, -180.0, 180.0)

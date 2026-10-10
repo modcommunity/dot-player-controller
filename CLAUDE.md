@@ -82,4 +82,5 @@ Short forms; the reasoning is in the linked file.
 - Slide, launch and dash are off by default; their timers ride in `net_flags`, and their signals are not emitted during a replay. [extending](docs/extending.md#slide-launch-and-dash)
 - dot-net is never named: `DotFpsCommand` and `DotFpsNetSync` reach it by method name. `_net_state_applied` restores the whole state; `delta` is the tick; compare `fingerprint()` at connect. [networking](docs/networking.md)
 - `render_state()` needs the host to step once per physics frame at `tick_rate`; never call it for a `Drive.REMOTE` player. [networking](docs/networking.md#rendering-between-ticks)
+- Draw the owner's view from `DotFpsSampler.look_now()` once a frame, not from the state's angles, or a frame with no tick in it does not turn. [networking](docs/networking.md#rendering-between-ticks)
 - `tps_selftest` has no physics world: anything about the camera rig colliding is only checked by a rendered frame. [design](docs/design.md#the-third-person-half)
