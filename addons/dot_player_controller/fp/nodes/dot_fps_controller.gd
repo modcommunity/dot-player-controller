@@ -81,6 +81,14 @@ signal launched()
 ## Emitted when the dash fires. Not during a replay.
 signal dashed()
 
+## Emitted when a wall run starts or ends. Not during a replay, like [signal slide_changed].
+## See [member DotFpsTunables.wall_run_enabled].
+signal wall_run_changed(running: bool)
+
+## Emitted when a wall jump fires. Not during a replay. See
+## [member DotFpsTunables.wall_jump_enabled].
+signal wall_jumped()
+
 ## Emitted when a modifier starts or stops applying, on whichever peer simulates.
 signal modifier_added(id: StringName)
 signal modifier_removed(id: StringName)
@@ -757,6 +765,8 @@ func simulate_tick(tick: int, delta: float) -> void:
 	var before_sliding := state.is_sliding()
 	var before_launches := motor.launches
 	var before_dashes := motor.dashes
+	var before_wall_running := state.is_wall_running()
+	var before_wall_jumps := motor.wall_jumps
 
 	_on_pre_simulate(tick, delta)
 
@@ -783,6 +793,12 @@ func simulate_tick(tick: int, delta: float) -> void:
 
 		if motor.dashes != before_dashes:
 			dashed.emit()
+
+		if motor.wall_jumps != before_wall_jumps:
+			wall_jumped.emit()
+
+		if state.is_wall_running() != before_wall_running:
+			wall_run_changed.emit(state.is_wall_running())
 
 	# Not during a replay: a replayed tick is one the statistics have already seen,
 	# and counting it again gives a client on a lossy link a jump count that climbs

@@ -23,6 +23,7 @@ Surfaces, modifiers and custom modes all change the simulation, so all three are
 | Anything inside the tick (triggers, mode switches) | `_on_pre_simulate` / `_on_post_simulate` |
 | Refusing input (a cutscene, a respawn freeze) | `_accept_command` |
 | A slide off a crouch press at a run | `DotFpsTunables.slide_*` (`slide_enabled` first); `DotFpsView.slide_fov_gain` / `slide_roll`; `slide_changed` |
+| Running along walls, jumping off them, sliding down them | `DotFpsTunables.wall_run_*`, `wall_jump_*`, `wall_slide_speed`, `wall_reach` (each off by default); `DotFpsView.wall_run_roll`; `wall_run_changed`, `wall_jumped`. See [wall-movement.md](wall-movement.md) |
 | A dash along the way the player steers | `DotFpsTunables.dash_*` (`dash_button` as with the launch); `dashed` |
 | An ability that throws the player into the air | `DotFpsTunables.launch_*`, with `launch_button` set to a command bit the game has free; `launched` |
 | An administrator's noclip, freeze, speed or gravity | `admin_abilities` on every machine, then `DotFpsAdminModifiers` on the server |

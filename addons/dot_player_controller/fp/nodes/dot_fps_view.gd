@@ -95,6 +95,18 @@ const CHANNEL := "fps.view"
 ## Degrees the camera rolls while sliding, eased in and out like the strafe roll. 0 for none.
 @export_range(-20.0, 20.0, 0.5) var slide_roll: float = 3.0
 
+## Degrees the camera rolls away from the wall while wall running, toward the open side.
+## 0 for none.
+##
+## Read only while [method DotFpsState.is_wall_running], which needs
+## [member DotFpsTunables.wall_run_enabled], so a game without wall running sees nothing
+## from it. View only: the simulation never sees it.
+@export_range(0.0, 30.0, 0.5) var wall_run_roll: float = 6.0
+
+## How quickly the wall-run roll eases in and out, per second. Exponential, so it starts
+## and ends without a snap; about a sixth of a second to settle at the default.
+@export_range(0.5, 40.0, 0.5) var wall_run_roll_response: float = 6.0
+
 ## Horizontal sway, as a fraction of [member bob_amount].
 @export_range(0.0, 2.0, 0.05) var bob_sway: float = 0.5
 
@@ -154,6 +166,7 @@ var _fov: float = 0.0
 var _ready_ok: bool = false
 
 var _roll: float = 0.0
+var _wall_roll: float = 0.0
 var _landing_dip: float = 0.0
 var _landing_pitch: float = 0.0
 var _bob_phase: float = 0.0
@@ -266,10 +279,11 @@ func apply(
 	_camera.rotation = Vector3(
 		deg_to_rad(state.pitch + _landing_pitch + _bob_pitch + external_angles.x),
 		deg_to_rad(external_angles.y),
-		deg_to_rad(_roll + external_angles.z)
+		deg_to_rad(_roll + _wall_roll + external_angles.z)
 	)
 
 	_apply_roll(state, delta)
+	_apply_wall_roll(state, delta)
 	_apply_fov(state, delta)
 
 
@@ -294,6 +308,28 @@ func _apply_roll(state: DotFpsState, delta: float) -> void:
 
 	var t := 1.0 - exp(-strafe_roll_response * delta)
 	_roll = lerpf(_roll, target, t)
+
+
+## Leans the camera away from the wall being run along, eased both ways.
+##
+## The side is the wall's normal against the view's right: a wall on the right has a
+## normal pointing left, and the head tilts left, away from it. Scaled by how square the
+## view is to the wall, so looking straight along it gives the full roll and turning to
+## face away from it blends toward none rather than flipping.
+func _apply_wall_roll(state: DotFpsState, delta: float) -> void:
+	var target := 0.0
+
+	if wall_run_roll > 0.0 and state.is_wall_running() and state.wall_normal != Vector3.ZERO:
+		var right := DotFpsMotor.forward_for(state.yaw).cross(Vector3.UP)
+		target = -state.wall_normal.dot(right) * wall_run_roll
+
+	var t := 1.0 - exp(-wall_run_roll_response * delta)
+	_wall_roll = lerpf(_wall_roll, target, t)
+
+
+## The wall-run roll as drawn this frame, in degrees. For a test or a HUD.
+func wall_roll() -> float:
+	return _wall_roll
 
 
 ## Advances the walk cycle by distance travelled and writes the bob offsets.
@@ -383,6 +419,7 @@ func snap() -> void:
 	_fov = base_fov
 	external_offset = Vector3.ZERO
 	_roll = 0.0
+	_wall_roll = 0.0
 	_landing_dip = 0.0
 	_landing_pitch = 0.0
 	_bob_phase = 0.0
@@ -403,6 +440,7 @@ func describe() -> Dictionary:
 		"step_offset": "%.3f" % _step_offset,
 		"fov": "%.1f" % _fov,
 		"roll": "%.2f" % _roll,
+		"wall_roll": "%.2f" % _wall_roll,
 		"landing_dip": "%.3f" % _landing_dip,
 		"bob": "%.3f" % _bob_offset.y,
 	}

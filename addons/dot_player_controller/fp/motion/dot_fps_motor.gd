@@ -93,6 +93,8 @@ var ticks_simulated: int = 0
 var slides: int = 0
 var launches: int = 0
 var dashes: int = 0
+var wall_runs: int = 0
+var wall_jumps: int = 0
 
 ## Ticks where the collide-and-slide ran out of iterations with motion left.
 ##
@@ -373,6 +375,11 @@ func simulate(
 
 	_update_noclip(state, command)
 
+	# Noclip or a game's own mode (water, a ladder) ends a wall run: those modes own their
+	# whole tick, and a run left on would keep the view rolled while swimming.
+	if state.is_wall_running() and state.mode >= DotFpsState.Mode.NOCLIP:
+		_end_wall_run(state)
+
 	# A custom mode owns its whole tick — gravity, acceleration, collision — because
 	# a ladder that had gravity applied behind its back would have to cancel a force
 	# it never asked for. See DotFpsMoveMode.
@@ -402,12 +409,22 @@ func simulate(
 	_categorise_ground(state)
 
 	var jumped := _try_jump(state, command, delta)
+
+	# The wall, probed once a tick and only when a wall move could use it: both are off
+	# by default, and a game that leaves them off makes no extra query and simulates what
+	# it did before they existed.
+	var wall := _wall_contact(state, command)
+	var wall_jumped := false
+	if not jumped:
+		wall_jumped = _try_wall_jump(state, command, wall)
+
 	var launched := _try_launch(state, command)
 	launched = _try_dash(state, command) or launched
 
 	# After the jump and the launch, because both end a slide by leaving the ground, and
 	# before friction, because a slide is what decides which friction this tick gets.
 	_update_slide(state, command, delta, jumped or launched)
+	_update_wall_run(state, command, delta, wall, jumped or wall_jumped or launched)
 
 	if state.mode == DotFpsState.Mode.GROUND and not jumped and not launched:
 		_apply_friction(state, delta)
@@ -421,8 +438,13 @@ func simulate(
 		# than as a velocity so it composes with friction instead of fighting it.
 		if _surface.push != Vector3.ZERO:
 			state.velocity += _surface.push * delta
+	elif state.is_wall_running():
+		_wall_run_vertical(state, delta)
 	else:
+		var falling_at := state.velocity.y
 		state.velocity.y -= tunables.gravity * _effects.gravity * delta
+		if _wall_slides(state, command, wall):
+			_wall_slide_vertical(state, falling_at, delta)
 
 	_clamp_velocity(state)
 	_move(state, delta, jumped or launched)
@@ -500,6 +522,9 @@ func _advance_timers(
 		# duration answers it differently at 64 Hz and at 128 Hz, which is exactly
 		# the thing a timer's statistics must not do.
 		state.ground_ticks += 1
+
+		if tunables.wall_run_enabled or tunables.wall_jump_enabled:
+			_reset_walls(state)
 	else:
 		state.time_since_grounded += delta
 		state.ground_ticks = 0
@@ -1060,6 +1085,360 @@ func _try_dash(state: DotFpsState, command: DotFpsCommand) -> bool:
 		return true
 
 	return false
+
+
+# --- Walls -----------------------------------------------------------------
+
+## How finely a wall's heading is counted for [member DotFpsTunables.wall_jump_max_per_wall]:
+## eighths of a turn, the width of its replicated field. Coarse, and it does not need to be
+## finer: two walls at a right angle are always two headings apart, so a corner is two
+## walls, and a single wall is never counted as two however its normal rounds.
+const WALL_HEADINGS := 8
+
+## The wall counters' ceiling, the width of their replicated field.
+const WALL_JUMP_COUNT_MAX := 3
+
+## Below this horizontal speed, in m/s, the velocity has no direction worth probing along,
+## and only the view's directions are asked.
+const WALL_PROBE_MIN_SPEED := 0.5
+
+
+## The wall beside the player this tick, or null. Also writes [member DotFpsState.wall_normal].
+##
+## [b]Asked fresh every tick, never remembered.[/b] Whether the wall is still there is a
+## question about the world, and the world answers it the same way on both machines; a
+## normal carried over from the last tick would be one more thing a rewind has to restore.
+##
+## Probed only when something will use the answer: a run in progress, a run that could
+## start (airborne, fast enough, not spent), or a jump press a wall jump could spend. A
+## short sideways sweep (`wall_reach`) to each side of the velocity, then along the view's
+## four flat directions, and the nearest wall steep enough wins. Every direction is
+## needed: a run keeps the wall beside the velocity, while a player touching a wall from a
+## standstill has only the view to say where it is.
+func _wall_contact(state: DotFpsState, command: DotFpsCommand) -> DotFpsBody.Hit:
+	if (
+		not tunables.wall_run_enabled
+		and not tunables.wall_jump_enabled
+		and tunables.wall_slide_speed <= 0.0
+	):
+		return null
+
+	state.wall_normal = Vector3.ZERO
+
+	if state.mode != DotFpsState.Mode.AIR:
+		return null
+
+	var wants_run := (
+		tunables.wall_run_enabled
+		and (state.is_wall_running() or (
+			not state.wall_run_spent
+			and state.horizontal_speed() >= tunables.wall_run_min_speed
+		))
+	)
+	var wants_jump := (
+		tunables.wall_jump_enabled
+		and state.time_since_jump_pressed <= tunables.jump_buffer_time
+	)
+
+	var wants_slide := (
+		tunables.wall_slide_speed > 0.0
+		and state.velocity.y < 0.0
+		and (command.move != Vector2.ZERO or state.wall_run_spent)
+	)
+
+	if not wants_run and not wants_jump and not wants_slide:
+		return null
+
+	var directions: Array[Vector3] = []
+	var flat := Vector3(state.velocity.x, 0.0, state.velocity.z)
+
+	if flat.length() >= WALL_PROBE_MIN_SPEED:
+		var side := flat.normalized().cross(Vector3.UP)
+		directions.append(side)
+		directions.append(-side)
+
+	var view := _view_basis(state.yaw, 0.0)
+	directions.append(view.forward)
+	directions.append(-view.forward)
+	directions.append(view.right)
+	directions.append(-view.right)
+
+	var height := _height(state)
+	var centre := _capsule_centre(state.position, height)
+	var steepest := cos(deg_to_rad(90.0 - tunables.wall_max_angle_from_vertical))
+	var best: DotFpsBody.Hit = null
+
+	for direction in directions:
+		var hit := _sweep(centre, direction * tunables.wall_reach, height)
+		if not hit.hit or absf(hit.normal.y) > steepest:
+			continue
+		if hit.normal.dot(direction) >= 0.0:
+			continue
+		if best == null or hit.fraction < best.fraction:
+			best = hit
+
+	if best != null:
+		state.wall_normal = best.normal
+
+	return best
+
+
+## The wall's normal laid flat and normalised: what "away from the wall" means for a push
+## and "along the wall" for a run, whatever the wall's lean.
+static func _flat_normal(normal: Vector3) -> Vector3:
+	var flat := Vector3(normal.x, 0.0, normal.z)
+	return flat.normalized() if flat.length_squared() > 1e-8 else Vector3.ZERO
+
+
+## A flat normal's heading in eighths of a turn, 0..7.
+static func wall_heading_of(normal: Vector3) -> int:
+	var turns := atan2(normal.x, normal.z) / TAU
+	return posmod(roundi(turns * WALL_HEADINGS), WALL_HEADINGS)
+
+
+## Whether two headings name the same wall: within one eighth, either way round.
+## One either side rather than an exact match, so a wall whose normal sits on a boundary
+## is not two walls depending on which side of it the rounding falls.
+static func _same_wall(a: int, b: int) -> bool:
+	var apart := posmod(a - b, WALL_HEADINGS)
+	return apart <= 1 or apart >= WALL_HEADINGS - 1
+
+
+## Starts, carries and ends a wall run.
+##
+## [b]Entered only from the air[/b], beside a wall steep enough, moving along it at
+## [member DotFpsTunables.wall_run_min_speed] or more and not into it head-on, not falling
+## fast, with forward held (when required), and not after a run already ended in this
+## airborne stretch. While it lasts the speed along the wall is left alone (nothing here
+## writes the horizontal velocity) and gravity is reduced, in [method _wall_run_vertical].
+## It ends on the time cap, on losing the wall, on slowing down, on releasing forward, on
+## landing, and on any jump or launch, a wall jump included.
+func _update_wall_run(
+	state: DotFpsState,
+	command: DotFpsCommand,
+	delta: float,
+	wall: DotFpsBody.Hit,
+	left_this_tick: bool
+) -> void:
+	if not tunables.wall_run_enabled and not tunables.wall_jump_enabled:
+		return
+
+	# Touching the ground resets both wall moves, whichever of them is on. Also done in
+	# [method _advance_timers], because a jump off the ground has put the player in AIR by
+	# the time this runs, and that tick started on the ground all the same.
+	if state.mode == DotFpsState.Mode.GROUND:
+		_reset_walls(state)
+		return
+
+	if not tunables.wall_run_enabled:
+		# A run in progress when a server turns running off ends rather than freezing.
+		if state.is_wall_running():
+			_end_wall_run(state)
+		return
+
+	if state.is_wall_running():
+		state.wall_run_time += delta
+
+		if (
+			left_this_tick
+			or wall == null
+			or _effects.deny_move
+			or state.wall_run_time >= minf(tunables.wall_run_max_time, DotFpsTunables.WALL_RUN_TIME_LIMIT)
+			or _speed_along_wall(state, wall) < tunables.wall_run_end_speed
+			or (tunables.wall_run_requires_forward and command.move.y <= 0.0)
+		):
+			# A wall jump has already ended the run and un-spent it; nothing to do.
+			if state.is_wall_running():
+				_end_wall_run(state)
+		return
+
+	if left_this_tick or wall == null or state.wall_run_spent or _effects.deny_move:
+		return
+
+	if state.mode != DotFpsState.Mode.AIR:
+		return
+
+	if tunables.wall_run_requires_forward and command.move.y <= 0.0:
+		return
+
+	if state.velocity.y < -tunables.wall_run_max_fall_speed:
+		return
+
+	var normal := _flat_normal(wall.normal)
+	var flat := Vector3(state.velocity.x, 0.0, state.velocity.z)
+	var into := -flat.dot(normal)
+
+	# Moving away from the wall is leaving it, not running on it.
+	if into < -LEAVING_SPEED:
+		return
+
+	var along := _speed_along_wall(state, wall)
+	if along < tunables.wall_run_min_speed:
+		return
+
+	# The angle between the velocity and the wall's plane: 0 along it, 90 straight in.
+	var approach := rad_to_deg(atan2(maxf(into, 0.0), along))
+	if approach > tunables.wall_run_max_approach_angle:
+		return
+
+	state.wall_run_time = 0.0
+	wall_runs += 1
+
+
+func _reset_walls(state: DotFpsState) -> void:
+	state.wall_run_time = -1.0
+	state.wall_run_spent = false
+	state.wall_jump_count = 0
+	state.wall_jumps_in_air = 0
+
+
+func _end_wall_run(state: DotFpsState) -> void:
+	state.wall_run_time = -1.0
+	state.wall_run_spent = true
+
+
+## Horizontal speed along the wall's face.
+func _speed_along_wall(state: DotFpsState, wall: DotFpsBody.Hit) -> float:
+	var normal := _flat_normal(wall.normal)
+	var flat := Vector3(state.velocity.x, 0.0, state.velocity.z)
+	return (flat - normal * flat.dot(normal)).length()
+
+
+## The vertical half of a wall run, in place of gravity.
+##
+## Gravity scaled by [member DotFpsTunables.wall_run_gravity_scale] (and by a modifier,
+## as everywhere), and the vertical speed eased toward zero at
+## [member DotFpsTunables.wall_run_vertical_damping] per second. [b]Eased, never set[/b]:
+## a player who jumped onto the wall rises a little further and levels off, one who was
+## falling is caught over a few ticks, and nothing changes by more than a tick's worth of
+## acceleration, at the start, during, or when the run ends and full gravity returns.
+func _wall_run_vertical(state: DotFpsState, delta: float) -> void:
+	state.velocity.y -= tunables.gravity * tunables.wall_run_gravity_scale * _effects.gravity * delta
+	state.velocity.y *= exp(-tunables.wall_run_vertical_damping * delta)
+
+
+## Whether an airborne player is sliding down a wall this tick: falling, beside a wall, and
+## either pushing into it or done running on it (so a run that ends decays into a slide).
+func _wall_slides(state: DotFpsState, command: DotFpsCommand, wall: DotFpsBody.Hit) -> bool:
+	if tunables.wall_slide_speed <= 0.0 or wall == null or state.velocity.y >= 0.0:
+		return false
+
+	if state.mode != DotFpsState.Mode.AIR or state.is_wall_running():
+		return false
+
+	if state.wall_run_spent:
+		return true
+
+	var basis := _view_basis(state.yaw, 0.0)
+	var wish := basis.right * command.move.x + basis.forward * command.move.y
+	wish.y = 0.0
+	if wish.length_squared() < 1e-6:
+		return false
+
+	# Into the wall by more than a glance: about 30 degrees off along it, or steeper.
+	return wish.normalized().dot(-_flat_normal(wall.normal)) > 0.5
+
+
+## The wall slide, after gravity: a fall that reaches [member DotFpsTunables.wall_slide_speed]
+## stops gaining speed there, and one that arrived faster is eased down to it,
+## exponentially at [member DotFpsTunables.wall_run_vertical_damping], with no gravity on
+## top. Never cut to the cap in one tick: the change is at most the tick's gravity or the
+## easing's step. [param falling_at] is the vertical speed before this tick's gravity.
+func _wall_slide_vertical(state: DotFpsState, falling_at: float, delta: float) -> void:
+	var cap := -tunables.wall_slide_speed
+	if state.velocity.y >= cap:
+		return
+
+	if falling_at >= cap:
+		state.velocity.y = cap
+	else:
+		state.velocity.y = cap + (falling_at - cap) * exp(-tunables.wall_run_vertical_damping * delta)
+
+
+## A jump off a wall the player is touching or running on. Returns whether it fired.
+##
+## On the jump press (buffered like a ground jump, never held: holding jump with
+## [member DotFpsTunables.auto_hop] on would otherwise wall-jump the instant a wall came
+## within reach), in the air, beside a wall steep enough, and not past
+## [member DotFpsTunables.wall_jump_max_per_wall] jumps off that wall since the ground.
+##
+## [b]The speed along the wall is kept[/b] and the push is added on top, so a jump out of a
+## run carries the run. The push leans from the wall's normal toward the view by
+## [member DotFpsTunables.wall_jump_look_blend], with the part of the look that points
+## into the wall dropped first, so the jump always leaves the wall and goes roughly where
+## the player is looking. The upward speed replaces a lower one, like the launch's.
+func _try_wall_jump(
+	state: DotFpsState,
+	command: DotFpsCommand,
+	wall: DotFpsBody.Hit
+) -> bool:
+	if not tunables.wall_jump_enabled or wall == null:
+		return false
+
+	if not tunables.can_jump or _effects.deny_jump or _effects.deny_move or _effects.jump <= 0.0:
+		return false
+
+	if state.mode != DotFpsState.Mode.AIR:
+		return false
+
+	if state.time_since_jump_pressed > tunables.jump_buffer_time:
+		return false
+
+	if state.time_since_jump < tunables.jump_cooldown:
+		return false
+
+	var normal := _flat_normal(wall.normal)
+	if normal == Vector3.ZERO:
+		return false
+
+	var heading := wall_heading_of(normal)
+	var same := state.wall_jump_count > 0 and _same_wall(heading, state.wall_jump_heading)
+
+	if (
+		same
+		and tunables.wall_jump_max_per_wall > 0
+		and state.wall_jump_count >= tunables.wall_jump_max_per_wall
+	):
+		return false
+
+	if (
+		tunables.wall_jump_max_per_air > 0
+		and state.wall_jumps_in_air >= tunables.wall_jump_max_per_air
+	):
+		return false
+
+	var look := _view_basis(state.yaw, 0.0).forward
+	look.y = 0.0
+	look = look.normalized()
+	# Only the part of the look that does not point into the wall.
+	look -= normal * minf(look.dot(normal), 0.0)
+
+	var push := normal * (1.0 - tunables.wall_jump_look_blend) + look * tunables.wall_jump_look_blend
+	push = push.normalized() if push.length_squared() > 1e-8 else normal
+
+	var flat := Vector3(state.velocity.x, 0.0, state.velocity.z)
+	# Whatever was going into the wall is gone (the wall stopped it); along it is kept.
+	var kept := flat - normal * minf(flat.dot(normal), 0.0)
+	var jumped := kept + push * tunables.wall_jump_push_speed * _effects.jump
+
+	state.velocity.x = jumped.x
+	state.velocity.z = jumped.z
+	state.velocity.y = maxf(state.velocity.y, tunables.wall_jump_up_speed * _effects.jump)
+
+	state.time_since_jump = 0.0
+	state.time_since_jump_pressed = 1000.0
+	state.time_since_grounded = 1000.0
+
+	# A jump ends a run, and un-spends running: a jump to the facing wall may run on it.
+	state.wall_run_time = -1.0
+	state.wall_run_spent = false
+
+	state.wall_jump_count = mini(state.wall_jump_count + 1, WALL_JUMP_COUNT_MAX) if same else 1
+	state.wall_jumps_in_air = mini(state.wall_jumps_in_air + 1, WALL_JUMP_COUNT_MAX)
+	state.wall_jump_heading = heading
+	wall_jumps += 1
+
+	return true
 
 
 # --- Sliding ---------------------------------------------------------------

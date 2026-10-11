@@ -79,6 +79,8 @@ Three things that are easy to get wrong:
 
 Anything the next replayed tick reads must be in the snapshot, not only in `DotFpsState`. The slide time, the slide, launch and dash cooldowns and `previous_buttons` (which every press edge is detected against) are packed into `net_flags` by `DotFpsNetSync.pack_flags`, the timers in sixty-fourths of a second. Leaving a timer out "like the jump timers" means a snapshot from before a launch arrives, the rewind keeps the client's CURRENT cooldown and buttons, and the replay reaches the press with the cooldown running and the key already down: no launch, and metres between the two ends. Carrying `previous_buttons` closes the same hole for a buffered jump.
 
+The wall run, the two wall-jump counters and the wall's heading are the last thirteen bits, which fills the word to 64 ([wall-movement.md](wall-movement.md#what-the-wire-carries)); the next field that has to travel needs a property of its own.
+
 They are in the flags word rather than new properties because every game already declares `net_flags` and reads its width from `FLAG_BITS`. A new field that a replay reads goes there too, with a `movement_selftest` section that replays from a snapshot in the middle of the thing and a negative control that drops the field.
 
 ## Rendering between ticks

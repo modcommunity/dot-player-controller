@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 273
+const CHECKS := 317
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 43
+const SECTIONS := 47
 
 var _passed := 0
 var _failed := 0
@@ -78,6 +78,10 @@ func _run() -> void:
 	_test_slide()
 	_test_launch()
 	_test_dash()
+	_test_wall_run()
+	_test_wall_jump()
+	_test_wall_replay()
+	_test_walls_off_identical()
 	_test_flat_rest_axis()
 	await _test_physics_body()
 	await _test_physics_slope()
@@ -2046,14 +2050,63 @@ func _test_net_sync_round_trip() -> void:
 	DotFpsNetSync.unpack_modifiers(empty, 0)
 	_check(empty.modifiers.is_empty(), "and an empty mask clears the set")
 
+	# The wall run and both wall-jump counters, the last thirteen bits of the word.
+	var walled := DotFpsState.new()
+	walled.wall_run_time = 0.75
+	walled.wall_jumps_in_air = 3
+	walled.wall_jump_count = 2
+	walled.wall_jump_heading = 5
+	walled.dash_cooldown_left = 2.5
+	walled.previous_buttons = 0xff
+	var unwalled := DotFpsState.new()
+	DotFpsNetSync.unpack_flags(unwalled, DotFpsNetSync.pack_flags(walled))
+	_check(
+		is_equal_approx(unwalled.wall_run_time, 0.75) and not unwalled.wall_run_spent
+			and unwalled.wall_jumps_in_air == 3 and unwalled.wall_jump_count == 2
+			and unwalled.wall_jump_heading == 5,
+		"the wall run, both wall-jump counters and the wall's heading round-trip",
+		", ".join(unwalled.describe_lines())
+	)
+	_check(is_equal_approx(unwalled.dash_cooldown_left, 2.5) and unwalled.previous_buttons == 0xff,
+		"without disturbing the dash or the buttons below them")
+	var longest := DotFpsState.new()
+	longest.wall_run_time = DotFpsTunables.WALL_RUN_TIME_LIMIT
+	var longest_back := DotFpsState.new()
+	DotFpsNetSync.unpack_flags(longest_back, DotFpsNetSync.pack_flags(longest))
+	_check_near(longest_back.wall_run_time, DotFpsTunables.WALL_RUN_TIME_LIMIT, 0.5 / 64.0,
+		"the longest run the tunables allow fits the field")
+	var spent := DotFpsState.new()
+	spent.wall_run_spent = true
+	var spent_back := DotFpsState.new()
+	DotFpsNetSync.unpack_flags(spent_back, DotFpsNetSync.pack_flags(spent))
+	_check(spent_back.wall_run_spent and not spent_back.is_wall_running(),
+		"a spent run arrives spent and not running")
+	var pairs_ok := true
+	for total in range(4):
+		for same in (range(1, total + 1) if total > 0 else [0]):
+			var back := DotFpsNetSync.wall_jump_counts(DotFpsNetSync.wall_jump_code(total, same))
+			pairs_ok = pairs_ok and back == Vector2i(total, same)
+	_check(pairs_ok, "all seven (airborne, per-wall) wall-jump count pairs survive their shared field")
+	# An encoding from before the wall fields: the same word with the top thirteen bits clear.
+	var older := DotFpsState.new()
+	DotFpsNetSync.unpack_flags(
+		older, DotFpsNetSync.pack_flags(walled) & ((1 << DotFpsNetSync.WALL_RUN_SHIFT) - 1)
+	)
+	_check(not older.is_wall_running() and not older.wall_run_spent and older.wall_jumps_in_air == 0
+			and is_equal_approx(older.dash_cooldown_left, 2.5),
+		"an encoding from before them reads as no run and no wall jumps, the rest intact")
+	_check(DotFpsNetSync.FLAG_BITS == 64, "and the flags word is exactly full",
+		"%d bits" % DotFpsNetSync.FLAG_BITS)
+
 	# 23 bytes since 2026-10-06, from 20: the slide and launch timers (26 bits) and the
 	# previous tick's buttons (8) ride in the flags, tick-exact, because without them a
 	# rewind replayed a launch as no launch and game-arena measured 3.2 m between the ends.
 	# Under four bytes per player per snapshot.
-	# 25 since the dash's cooldown (12 bits) joined them the same night.
+	# 25 since the dash's cooldown (12 bits) joined them the same night; 26 since the wall
+	# run and wall jumps (13 bits) filled the word, 2026-10-10.
 	_check(
-		DotFpsNetSync.estimated_state_bits() < 200,
-		"a full state update stays under 25 bytes",
+		DotFpsNetSync.estimated_state_bits() <= 208,
+		"a full state update stays within 26 bytes",
 		"%d bits" % DotFpsNetSync.estimated_state_bits()
 	)
 
@@ -2406,6 +2459,350 @@ func _test_launch() -> void:
 	_check(not amnesiac.equals(full, 0.0001),
 		"negative control: a replay that forgets the cooldown diverges",
 		"diverged %.6f m" % amnesiac.divergence(full))
+	_done()
+
+
+# --- Wall running and wall jumping ------------------------------------------
+
+## A floor and a corridor along -Z: a wall whose face is x = 1 (normal -X, on the right of
+## a player looking down -Z) and one whose face is x = -3 (normal +X, on the left).
+func _wall_world() -> DotFpsFlatBody:
+	var world := DotFpsFlatBody.with_floor(0.0)
+	world.add_box(AABB(Vector3(1.0, 0.0, -200.0), Vector3(0.5, 12.0, 200.0)))
+	world.add_box(AABB(Vector3(-3.5, 0.0, -200.0), Vector3(0.5, 12.0, 200.0)))
+	return world
+
+
+func _wall_tunables() -> DotFpsTunables:
+	var t := _tunables()
+	t.wall_run_enabled = true
+	t.wall_jump_enabled = true
+	t.wall_run_min_speed = 6.0
+	t.wall_run_max_time = 1.0
+	t.wall_jump_max_per_wall = 1
+	t.wall_jump_max_per_air = 3
+	return t
+
+
+## An airborne player 5 cm off the right-hand wall, moving down -Z at [param speed] and
+## rising at [param rise], well past coyote time.
+func _beside_wall(speed: float, rise: float = 1.0, height: float = 3.0) -> DotFpsState:
+	var s := DotFpsState.new()
+	s.mode = DotFpsState.Mode.AIR
+	s.position = Vector3(1.0 - 0.35 - 0.05, height, -2.0)
+	s.velocity = Vector3(0.0, rise, -speed)
+	s.time_since_grounded = 1.0
+	return s
+
+
+## Largest change of velocity between consecutive ticks over [param ticks] forward-held
+## ticks, and how many of them were wall running.
+func _run_along(motor: DotFpsMotor, s: DotFpsState, ticks: int, yaw: float = 0.0) -> Dictionary:
+	var worst := 0.0
+	var running := 0
+	var before := s.velocity
+	for _i in range(ticks):
+		motor.simulate(s, _command(1.0, 0.0, yaw), STEP)
+		worst = maxf(worst, (s.velocity - before).length())
+		before = s.velocity
+		if s.is_wall_running():
+			running += 1
+	return {"worst": worst, "running": running}
+
+
+func _test_wall_run() -> void:
+	_section("wall running")
+
+	# Off by default: the same approach is an ordinary fall past the wall.
+	var off_motor := _motor(_tunables(), _wall_world())
+	var off := _beside_wall(9.0)
+	var off_run := _run_along(off_motor, off, 30)
+	_check(off_run.running == 0 and off_motor.wall_runs == 0,
+		"wall running is off unless a game turns it on")
+
+	var t := _wall_tunables()
+	var motor := _motor(t, _wall_world())
+
+	# Entry: airborne, fast along the wall.
+	var s := _beside_wall(9.0)
+	var speed_before := s.horizontal_speed()
+	motor.simulate(s, _command(1.0, 0.0, 0.0), STEP)
+	_check(s.is_wall_running(), "an airborne player fast along a wall runs on it",
+		"%s" % ", ".join(s.describe_lines()))
+	_check(s.wall_normal.dot(Vector3.LEFT) > 0.99, "and the state names the wall's normal",
+		"%s" % s.wall_normal)
+	_check_near(s.horizontal_speed(), speed_before, 0.01,
+		"the speed along the wall is the speed the player arrived with")
+
+	# Entry needs speed along the wall.
+	var slow_motor := _motor(t, _wall_world())
+	var slow := _beside_wall(4.0)
+	_run_along(slow_motor, slow, 10)
+	_check(slow_motor.wall_runs == 0, "too slow along the wall is no run",
+		"%d runs" % slow_motor.wall_runs)
+
+	# Entry needs the air: a sprinter on the floor beside the wall never runs on it.
+	var floor_motor := _motor(t, _wall_world())
+	var grounded := _beside_wall(9.0, 0.0, 0.0)
+	grounded.mode = DotFpsState.Mode.GROUND
+	grounded.time_since_grounded = 0.0
+	_run_along(floor_motor, grounded, 30)
+	_check(floor_motor.wall_runs == 0 and grounded.is_grounded(),
+		"on the ground beside a wall is no run")
+
+	# Entry needs forward held (wall_run_requires_forward).
+	var idle_motor := _motor(t, _wall_world())
+	var idle := _beside_wall(9.0)
+	idle_motor.simulate(idle, _command(0.0, 0.0, 0.0), STEP)
+	_check(not idle.is_wall_running(), "and forward held")
+
+	# Head-on is not a run, however fast.
+	var head_on_motor := _motor(t, _wall_world())
+	var head_on := _beside_wall(0.0)
+	# 62 degrees into the wall, with 6.2 m/s along it: fast enough, but at the wall.
+	head_on.velocity = Vector3(12.0, 1.0, -6.2)
+	head_on_motor.simulate(head_on, _command(1.0, 0.0, -90.0), STEP)
+	_check(not head_on.is_wall_running(), "a player running at the wall head-on does not run on it")
+
+	# The cap: a run lasts wall_run_max_time and ends; still beside the wall it does not
+	# start again until the player lands.
+	var capped_motor := _motor(t, _wall_world())
+	var capped := _beside_wall(9.0, 1.0, 8.0)
+	var start_y := capped.position.y
+	var during := _run_along(capped_motor, capped, 60)
+	# A fall from 1 m/s up over the same second would lose nine metres.
+	_check(capped.position.y > start_y - 1.0,
+		"a run holds the player up: under a metre lost in a second on the wall",
+		"y %.2f from %.2f" % [capped.position.y, start_y])
+	var after := _run_along(capped_motor, capped, 30)
+	var whole := {
+		"running": during.running + after.running,
+		"worst": maxf(during.worst, after.worst),
+	}
+	_check_near(whole.running * STEP, t.wall_run_max_time, STEP * 1.5,
+		"a run ends at wall_run_max_time")
+	_check(capped_motor.wall_runs == 1 and capped.wall_run_spent,
+		"and does not start again on the same wall before landing",
+		"%d runs" % capped_motor.wall_runs)
+	_check(whole.worst < t.gravity * STEP * 1.05,
+		"no tick changes the velocity by more than a tick of gravity, entry and end included",
+		"worst %.3f m/s against %.3f" % [whole.worst, t.gravity * STEP])
+
+	# Releasing forward drops off the wall.
+	var drop_motor := _motor(t, _wall_world())
+	var drop := _beside_wall(9.0)
+	_run_along(drop_motor, drop, 10)
+	drop_motor.simulate(drop, _command(0.0, 0.0, 0.0), STEP)
+	_check(not drop.is_wall_running() and drop.wall_run_spent, "releasing forward ends the run")
+
+	# Landing ends it and refills everything.
+	var heavy := _wall_tunables()
+	heavy.wall_run_gravity_scale = 1.0
+	heavy.wall_run_vertical_damping = 0.0
+	var land_motor := _motor(heavy, _wall_world())
+	var lander := _beside_wall(9.0, 0.0, 0.6)
+	_run_along(land_motor, lander, 30)
+	_check(lander.is_grounded() and not lander.is_wall_running() and not lander.wall_run_spent,
+		"landing ends a run and lets the next one start", "%s" % ", ".join(lander.describe_lines()))
+
+	# The wall slide: a run that ends decays into a capped slide down the wall.
+	var sliding := _wall_tunables()
+	sliding.wall_slide_speed = 2.0
+	var slide_motor := _motor(sliding, _wall_world())
+	var slider := _beside_wall(9.0, 1.0, 8.0)
+	var slid := _run_along(slide_motor, slider, 150)
+	_check(slider.wall_run_spent and slider.velocity.y >= -2.0 - 0.001 and slider.velocity.y < 0.0,
+		"after the run the player slides down the wall at wall_slide_speed",
+		"%.3f m/s" % slider.velocity.y)
+	_check(slid.worst < sliding.gravity * STEP * 1.05, "and the slide starts without a jolt",
+		"worst %.3f m/s" % slid.worst)
+	_check(capped.velocity.y < -3.0,
+		"while without the slide the same run ends in a free fall",
+		"%.3f m/s" % capped.velocity.y)
+	_done()
+
+
+func _test_wall_jump() -> void:
+	_section("wall jumping")
+
+	var jump := DotFpsCommand.BUTTON_JUMP
+
+	var off_motor := _motor(_tunables(), _wall_world())
+	var off := _beside_wall(9.0, -1.0)
+	off_motor.simulate(off, _command(1.0, 0.0, 0.0, jump), STEP)
+	_check(off.velocity.x > -0.01 and off.velocity.y < 0.0, "wall jumping is off unless a game turns it on")
+
+	var t := _wall_tunables()
+	var motor := _motor(t, _wall_world())
+
+	# Out of a run, looking along it.
+	var s := _beside_wall(9.0)
+	_run_along(motor, s, 10)
+	var along_before := -s.velocity.z
+	motor.simulate(s, _command(1.0, 0.0, 0.0, jump), STEP)
+	var push := Vector3(s.velocity.x, 0.0, s.velocity.z + along_before)
+	_check(motor.wall_jumps == 1 and not s.is_wall_running(), "a jump press during a run jumps off the wall")
+	_check(s.velocity.x < -t.wall_jump_push_speed * 0.6, "away from the wall",
+		"%.2f m/s along the normal" % -s.velocity.x)
+	_check_near(s.velocity.y, t.wall_jump_up_speed, 0.4, "and up at wall_jump_up_speed")
+	_check(-s.velocity.z >= along_before - 0.01,
+		"keeping every bit of the speed along the wall", "%.2f from %.2f" % [-s.velocity.z, along_before])
+	var expected := (Vector3.LEFT * (1.0 - t.wall_jump_look_blend) + Vector3.FORWARD * t.wall_jump_look_blend).normalized()
+	_check(push.normalized().dot(expected) > 0.999,
+		"the push leans from the normal toward the view by wall_jump_look_blend",
+		"%s against %s" % [push.normalized(), expected])
+
+	# Looking into the wall still pushes away from it.
+	var facing_motor := _motor(t, _wall_world())
+	var facing := _beside_wall(9.0, -1.0)
+	facing_motor.simulate(facing, _command(0.0, 0.0, -90.0, jump), STEP)
+	_check(facing_motor.wall_jumps == 1 and facing.velocity.x < -t.wall_jump_push_speed * 0.6,
+		"a jump while looking into the wall still leaves it", "%.2f" % facing.velocity.x)
+
+	# Touching, not running: a slow player beside the wall can still jump off it.
+	var touch_motor := _motor(t, _wall_world())
+	var toucher := _beside_wall(2.0, -1.0)
+	touch_motor.simulate(toucher, _command(0.0, 0.0, 0.0, jump), STEP)
+	_check(touch_motor.wall_jumps == 1, "a wall the player only touches can be jumped off")
+
+	# Per wall: back onto the same wall, the second jump off it is refused.
+	var again := _beside_wall(2.0, -1.0)
+	again.wall_jump_count = toucher.wall_jump_count
+	again.wall_jump_heading = toucher.wall_jump_heading
+	again.wall_jumps_in_air = toucher.wall_jumps_in_air
+	touch_motor.simulate(again, _command(0.0, 0.0, 0.0, jump), STEP)
+	_check(touch_motor.wall_jumps == 1 and again.velocity.x > -0.01,
+		"a second jump off the same wall before landing is refused (wall_jump_max_per_wall 1)")
+
+	# The other wall of the corridor is another wall.
+	var other := _beside_wall(2.0, -1.0)
+	other.position.x = -3.0 + 0.35 + 0.05
+	other.wall_jump_count = toucher.wall_jump_count
+	other.wall_jump_heading = toucher.wall_jump_heading
+	other.wall_jumps_in_air = toucher.wall_jumps_in_air
+	touch_motor.simulate(other, _command(0.0, 0.0, 0.0, jump), STEP)
+	_check(touch_motor.wall_jumps == 2 and other.velocity.x > t.wall_jump_push_speed * 0.6,
+		"while the facing wall can be jumped off", "%.2f" % other.velocity.x)
+
+	# Per airborne stretch: a budget across every wall, refilled by landing.
+	var budget := _wall_tunables()
+	budget.wall_jump_max_per_wall = 0
+	budget.wall_jump_max_per_air = 2
+	var budget_motor := _motor(budget, _wall_world())
+	var climber := _beside_wall(2.0, -1.0)
+	var jumped := 0
+	for i in range(3):
+		climber.position = Vector3(0.6 if i % 2 == 0 else -2.6, 3.0, -2.0)
+		climber.velocity = Vector3(0.0, -1.0, -2.0)
+		climber.previous_buttons = 0
+		var before := budget_motor.wall_jumps
+		budget_motor.simulate(climber, _command(0.0, 0.0, 0.0, jump), STEP)
+		jumped += budget_motor.wall_jumps - before
+	_check(jumped == 2 and climber.wall_jumps_in_air == 2,
+		"wall_jump_max_per_air limits the jumps across walls", "%d jumps" % jumped)
+	for _i in range(200):
+		budget_motor.simulate(climber, _command(), STEP)
+	_check(climber.is_grounded() and climber.wall_jumps_in_air == 0 and climber.wall_jump_count == 0,
+		"and landing refills the budget")
+	_done()
+
+
+## The rewind a predicting client does, in the middle of a wall run.
+func _test_wall_replay() -> void:
+	_section("wall movement replays")
+
+	var t := _wall_tunables()
+	t.wall_slide_speed = 2.0
+	var commands: Array[DotFpsCommand] = []
+	for i in range(240):
+		var buttons := DotFpsCommand.BUTTON_JUMP if i % 45 == 30 else 0
+		# Looking a little off along the corridor, so each jump crosses it.
+		var yaw := sin(float(i) * 0.07) * 12.0
+		commands.append(_command(1.0, sin(float(i) * 0.05) * 0.3, yaw, buttons))
+
+	for rate: float in [STEP, 1.0 / 64.0]:
+		var full_motor := _motor(t, _wall_world())
+		var full := _beside_wall(9.0)
+		var positions: Array[Vector3] = []
+		var snapshot: DotFpsState = null
+		var split := -1
+		for i in range(commands.size()):
+			full_motor.simulate(full, commands[i], rate)
+			positions.append(full.position)
+			if snapshot == null and i >= 50 and full.is_wall_running() and full.wall_jumps_in_air > 0:
+				snapshot = full.duplicate_state()
+				split = i + 1
+
+		if not _check(snapshot != null and full_motor.wall_runs >= 2 and full_motor.wall_jumps >= 2,
+			"the scripted run wall-runs and wall-jumps more than once at %.0f Hz" % (1.0 / rate),
+			"%d runs, %d jumps" % [full_motor.wall_runs, full_motor.wall_jumps]):
+			continue
+
+		# At the tick rate the wire counts in, the snapshot goes through the flags word, as
+		# a client's rewind does. At 60 Hz it is the state itself (the timers quantise).
+		var replay := snapshot.duplicate_state()
+		if rate != STEP:
+			DotFpsNetSync.unpack_flags(replay, DotFpsNetSync.pack_flags(snapshot))
+		var replay_motor := _motor(t, _wall_world())
+		var same := true
+		for i in range(split, commands.size()):
+			replay_motor.simulate(replay, commands[i], rate)
+			same = same and replay.position == positions[i]
+		_check(same and replay.equals(full, 0.0),
+			"a rewind mid-run reproduces every position after it at %.0f Hz%s" % [
+				1.0 / rate, " through the flags word" if rate != STEP else ""],
+			"diverged %.6f m" % replay.divergence(full))
+
+		# The negative control: a rewind that forgets the run and the counters.
+		var amnesiac := snapshot.duplicate_state()
+		amnesiac.wall_run_time = -1.0
+		amnesiac.wall_run_spent = false
+		amnesiac.wall_jump_count = 0
+		amnesiac.wall_jumps_in_air = 0
+		amnesiac.wall_jump_heading = 0
+		var amnesiac_motor := _motor(t, _wall_world())
+		for i in range(split, commands.size()):
+			amnesiac_motor.simulate(amnesiac, commands[i], rate)
+		_check(not amnesiac.equals(full, 0.0001),
+			"negative control: a rewind that drops the wall fields diverges at %.0f Hz" % (1.0 / rate),
+			"diverged %.6f m" % amnesiac.divergence(full))
+	_done()
+
+
+## With every new feature off, the motor makes the same bytes it made before wall movement
+## existed: a 600-tick run through steps, a wall and a long wall, hashed, against the hash
+## the motor produced on 2026-10-10 before any of it was written. If this alone fails after
+## an engine upgrade with every other check green, the engine's arithmetic moved; re-capture.
+func _test_walls_off_identical() -> void:
+	_section("wall movement off is byte-identical to before it")
+
+	var world := DotFpsFlatBody.with_floor(0.0)
+	world.add_box(AABB(Vector3(2.0, 0.0, -12.0), Vector3(2.0, 0.3, 6.0)))
+	world.add_box(AABB(Vector3(-6.0, 0.0, -20.0), Vector3(12.0, 3.0, 1.0)))
+	world.add_box(AABB(Vector3(3.0, 0.0, -30.0), Vector3(0.5, 4.0, 30.0)))
+	var motor := _motor(_tunables(), world)
+	var s := DotFpsState.new()
+	s.position = Vector3(0.0, 0.5, 0.0)
+	var bytes := PackedByteArray()
+	for i in range(600):
+		var buttons := 0
+		if i % 23 == 0:
+			buttons |= DotFpsCommand.BUTTON_JUMP
+		if (i / 40) % 3 == 1:
+			buttons |= DotFpsCommand.BUTTON_CROUCH
+		if (i / 40) % 3 == 2:
+			buttons |= DotFpsCommand.BUTTON_SPRINT
+		var c := _command(1.0, sin(float(i) * 0.11), sin(float(i) * 0.05) * 70.0 - 30.0, buttons)
+		motor.simulate(s, c, STEP)
+		bytes.append_array(var_to_bytes([s.position, s.velocity, s.mode, s.time_since_jump, s.time_since_grounded]))
+	var ctx := HashingContext.new()
+	ctx.start(HashingContext.HASH_SHA256)
+	ctx.update(bytes)
+	var digest := ctx.finish().hex_encode()
+	_check(digest == "c1b2468664e0a74c72de9c70e7188bd9499eb60f314cd1bc56b0af2763abb81b",
+		"600 ticks with every wall setting off hash the same as before wall movement", digest)
+	_check(motor.wall_runs == 0 and motor.wall_jumps == 0 and s.wall_normal == Vector3.ZERO,
+		"and no wall probe answered anything")
 	_done()
 
 

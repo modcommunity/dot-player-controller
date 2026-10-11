@@ -392,6 +392,108 @@ extends DotConfig
 ## Whether a dash works in mid-air.
 @export var dash_from_air: bool = true
 
+@export_group("Wall running")
+
+## Whether an airborne player moving fast along a near-vertical wall runs along it.
+##
+## Off by default, like the slide and for the same reason: every [code]wall_run_*[/code]
+## number is read only behind this, and the wall probe is not even made, so a game that
+## never sets it simulates exactly what it did before wall running existed. The reasoning
+## is in docs/wall-movement.md.
+@export var wall_run_enabled: bool = false
+
+## Horizontal speed ALONG the wall, in m/s, an airborne player needs to start a run.
+## Measured along the wall rather than in total, so running into it head-on is no run.
+@export_range(0.0, 100.0, 0.1) var wall_run_min_speed: float = 6.0
+
+## A run that slows below this speed along the wall, in m/s, ends.
+@export_range(0.0, 100.0, 0.1) var wall_run_end_speed: float = 3.0
+
+## The longest a run lasts, in seconds: "a few steps". At most
+## [constant WALL_RUN_TIME_LIMIT], which is what the replicated field can hold.
+@export_range(0.05, 1.9, 0.05) var wall_run_max_time: float = 1.0
+
+## Gravity while running, as a multiple of [member gravity]. 0 holds the height; 1 is
+## an ordinary fall (with [member wall_run_vertical_damping] still slowing it).
+@export_range(0.0, 1.0, 0.01) var wall_run_gravity_scale: float = 0.25
+
+## How fast the vertical speed a player arrives with is eased away while running, per
+## second (exponential, like the view's smoothing).
+##
+## [b]Eased rather than zeroed[/b]: zeroing it on the first tick is a one-tick velocity
+## spike, the jolt this whole feature is meant not to have. Against
+## [member wall_run_gravity_scale] it also sets the slow sink a long run settles into
+## ([code]gravity * scale / damping[/code], about 0.6 m/s with the defaults).
+@export_range(0.0, 60.0, 0.1) var wall_run_vertical_damping: float = 8.0
+
+## A player falling faster than this, in m/s, does not catch a wall. Brushing a wall must
+## not be a way to stop a long fall.
+@export_range(0.0, 100.0, 0.1) var wall_run_max_fall_speed: float = 6.0
+
+## The steepest angle a wall may lean from vertical, in degrees, and still be run on or
+## jumped off. Applies to the wall jump too.
+@export_range(0.0, 45.0, 0.5) var wall_max_angle_from_vertical: float = 15.0
+
+## The largest angle, in degrees, between the player's horizontal velocity and the wall's
+## plane at which a run starts.
+##
+## Said from the other side, the velocity must be at least [code]90 - this[/code] degrees
+## away from pointing straight into the wall: running at a wall head-on is not a wall run.
+## 0 needs a velocity exactly along the wall; 90 accepts any.
+@export_range(0.0, 90.0, 0.5) var wall_run_max_approach_angle: float = 60.0
+
+## Whether forward has to be held to start and to keep running. Releasing it drops off
+## the wall, which is the player's way off a run short of jumping.
+@export var wall_run_requires_forward: bool = true
+
+## How far beside the player, in metres, a wall still counts as touched: for a run, and
+## for a wall jump off a wall the player is not running on.
+@export_range(0.01, 1.0, 0.01) var wall_reach: float = 0.25
+
+## Fastest fall, in m/s, of an airborne player against a wall who is pushing into it or
+## whose run has ended on it: the wall slide that lets a player ride a wall down under
+## control, and what a timed-out run decays into rather than a sudden fall. 0 turns the
+## slide off, and is the default.
+##
+## A faster fall is eased down to it at [member wall_run_vertical_damping], never cut in
+## one tick. Independent of [member wall_run_enabled].
+@export_range(0.0, 50.0, 0.1) var wall_slide_speed: float = 0.0
+
+@export_group("Wall jumping")
+
+## Whether a jump press in the air beside a wall (touched or run on) jumps off it.
+## Off by default, like [member wall_run_enabled]; the two are independent.
+@export var wall_jump_enabled: bool = false
+
+## Speed a wall jump pushes away from the wall, in m/s. The speed the player had along
+## the wall is kept on top of it.
+@export_range(0.0, 50.0, 0.1) var wall_jump_push_speed: float = 7.0
+
+## Upward speed a wall jump sets, in m/s. It replaces a lower vertical speed rather than
+## adding to it, like the launch.
+@export_range(0.0, 50.0, 0.1) var wall_jump_up_speed: float = 6.5
+
+## How far the push leans from the wall's normal toward where the player looks, 0..1.
+##
+## 0 pushes straight out from the wall; a little (0.3) sends the jump where the player
+## expects it to go. The part of the look that points into the wall is ignored, so the
+## push always leaves the wall.
+@export_range(0.0, 1.0, 0.01) var wall_jump_look_blend: float = 0.3
+
+## Wall jumps off the same wall before the player touches the ground again. 0 for no
+## limit; at most 3, the replicated counter's width.
+##
+## [b]The same wall is the same normal[/b] (to within one eighth of a turn), so two
+## facing walls of a corridor are two walls and a player can climb between them, while
+## one wall cannot be climbed alone by jumping off it again and again.
+@export_range(0, 3, 1) var wall_jump_max_per_wall: int = 1
+
+## Wall jumps in all, off any walls, before the player touches the ground again. 0 for no
+## limit; at most 3, the replicated counter's width. Applies on top of
+## [member wall_jump_max_per_wall]: the budget the fast movement shooters give a single
+## airborne stretch, refilled only by landing.
+@export_range(0, 3, 1) var wall_jump_max_per_air: int = 3
+
 
 func env_prefix() -> String:
 	return "DOT_FPS_"
@@ -435,6 +537,13 @@ func validate() -> DotResult:
 			DotError.CODE_INVALID,
 			"step_height must be below crouch_height.",
 			"step %.2f, crouch %.2f" % [step_height, crouch_height]
+		)
+
+	if wall_run_max_time > WALL_RUN_TIME_LIMIT:
+		return DotResult.fail(
+			DotError.CODE_INVALID,
+			"wall_run_max_time must not exceed %.1f s, what the wire can carry." % WALL_RUN_TIME_LIMIT,
+			"%.2f s" % wall_run_max_time
 		)
 
 	if max_speed > max_velocity:
@@ -496,6 +605,11 @@ func speed_for(buttons: int) -> float:
 ## one instant of the arc where a tick either side of it is short: a ledge that works when
 ## the tick lands right and not when it does not. Nine tenths works every time.
 const CLIMB_MARGIN := 0.9
+
+## The longest [member wall_run_max_time] can be, in seconds: what the run's replicated
+## field holds (125 sixty-fourths; see [DotFpsNetSync]). A longer run would arrive in a
+## snapshot as a shorter one, and the client would drop off the wall early.
+const WALL_RUN_TIME_LIMIT := 1.9
 
 
 ## Seconds from take-off to landing [param rise] metres higher (negative for lower), for a

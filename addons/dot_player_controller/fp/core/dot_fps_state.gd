@@ -138,6 +138,38 @@ var launch_cooldown_left: float = 0.0
 ## [DotFpsNetSync].
 var dash_cooldown_left: float = 0.0
 
+## Seconds into the current wall run, or -1.0 when not running.
+##
+## [b]In the state and in the snapshot[/b], like [member slide_time]: a run holds gravity
+## off for as long as it lasts, and a rewind that dropped it would replay the rest of a
+## wall run as a fall. See [member DotFpsTunables.wall_run_enabled].
+var wall_run_time: float = -1.0
+
+## A run has ended in this airborne stretch, so no other may start until the player lands
+## or wall-jumps. Without it a run that timed out on a wall would start again on the next
+## tick, and the time cap would mean nothing.
+var wall_run_spent: bool = false
+
+## Wall jumps made off the wall at [member wall_jump_heading] since last on the ground.
+## 0 when there is no such wall. See [member DotFpsTunables.wall_jump_max_per_wall].
+var wall_jump_count: int = 0
+
+## Wall jumps off any wall since last on the ground, 0..3. See
+## [member DotFpsTunables.wall_jump_max_per_air]. Never less than [member wall_jump_count].
+var wall_jumps_in_air: int = 0
+
+## Which wall [member wall_jump_count] counts, as the heading of its normal in eighths
+## of a turn (0..7). Quantised in the simulation itself, not only on the wire, so a value
+## restored from a snapshot is the one the simulation made.
+var wall_jump_heading: int = 0
+
+## The normal of the wall being run along or touched this tick, or zero.
+##
+## [b]An output, not state the simulation reads[/b]: the motor probes for the wall every
+## tick and writes this from the answer, so it is not replicated or compared. It is here
+## for the view, which rolls the camera away from the wall ([DotFpsView]).
+var wall_normal: Vector3 = Vector3.ZERO
+
 ## Ticks simulated. Diagnostic; not compared.
 var tick: int = 0
 
@@ -168,6 +200,10 @@ func is_crouched() -> bool:
 
 func is_sliding() -> bool:
 	return slide_time >= 0.0
+
+
+func is_wall_running() -> bool:
+	return wall_run_time >= 0.0
 
 
 func speed() -> float:
@@ -201,6 +237,12 @@ func copy_from(other: DotFpsState) -> void:
 	slide_cooldown_left = other.slide_cooldown_left
 	launch_cooldown_left = other.launch_cooldown_left
 	dash_cooldown_left = other.dash_cooldown_left
+	wall_run_time = other.wall_run_time
+	wall_run_spent = other.wall_run_spent
+	wall_jump_count = other.wall_jump_count
+	wall_jump_heading = other.wall_jump_heading
+	wall_jumps_in_air = other.wall_jumps_in_air
+	wall_normal = other.wall_normal
 	tick = other.tick
 
 
@@ -240,6 +282,11 @@ func equals(other: DotFpsState, epsilon: float = 0.0001) -> bool:
 		and absf(slide_cooldown_left - other.slide_cooldown_left) <= epsilon
 		and absf(launch_cooldown_left - other.launch_cooldown_left) <= epsilon
 		and absf(dash_cooldown_left - other.dash_cooldown_left) <= epsilon
+		and absf(wall_run_time - other.wall_run_time) <= epsilon
+		and wall_run_spent == other.wall_run_spent
+		and wall_jump_count == other.wall_jump_count
+		and wall_jump_heading == other.wall_jump_heading
+		and wall_jumps_in_air == other.wall_jumps_in_air
 	)
 
 
@@ -266,7 +313,23 @@ func describe() -> Dictionary:
 			"cooldown %.2f s" % slide_cooldown_left if slide_cooldown_left > 0.0 else "-"
 		),
 		"launch": ("cooldown %.1f s" % launch_cooldown_left) if launch_cooldown_left > 0.0 else "ready",
+		"wall": _describe_wall(),
 	}
+
+
+func _describe_wall() -> String:
+	var run := "-"
+	if is_wall_running():
+		run = "running %.2f s" % wall_run_time
+	elif wall_run_spent:
+		run = "run spent"
+
+	if wall_jump_count > 0:
+		run += ", %d jump(s) off the wall at %d/8, %d in all" % [
+			wall_jump_count, wall_jump_heading, wall_jumps_in_air
+		]
+
+	return run
 
 
 func describe_lines() -> PackedStringArray:

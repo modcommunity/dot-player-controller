@@ -7,10 +7,10 @@ The family's method is in [game-dev/docs/testing.md](../../../docs/testing.md); 
 | Suite | What it is |
 | --- | --- |
 | `controller_selftest` | the base contract and the switch. The main scene, so the one a careless check runs alone |
-| `movement_selftest` | the first-person motor: determinism, slopes, kerbs, steep faces, seams, jump reach, modifiers, admin, slide/launch/dash replays, swimming, the physics-body sweep sections, `FakeWire` |
+| `movement_selftest` | the first-person motor: determinism, slopes, kerbs, steep faces, seams, jump reach, modifiers, admin, slide/launch/dash replays, wall run/jump/slide and their replays, the walls-off golden hash, swimming, the physics-body sweep sections, `FakeWire` |
 | `surf_selftest` | surf and hop properties against `DotFpsFlatBody` |
 | `surf_physics_selftest` | the same properties against real `StaticBody3D` geometry and `DotFpsPhysicsBody`, plus ramp ends and reversed normals |
-| `fps_controller_selftest` | the node: drives, `render_state`, the collision mask, `extra_modes` surviving a style |
+| `fps_controller_selftest` | the node: drives, `render_state`, the collision mask, `extra_modes` surviving a style, the wall-run camera roll |
 | `tps_selftest` | the third-person motor and rig (no physics world) |
 
 All exit non-zero on failure. Run every one; then, for a motor change, the first-person games' own suites, which are where the motor meets real maps.

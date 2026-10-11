@@ -13,6 +13,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | [docs/motor.md](docs/motor.md) | `fp/motion/` or `fp/core/`: determinism, surf and hops, steps and slopes, jump reach, styles, statistics |
 | [docs/collision.md](docs/collision.md) | `DotFpsBody`, `DotFpsPhysicsBody`, sweeps, embeds, ramps, ground checks |
 | [docs/extending.md](docs/extending.md) | surfaces, modifiers, admin abilities, custom modes, swimming, slide/launch/dash, the plug-in table |
+| [docs/wall-movement.md](docs/wall-movement.md) | wall running, wall jumping, the wall slide, their camera roll and their bits in `net_flags` |
 | [docs/networking.md](docs/networking.md) | wiring a controller to dot-net, `DotFpsNetSync`, `net_flags`, `render_state` |
 | [docs/testing.md](docs/testing.md) | adding a check, or believing a green run |
 | [docs/history.md](docs/history.md) | a movement bug that "cannot be happening"; what each fix was and how it looked |
@@ -80,6 +81,8 @@ Short forms; the reasoning is in the linked file.
 - A custom mode goes in `DotFpsController.extra_modes`, which survives a style; one registered by hand on the motor does not. [extending](docs/extending.md#custom-modes-and-swimming)
 - Water is a list of boxes the game hands over, never an `Area3D`. [extending](docs/extending.md#custom-modes-and-swimming)
 - Slide, launch and dash are off by default; their timers ride in `net_flags`, and their signals are not emitted during a replay. [extending](docs/extending.md#slide-launch-and-dash)
+- Wall run, wall jump and wall slide are off by default and probe nothing while off; a run never writes the horizontal velocity and eases the vertical, never sets it. [wall-movement](docs/wall-movement.md)
+- `net_flags` is full at 64 bits since the wall fields; anything else that must replicate needs a new property. [wall-movement](docs/wall-movement.md#what-the-wire-carries)
 - dot-net is never named: `DotFpsCommand` and `DotFpsNetSync` reach it by method name. `_net_state_applied` restores the whole state; `delta` is the tick; compare `fingerprint()` at connect. [networking](docs/networking.md)
 - `render_state()` needs the host to step once per physics frame at `tick_rate`; never call it for a `Drive.REMOTE` player. [networking](docs/networking.md#rendering-between-ticks)
 - Draw the owner's view from `DotFpsSampler.look_now()` once a frame, not from the state's angles, or a frame with no tick in it does not turn. [networking](docs/networking.md#rendering-between-ticks)

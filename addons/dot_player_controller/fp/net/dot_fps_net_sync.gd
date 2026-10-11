@@ -102,7 +102,41 @@ const BUTTONS_SHIFT := SLIDE_COOLDOWN_SHIFT + SLIDE_COOLDOWN_BITS
 const DASH_BITS := 12
 const DASH_SHIFT := BUTTONS_SHIFT + DotFpsCommand.BUTTON_BITS
 
-const FLAG_BITS := DASH_SHIFT + DASH_BITS
+## The wall run and wall jump, the last fields in the word (2026-10-10), so an encoding
+## from before them reads as "not running, no wall jumps" rather than as garbage.
+##
+## [b]The run's field is one number with two sentinels[/b]: 0 is ready, 1 is a run spent
+## this airborne stretch ([member DotFpsState.wall_run_spent]), and 2 and up is a run in
+## progress, its time in sixty-fourths plus two. Zero has to mean the idle state, because
+## zero is what every older encoding has there. 125 sixty-fourths is the longest run the
+## field holds, which is where [constant DotFpsTunables.WALL_RUN_TIME_LIMIT] comes from.
+##
+## [b]Why these travel[/b]: a rewind that kept the client's own copies would replay the
+## rest of a wall run as a fall (no run), or refuse a wall jump the server allowed because
+## the client's counter had already counted it. The heading names which wall the per-wall
+## counter counts, in eighths of a turn; the simulation keeps it quantised too, so the
+## field is exact.
+##
+## [b]The two jump counters share three bits.[/b] Both run 0..3, and the per-wall one is
+## never more than the airborne total and never 0 when the total is not (the last jump was
+## off the last wall), so the pairs that can happen are seven: (0,0), (1,1), (2,1), (2,2),
+## (3,1), (3,2), (3,3). Seven fit in three bits where two separate fields need four, and
+## the word had thirteen bits left.
+const WALL_RUN_BITS := 7
+const WALL_RUN_READY := 0
+const WALL_RUN_SPENT := 1
+const WALL_RUN_FIRST_TIME := 2
+const WALL_JUMP_COUNT_BITS := 3
+const WALL_HEADING_BITS := 3
+
+const WALL_RUN_SHIFT := DASH_SHIFT + DASH_BITS
+const WALL_JUMP_COUNT_SHIFT := WALL_RUN_SHIFT + WALL_RUN_BITS
+const WALL_HEADING_SHIFT := WALL_JUMP_COUNT_SHIFT + WALL_JUMP_COUNT_BITS
+
+## 64: the word is full. dot-net's UINT takes up to 64 bits, and the top field's high
+## bit makes the int negative in GDScript, which every read here masks off. A field
+## after this one needs a second property, not a wider word.
+const FLAG_BITS := WALL_HEADING_SHIFT + WALL_HEADING_BITS
 
 ## Most modifiers that can be active at once, and the width of the replicated mask.
 const MODIFIER_BITS := 32
@@ -192,7 +226,7 @@ static func state_specs() -> Array[Dictionary]:
 ## Bits one full state update costs, before dot-net's own framing.
 static func estimated_state_bits() -> int:
 	# position 3x16 + velocity 3x12 + yaw 12 + pitch 9 + crouch 6 + flags (mode, crouch,
-	# and the slide and launch timers) + modifiers
+	# the slide, launch and dash timers, buttons, the wall run and wall jumps) + modifiers
 	return 48 + 36 + 12 + 9 + 6 + FLAG_BITS + MODIFIER_BITS
 
 
@@ -211,6 +245,18 @@ static func pack_flags(state: DotFpsState) -> int:
 	flags |= (state.previous_buttons & ((1 << DotFpsCommand.BUTTON_BITS) - 1)) << BUTTONS_SHIFT
 	flags |= _quantise(state.dash_cooldown_left, DASH_BITS) << DASH_SHIFT
 
+	var wall_run := WALL_RUN_READY
+	if state.is_wall_running():
+		wall_run = WALL_RUN_FIRST_TIME + mini(
+			_quantise(state.wall_run_time, WALL_RUN_BITS),
+			(1 << WALL_RUN_BITS) - 1 - WALL_RUN_FIRST_TIME
+		)
+	elif state.wall_run_spent:
+		wall_run = WALL_RUN_SPENT
+	flags |= wall_run << WALL_RUN_SHIFT
+	flags |= wall_jump_code(state.wall_jumps_in_air, state.wall_jump_count) << WALL_JUMP_COUNT_SHIFT
+	flags |= (state.wall_jump_heading & ((1 << WALL_HEADING_BITS) - 1)) << WALL_HEADING_SHIFT
+
 	return flags
 
 
@@ -226,6 +272,35 @@ static func unpack_flags(state: DotFpsState, flags: int) -> void:
 	)
 	state.previous_buttons = (flags >> BUTTONS_SHIFT) & ((1 << DotFpsCommand.BUTTON_BITS) - 1)
 	state.dash_cooldown_left = _field(flags, DASH_SHIFT, DASH_BITS) / TIMER_SCALE
+
+	var wall_run := int(_field(flags, WALL_RUN_SHIFT, WALL_RUN_BITS))
+	state.wall_run_time = (
+		(wall_run - WALL_RUN_FIRST_TIME) / TIMER_SCALE if wall_run >= WALL_RUN_FIRST_TIME
+		else -1.0
+	)
+	state.wall_run_spent = wall_run == WALL_RUN_SPENT
+	var counts := wall_jump_counts(int(_field(flags, WALL_JUMP_COUNT_SHIFT, WALL_JUMP_COUNT_BITS)))
+	state.wall_jumps_in_air = counts.x
+	state.wall_jump_count = counts.y
+	state.wall_jump_heading = int(_field(flags, WALL_HEADING_SHIFT, WALL_HEADING_BITS))
+
+
+## The airborne total and the per-wall count of wall jumps as one number, 0..6. See
+## [constant WALL_RUN_BITS] for why they share a field.
+static func wall_jump_code(in_air: int, same_wall: int) -> int:
+	var total := clampi(in_air, 0, 3)
+	if total == 0:
+		return 0
+	return ((total * (total - 1)) >> 1) + clampi(same_wall, 1, total)
+
+
+## [method wall_jump_code] undone: (airborne total, per-wall count).
+static func wall_jump_counts(code: int) -> Vector2i:
+	for total in range(1, 4):
+		var first := ((total * (total - 1)) >> 1) + 1
+		if code >= first and code < first + total:
+			return Vector2i(total, code - first + 1)
+	return Vector2i.ZERO
 
 
 ## Seconds as sixty-fourths, clamped into [param bits]. A cooldown longer than the field

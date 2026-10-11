@@ -18,13 +18,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 62
+const CHECKS := 68
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 12
+const SECTIONS := 13
 
 var _passed := 0
 var _failed := 0
@@ -54,6 +54,7 @@ func _run() -> void:
 	await _test_surfaces_from_scene()
 	await _test_change_signals()
 	await _test_command_veto()
+	_test_wall_run_roll()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -987,4 +988,68 @@ func _test_local_drive_accumulator() -> void:
 
 	world.queue_free()
 	await get_tree().process_frame
+	_done()
+
+
+## The wall-run roll: toward the open side, eased in and out with no snap, and nothing at 0.
+## View only, so it is driven here straight from states; the motor's half is in
+## movement_selftest.
+func _test_wall_run_roll() -> void:
+	_section("wall-run camera roll")
+
+	var body := Node3D.new()
+	add_child(body)
+	var head := Node3D.new()
+	body.add_child(head)
+	var camera := Camera3D.new()
+	head.add_child(camera)
+	var view := DotFpsView.new()
+	view.strafe_roll = 0.0
+	view.slide_roll = 0.0
+	body.add_child(view)
+
+	var motor := DotFpsMotor.new(DotFpsTunables.new(), DotFpsFlatBody.with_floor(0.0))
+	var frame := 1.0 / 144.0
+
+	var state := DotFpsState.new()
+	state.mode = DotFpsState.Mode.AIR
+	state.velocity = Vector3(0.0, 0.0, -9.0)
+
+	var rolls: Array[float] = []
+	# Idle, then a second on a wall to the right (its normal points left), then off it.
+	for i in range(360):
+		var running := i >= 30 and i < 174
+		state.wall_run_time = 0.1 if running else -1.0
+		state.wall_normal = Vector3.LEFT if running else Vector3.ZERO
+		view.apply(state, motor, frame)
+		rolls.append(rad_to_deg(camera.rotation.z))
+
+	var worst_step := 0.0
+	for i in range(1, rolls.size()):
+		worst_step = maxf(worst_step, absf(rolls[i] - rolls[i - 1]))
+
+	_check(absf(rolls[29]) < 0.001, "no roll before the run")
+	_check_near(rolls[173], view.wall_run_roll, 0.2,
+		"a wall on the right rolls the view left, away from it, by wall_run_roll")
+	_check(worst_step < 0.4,
+		"eased in and out: no frame turns it by more than a fraction of a degree",
+		"worst %.3f degrees in one frame" % worst_step)
+	_check(absf(rolls[359]) < 0.2, "and it settles back to level once the run ends",
+		"%.3f degrees" % rolls[359])
+
+	state.wall_run_time = 0.1
+	state.wall_normal = Vector3.RIGHT
+	for _i in range(200):
+		view.apply(state, motor, frame)
+	_check(rad_to_deg(camera.rotation.z) < -view.wall_run_roll + 0.2,
+		"a wall on the left rolls it right",
+		"%.3f degrees" % rad_to_deg(camera.rotation.z))
+
+	view.wall_run_roll = 0.0
+	view.snap()
+	for _i in range(60):
+		view.apply(state, motor, frame)
+	_check(absf(camera.rotation.z) < 0.0001, "and wall_run_roll 0 turns it off")
+
+	body.queue_free()
 	_done()

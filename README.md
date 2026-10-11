@@ -138,6 +138,7 @@ all fall out of the same acceleration function rather than being special-cased:
   every other tick.
 - **Sliding**, off by default: crouch pressed at a run slides on low friction with an optional burst of speed, for `slide_duration` or until released, slowed, or airborne, then a cooldown. Every number is a tunable, the burst included (`slide_boost` 0 for none). `DotFpsView` widens the view and rolls it slightly while sliding.
 - **A launch ability**, off by default: a command button of the game's choosing (`launch_button`) throws the player upward, and optionally forward, on a cooldown. A stun refuses it.
+- **Wall running, wall jumping and the wall slide**, each off by default: run a few steps along a wall entered from the air at speed, jump off a wall you touch or run on (limited per wall and per airborne stretch), and slide down a wall at a capped speed. Speed along the wall carries through all of it, and `DotFpsView` rolls the camera away from the wall while running.
 
 Everything above is a value in `DotFpsTunables`, which a dedicated server can set from
 a JSON file, the environment or the command line without a rebuild.
