@@ -19,7 +19,7 @@ Surfaces, modifiers and custom modes all change the simulation, so all three are
 | Which layers the player collides with | `DotFpsController.set_collision_mask(mask)` |
 | Input devices, action names, a bot, a demo | `DotFpsSampler`; `DotFpsTouchSampler` for touch |
 | Extra actions (fire, use, reload) | `BUTTON_USER_0..2`, already on the wire |
-| Camera behaviour, view bob, landing kick, strafe roll | `DotFpsView` exports, or a subclass |
+| Camera behaviour, view bob, landing kick, strafe roll | `DotFpsView` exports, or a subclass; a game writing its own camera: `DotFpsViewMotion` |
 | Anything inside the tick (triggers, mode switches) | `_on_pre_simulate` / `_on_post_simulate` |
 | Refusing input (a cutscene, a respawn freeze) | `_accept_command` |
 | A slide off a crouch press at a run | `DotFpsTunables.slide_*` (`slide_enabled` first); `DotFpsView.slide_fov_gain` / `slide_roll`; `slide_changed` |

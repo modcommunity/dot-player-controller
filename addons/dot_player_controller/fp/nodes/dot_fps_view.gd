@@ -165,10 +165,9 @@ var _step_offset: float = 0.0
 var _fov: float = 0.0
 var _ready_ok: bool = false
 
-var _roll: float = 0.0
-var _wall_roll: float = 0.0
-var _landing_dip: float = 0.0
-var _landing_pitch: float = 0.0
+## The roll, the landing dip and the widening: [DotFpsViewMotion], fed from the exports
+## above each frame, so a game that writes its camera itself uses the same arithmetic.
+var _motion: DotFpsViewMotion = DotFpsViewMotion.new()
 var _bob_phase: float = 0.0
 var _bob_offset: Vector3 = Vector3.ZERO
 var _bob_pitch: float = 0.0
@@ -258,9 +257,11 @@ func apply(
 	else:
 		_step_offset = 0.0
 
+	_sync_motion()
+	_motion.advance(state, delta)
 	_advance_bob(state, delta)
 
-	var eye := _eye_height - _step_offset + _landing_dip + _bob_offset.y
+	var eye := _eye_height - _step_offset + _motion.eye_drop() + _bob_offset.y
 	# The vertical component was being dropped, so a prediction correction that was
 	# mostly vertical — landing, a step, a lift — was applied to two axes out of
 	# three and the camera drifted away from the entity it belongs to.
@@ -277,71 +278,39 @@ func apply(
 		_camera.position = Vector3(_bob_offset.x, eye, 0.0)
 
 	_camera.rotation = Vector3(
-		deg_to_rad(state.pitch + _landing_pitch + _bob_pitch + external_angles.x),
+		deg_to_rad(state.pitch + _motion.pitch() + _bob_pitch + external_angles.x),
 		deg_to_rad(external_angles.y),
-		deg_to_rad(_roll + _wall_roll + external_angles.z)
+		deg_to_rad(_motion.roll() + external_angles.z)
 	)
 
-	_apply_roll(state, delta)
-	_apply_wall_roll(state, delta)
-	_apply_fov(state, delta)
+	_apply_fov()
 
 
-## Leans the camera into lateral motion.
-##
-## Measured against the view's own right vector rather than against world axes, so
-## the roll follows where the player is looking and not where the level was built.
-func _apply_roll(state: DotFpsState, delta: float) -> void:
-	if strafe_roll <= 0.0 and slide_roll == 0.0:
-		_roll = 0.0
-		return
-
-	var right := DotFpsMotor.forward_for(state.yaw).cross(Vector3.UP)
-	var lateral := state.velocity.dot(right)
-
-	var target := -clampf(
-		lateral / strafe_roll_reference, -1.0, 1.0
-	) * strafe_roll
-
-	if state.is_sliding():
-		target += slide_roll
-
-	var t := 1.0 - exp(-strafe_roll_response * delta)
-	_roll = lerpf(_roll, target, t)
-
-
-## Leans the camera away from the wall being run along, eased both ways.
-##
-## The side is the wall's normal against the view's right: a wall on the right has a
-## normal pointing left, and the head tilts left, away from it. Scaled by how square the
-## view is to the wall, so looking straight along it gives the full roll and turning to
-## face away from it blends toward none rather than flipping.
-func _apply_wall_roll(state: DotFpsState, delta: float) -> void:
-	var target := 0.0
-
-	if wall_run_roll > 0.0 and state.is_wall_running() and state.wall_normal != Vector3.ZERO:
-		var right := DotFpsMotor.forward_for(state.yaw).cross(Vector3.UP)
-		target = -state.wall_normal.dot(right) * wall_run_roll
-
-	var t := 1.0 - exp(-wall_run_roll_response * delta)
-	_wall_roll = lerpf(_wall_roll, target, t)
+## The exports above onto [member _motion]. Every frame, because they are exports a game
+## may change at any time, and nine assignments cost nothing.
+func _sync_motion() -> void:
+	_motion.strafe_roll = strafe_roll
+	_motion.strafe_roll_reference = strafe_roll_reference
+	_motion.strafe_roll_response = strafe_roll_response
+	_motion.slide_roll = slide_roll
+	_motion.wall_run_roll = wall_run_roll
+	_motion.wall_run_roll_response = wall_run_roll_response
+	_motion.landing_dip = landing_dip
+	_motion.landing_reference_speed = landing_reference_speed
+	_motion.landing_recovery = landing_recovery
+	_motion.fov_speed_gain = fov_speed_gain
+	_motion.fov_speed_reference = fov_speed_reference
+	_motion.fov_response = fov_response
+	_motion.slide_fov_gain = slide_fov_gain
 
 
 ## The wall-run roll as drawn this frame, in degrees. For a test or a HUD.
 func wall_roll() -> float:
-	return _wall_roll
+	return _motion.wall_roll()
 
 
 ## Advances the walk cycle by distance travelled and writes the bob offsets.
 func _advance_bob(state: DotFpsState, delta: float) -> void:
-	if landing_recovery > 0.0 and _landing_dip != 0.0:
-		var recovery := (1.0 / landing_recovery) * delta
-		_landing_dip = move_toward(_landing_dip, 0.0, landing_dip * recovery)
-		_landing_pitch = move_toward(_landing_pitch, 0.0, 6.0 * recovery)
-	else:
-		_landing_dip = 0.0
-		_landing_pitch = 0.0
-
 	if bob_amount <= 0.0:
 		_bob_offset = Vector3.ZERO
 		_bob_pitch = 0.0
@@ -369,32 +338,18 @@ func _advance_bob(state: DotFpsState, delta: float) -> void:
 
 
 ## Kicks the view down. Connect to [signal DotFpsController.landed].
+##
+## A kick to the eye's velocity, not its position ([DotFpsViewMotion.note_landing]): the eye
+## goes on down for a few frames and comes back, with no frame where it jumps. It used to be
+## set straight to the full dip and a 6 degree pitch on the landing frame, a snap.
 func note_landing(impact: float) -> void:
-	if landing_dip <= 0.0 or landing_reference_speed <= 0.0:
-		return
-
-	var weight := clampf(impact / landing_reference_speed, 0.0, 1.0)
-
-	# Never reduced by a softer landing arriving during the recovery of a harder one.
-	_landing_dip = minf(_landing_dip - landing_dip * weight, _landing_dip)
-	_landing_pitch = maxf(_landing_pitch, 6.0 * weight)
+	_sync_motion()
+	_motion.note_landing(impact)
 
 
-func _apply_fov(state: DotFpsState, delta: float) -> void:
+func _apply_fov() -> void:
 	var scale := clampf(external_fov_scale, 0.01, 1.0) if is_finite(external_fov_scale) else 1.0
-
-	if fov_speed_gain <= 0.0 and slide_fov_gain <= 0.0:
-		_camera.fov = base_fov * scale
-		return
-
-	var ratio := clampf(state.horizontal_speed() / fov_speed_reference, 0.0, 1.0)
-	var target := base_fov + fov_speed_gain * ratio
-
-	if state.is_sliding():
-		target += slide_fov_gain
-
-	var t := 1.0 - exp(-fov_response * delta)
-	_fov = lerpf(_fov, target, t)
+	_fov = base_fov + _motion.fov_added()
 	_camera.fov = _fov * scale
 
 
@@ -418,10 +373,7 @@ func snap() -> void:
 	_step_offset = 0.0
 	_fov = base_fov
 	external_offset = Vector3.ZERO
-	_roll = 0.0
-	_wall_roll = 0.0
-	_landing_dip = 0.0
-	_landing_pitch = 0.0
+	_motion.snap()
 	_bob_phase = 0.0
 	_bob_offset = Vector3.ZERO
 	_bob_pitch = 0.0
@@ -439,8 +391,8 @@ func describe() -> Dictionary:
 		"eye_height": "%.3f" % _eye_height,
 		"step_offset": "%.3f" % _step_offset,
 		"fov": "%.1f" % _fov,
-		"roll": "%.2f" % _roll,
-		"wall_roll": "%.2f" % _wall_roll,
-		"landing_dip": "%.3f" % _landing_dip,
+		"roll": "%.2f" % _motion.roll(),
+		"wall_roll": "%.2f" % _motion.wall_roll(),
+		"landing_dip": "%.3f" % _motion.eye_drop(),
 		"bob": "%.3f" % _bob_offset.y,
 	}

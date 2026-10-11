@@ -18,13 +18,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 68
+const CHECKS := 80
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 13
+const SECTIONS := 14
 
 var _passed := 0
 var _failed := 0
@@ -55,6 +55,7 @@ func _run() -> void:
 	await _test_change_signals()
 	await _test_command_veto()
 	_test_wall_run_roll()
+	_test_view_motion()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -1052,4 +1053,130 @@ func _test_wall_run_roll() -> void:
 	_check(absf(camera.rotation.z) < 0.0001, "and wall_run_roll 0 turns it off")
 
 	body.queue_free()
+	_done()
+
+
+## The landing dip, the strafe roll and the widening ([DotFpsViewMotion], which [DotFpsView]
+## and a game writing its own camera share): each eases, none moves the view in one frame.
+## Armed: the landing set the full dip on the landing frame before the spring (the first
+## check fails at 89 mm), and a one-stage roll starts at its full rate (the fourth and fifth
+## fail, 0.15 degrees in one frame).
+func _test_view_motion() -> void:
+	_section("camera motion: landing dip, strafe roll, widening")
+	var frame := 1.0 / 144.0
+
+	# A landing through the view, as DotFpsController wires it.
+	var body := Node3D.new()
+	add_child(body)
+	var head := Node3D.new()
+	body.add_child(head)
+	var camera := Camera3D.new()
+	head.add_child(camera)
+	var view := DotFpsView.new()
+	view.strafe_roll = 0.0
+	view.slide_roll = 0.0
+	view.fov_speed_gain = 0.0
+	body.add_child(view)
+	var motor := DotFpsMotor.new(DotFpsTunables.new(), DotFpsFlatBody.with_floor(0.0))
+	var state := DotFpsState.new()
+	state.mode = DotFpsState.Mode.GROUND
+	for _i in range(30):
+		view.apply(state, motor, frame)
+	var rest := head.position.y
+	view.note_landing(view.landing_reference_speed)
+	var ys: Array[float] = []
+	for _i in range(144):
+		view.apply(state, motor, frame)
+		ys.append(head.position.y - rest)
+	var deepest := 0.0
+	var worst_step := absf(ys[0])
+	for i in range(ys.size()):
+		deepest = minf(deepest, ys[i])
+		if i > 0:
+			worst_step = maxf(worst_step, absf(ys[i] - ys[i - 1]))
+	_check(absf(ys[0]) < view.landing_dip * 0.4,
+		"a landing starts the dip, it does not set it: the first frame drops under 40% of it",
+		"%.1f mm of %.1f" % [-ys[0] * 1000.0, view.landing_dip * 1000.0])
+	_check_near(-deepest, view.landing_dip, view.landing_dip * 0.1,
+		"a landing at the reference speed dips landing_dip at the deepest")
+	_check(absf(ys[143]) < 0.002, "and the eye is back a second later", "%.2f mm" % (ys[143] * 1000.0))
+	body.queue_free()
+
+	# The strafe roll, eased in and out.
+	var motion := DotFpsViewMotion.new()
+	motion.slide_roll = 0.0
+	motion.fov_speed_gain = 0.0
+	var strafing := DotFpsState.new()
+	strafing.mode = DotFpsState.Mode.GROUND
+	var rolls: Array[float] = []
+	for i in range(288):
+		# A second strafing right at the reference speed, then still.
+		strafing.velocity = (
+			DotFpsMotor.forward_for(0.0).cross(Vector3.UP) * motion.strafe_roll_reference
+			if i < 144 else Vector3.ZERO
+		)
+		motion.advance(strafing, frame)
+		rolls.append(motion.roll())
+	var steps: Array[float] = []
+	for i in range(1, rolls.size()):
+		steps.append(absf(rolls[i] - rolls[i - 1]))
+	_check(absf(rolls[0]) < motion.strafe_roll * 0.02,
+		"the strafe roll eases in: the first frame turns it under 2% of the way",
+		"%.4f of %.2f degrees" % [rolls[0], motion.strafe_roll])
+	_check(steps.max() < motion.strafe_roll * 0.04,
+		"and no frame turns it more than 4% of the way",
+		"worst %.4f degrees" % steps.max())
+	_check_near(absf(rolls[143]), motion.strafe_roll, motion.strafe_roll * 0.05,
+		"a strafe at the reference speed leans strafe_roll")
+	_check(rolls[143] < 0.0, "into the strafe: right leans right (negative)")
+	_check(absf(rolls[287]) < motion.strafe_roll * 0.05, "and eases back out")
+
+	# Bounded, with the wall-run lean on top.
+	motion.snap()
+	motion.roll_limit = 7.0
+	strafing.velocity = DotFpsMotor.forward_for(0.0).cross(Vector3.UP) * -40.0
+	strafing.wall_run_time = 0.1
+	strafing.wall_normal = Vector3.LEFT
+	var widest := 0.0
+	for _i in range(288):
+		motion.advance(strafing, frame)
+		widest = maxf(widest, absf(motion.roll()))
+	_check(widest <= 7.0 + 1e-4 and widest > 6.9, "the strafe and wall-run rolls add, never past roll_limit",
+		"%.3f degrees" % widest)
+
+	# The widening: none under the floor, the gain at the reference, eased.
+	var widening := DotFpsViewMotion.new()
+	widening.strafe_roll = 0.0
+	widening.fov_speed_gain = 5.0
+	widening.fov_speed_floor = 9.0
+	widening.fov_speed_reference = 15.0
+	var running := DotFpsState.new()
+	running.mode = DotFpsState.Mode.GROUND
+	running.velocity = Vector3(0.0, 0.0, -9.0)
+	for _i in range(144):
+		widening.advance(running, frame)
+	_check(absf(widening.fov_added()) < 1e-4, "no widening at or under fov_speed_floor")
+	running.velocity = Vector3(0.0, 0.0, -15.0)
+	widening.advance(running, frame)
+	var first := widening.fov_added()
+	for _i in range(287):
+		widening.advance(running, frame)
+	_check(first < 0.05 and absf(widening.fov_added() - 5.0) < 0.1,
+		"the widening eases to fov_speed_gain at the reference speed",
+		"first frame %.3f, after two seconds %.2f degrees" % [first, widening.fov_added()])
+
+	# Each amount at 0 is off.
+	var off := DotFpsViewMotion.new()
+	off.strafe_roll = 0.0
+	off.slide_roll = 0.0
+	off.wall_run_roll = 0.0
+	off.landing_dip = 0.0
+	off.fov_speed_gain = 0.0
+	off.slide_fov_gain = 0.0
+	off.note_landing(30.0)
+	strafing.slide_time = 0.1
+	for _i in range(60):
+		off.advance(strafing, frame)
+	_check(off.roll() == 0.0 and off.eye_drop() == 0.0 and off.pitch() == 0.0 and off.fov_added() == 0.0,
+		"every amount at 0 moves nothing", str(off.describe()))
 	_done()

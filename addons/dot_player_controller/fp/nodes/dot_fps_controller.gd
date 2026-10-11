@@ -431,8 +431,10 @@ func _resolve_nodes() -> DotResult:
 
 	if view != null:
 		# The landing kick is the one view effect that needs an event rather than a
-		# state, so it is wired here instead of leaving every game to remember it.
-		landed.connect(view.note_landing)
+		# state, so it is wired here instead of leaving every game to remember it. Guarded:
+		# this runs again when the controller re-enters the tree.
+		if not landed.is_connected(view.note_landing):
+			landed.connect(view.note_landing)
 
 	return DotResult.success(null)
 

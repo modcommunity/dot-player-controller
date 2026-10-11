@@ -49,7 +49,7 @@ The negative controls in `movement_selftest`'s "wall movement replays" drop thes
 
 ## The view
 
-`DotFpsView.wall_run_roll` (6 degrees) rolls the camera away from the wall, toward the open side, while `is_wall_running()`, eased by its own `wall_run_roll_response` so it starts and ends without a snap. It is scaled by how square the view is to the wall, so looking along the wall gives the full roll and turning away blends toward none rather than flipping. View only: the simulation never reads it. `fps_controller_selftest`'s "wall-run camera roll" checks the side, the easing and that 0 turns it off; whether it looks right is still a rendered frame's question.
+`DotFpsView.wall_run_roll` (6 degrees; the arithmetic is `DotFpsViewMotion`'s, which a game writing its own camera uses directly) rolls the camera away from the wall, toward the open side, while `is_wall_running()`, eased by its own `wall_run_roll_response` so it starts and ends without a snap. It is scaled by how square the view is to the wall, so looking along the wall gives the full roll and turning away blends toward none rather than flipping. View only: the simulation never reads it. `fps_controller_selftest`'s "wall-run camera roll" checks the side, the easing and that 0 turns it off; whether it looks right is still a rendered frame's question.
 
 ## Signals
 

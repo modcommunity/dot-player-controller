@@ -74,6 +74,10 @@ game-arena's north gallery, over the wire (2026-10-10): a slide-jump off a ledge
 
 game-g2gfast's `load_probe` (32 players on surf_mesa at 128 ticks) spends about 7.4 ms a tick in the game half, mostly this motor's queries. Three ways to cut it were measured: skipping the end-of-tick ground check when `_move`'s check was a fixed point (kept, about 0.25 ms; about 50,000 skips checked field for field against a re-run, across load_probe and three g2gfast suites, with no difference before it went in); a one-entry memo of `rest_contact` inside a tick, because `_depenetrate` and the ground probe ask the same question at the same position (reverted: 4% of rest queries repeat once warm-up is over, and the copy and comparison on every call made the game half 0.3 ms slower); and an empty-box pre-check before each sweep (reverted earlier: only 16% of grounded sweeps are clear). Quarter probes only "when they can matter" was not done: no condition short of asking the world rules out the floor they exist to find.
 
+## A landing that set the eye (2026-10-11)
+
+`DotFpsView.note_landing` set the full dip (9 cm at 16 m/s) and a 6 degree upward pitch on the landing frame and wound them back linearly: one frame moved the eye 9 cm and the view 6 degrees, a snap on top of the corner the landing already is. game-arena, which writes its camera itself, had copied the wall-run lean from the view and had no landing dip, strafe roll or widening at all. The cues moved into `DotFpsViewMotion` (no nodes): the dip is a critically damped spring kicked in velocity (the eye goes on down and comes back), the strafe roll and widening are two exponential stages so they start gently, and the landing nod is 1.5 degrees down following the dip. `fps_controller_selftest`'s "camera motion" section fails with either old shape back.
+
 ## The rewrite
 
 `fp/` began as a single-player controller. What was wrong was not style:

@@ -26,7 +26,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | `addons/dot_player_controller/nodes/` | `DotPlayerController` (abstract base, five methods), `DotPlayerControllerSwitch` |
 | `addons/dot_player_controller/fp/core/` | data: `DotFpsTunables`, `DotFpsState`, `DotFpsCommand`, styles, surfaces, modifiers, admin modifiers, stats |
 | `addons/dot_player_controller/fp/motion/` | the simulation: `DotFpsMotor`, `DotFpsBody` and its flat and physics implementations, `DotFpsMoveMode`, `DotFpsSwimMode` |
-| `addons/dot_player_controller/fp/nodes/` | `DotFpsController`, `DotFpsSampler`, `DotFpsTouchSampler`, `DotFpsView` |
+| `addons/dot_player_controller/fp/nodes/` | `DotFpsController`, `DotFpsSampler`, `DotFpsTouchSampler`, `DotFpsView`, `DotFpsViewMotion` (its motion cues without nodes) |
 | `addons/dot_player_controller/fp/net/` | `DotFpsNetSync`: what replicates, at what precision |
 | `addons/dot_player_controller/tp/` | `core/` (motor, state, tunables) and `nodes/` (controller, `DotTpsCameraRig`) |
 | `examples/` | six self-test scenes, `sandbox.tscn` (a course to feel the movement out, not a test) |
@@ -87,4 +87,5 @@ Short forms; the reasoning is in the linked file.
 - dot-net is never named: `DotFpsCommand` and `DotFpsNetSync` reach it by method name. `_net_state_applied` restores the whole state; `delta` is the tick; compare `fingerprint()` at connect. [networking](docs/networking.md)
 - `render_state()` needs the host to step once per physics frame at `tick_rate`; never call it for a `Drive.REMOTE` player. [networking](docs/networking.md#rendering-between-ticks)
 - Draw the owner's view from `DotFpsSampler.look_now()` once a frame, not from the state's angles, or a frame with no tick in it does not turn. [networking](docs/networking.md#rendering-between-ticks)
+- A camera cue on an event (a landing) kicks a velocity or eases toward a target, never sets the eye on that frame; the cues live in `DotFpsViewMotion`, which a game writing its own camera calls rather than copies. [history](docs/history.md)
 - `tps_selftest` has no physics world: anything about the camera rig colliding is only checked by a rendered frame. [design](docs/design.md#the-third-person-half)
