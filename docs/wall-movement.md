@@ -10,6 +10,8 @@ What the fast movement shooters do with a wall: run a few steps along it, jump o
 
 `_wall_contact` sweeps the capsule `wall_reach` sideways each tick and takes the nearest face within `wall_max_angle_from_vertical` of vertical. Six directions: either side of the velocity (where a run keeps its wall) and the view's four flat directions (where a player touching a wall from a standstill has it). It runs only when something will use the answer: a run in progress, a run that could start, a buffered jump press, or a fall the wall slide could catch.
 
+**A run keeps the wall beside it.** While running, a hit from the two sideways probes wins over a nearer one from the view's directions. A player who has just jumped off a ledge's end onto the wall beside it has that end face a hand behind them, and the uncrouch after a slide-jump drops the feet past its top; nearest-wins took that face, whose speed "along" is nothing, and the run ended four ticks in. `movement_selftest`'s "a run just past a ledge's end keeps the wall beside it" is that geometry.
+
 Nothing about the wall is carried between ticks. "Is the wall still there" is a question about the world, which both machines answer the same way, and a normal kept from the last tick would be one more thing a rewind has to restore. `DotFpsState.wall_normal` is written from the answer every tick for the view and is neither replicated nor compared.
 
 ## The run
@@ -51,4 +53,4 @@ The negative controls in `movement_selftest`'s "wall movement replays" drop thes
 
 ## Signals
 
-`DotFpsController.wall_run_changed(running)` and `wall_jumped()`, not emitted during a prediction replay, like `slide_changed`: they are where a game hangs a footstep or a sound, and a replayed tick is one the player already heard.
+`DotFpsController.wall_run_changed(running)` and `wall_jumped()`, not emitted during a prediction replay, like `slide_changed`: they are where a game hangs a footstep or a sound, and a replayed tick is one the player already heard. **The game marks the replay** (`begin_replay` / `end_replay` around each replayed tick); one that does not hears a run once per correction, which is how game-arena found it had never marked one.

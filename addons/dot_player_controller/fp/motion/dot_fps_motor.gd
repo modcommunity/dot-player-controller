@@ -1168,14 +1168,28 @@ func _wall_contact(state: DotFpsState, command: DotFpsCommand) -> DotFpsBody.Hit
 	var steepest := cos(deg_to_rad(90.0 - tunables.wall_max_angle_from_vertical))
 	var best: DotFpsBody.Hit = null
 
-	for direction in directions:
+	# [b]A run keeps the wall beside it.[/b] While running, a wall found by the two
+	# sideways probes wins over anything nearer behind or ahead: a player who has just
+	# jumped off a ledge's end onto the wall beside it has that ledge's end face a hand
+	# behind them, and an uncrouch in the air drops the feet past its top. Nearest-wins
+	# took that face, whose "along" speed is nothing, and ended the run four ticks in.
+	var sideways := 2 if state.is_wall_running() and directions.size() == 6 else 0
+	var beside: DotFpsBody.Hit = null
+
+	for index in range(directions.size()):
+		var direction := directions[index]
 		var hit := _sweep(centre, direction * tunables.wall_reach, height)
 		if not hit.hit or absf(hit.normal.y) > steepest:
 			continue
 		if hit.normal.dot(direction) >= 0.0:
 			continue
+		if index < sideways and (beside == null or hit.fraction < beside.fraction):
+			beside = hit
 		if best == null or hit.fraction < best.fraction:
 			best = hit
+
+	if beside != null:
+		best = beside
 
 	if best != null:
 		state.wall_normal = best.normal

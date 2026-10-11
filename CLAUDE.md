@@ -81,7 +81,7 @@ Short forms; the reasoning is in the linked file.
 - A custom mode goes in `DotFpsController.extra_modes`, which survives a style; one registered by hand on the motor does not. [extending](docs/extending.md#custom-modes-and-swimming)
 - Water is a list of boxes the game hands over, never an `Area3D`. [extending](docs/extending.md#custom-modes-and-swimming)
 - Slide, launch and dash are off by default; their timers ride in `net_flags`, and their signals are not emitted during a replay. [extending](docs/extending.md#slide-launch-and-dash)
-- Wall run, wall jump and wall slide are off by default and probe nothing while off; a run never writes the horizontal velocity and eases the vertical, never sets it. [wall-movement](docs/wall-movement.md)
+- Wall run, wall jump and wall slide are off by default and probe nothing while off; a run never writes the horizontal velocity and eases the vertical, never sets it; a run keeps the wall beside its velocity over a nearer one behind. [wall-movement](docs/wall-movement.md)
 - `net_flags` is full at 64 bits since the wall fields; anything else that must replicate needs a new property. [wall-movement](docs/wall-movement.md#what-the-wire-carries)
 - dot-net is never named: `DotFpsCommand` and `DotFpsNetSync` reach it by method name. `_net_state_applied` restores the whole state; `delta` is the tick; compare `fingerprint()` at connect. [networking](docs/networking.md)
 - `render_state()` needs the host to step once per physics frame at `tick_rate`; never call it for a `Drive.REMOTE` player. [networking](docs/networking.md#rendering-between-ticks)

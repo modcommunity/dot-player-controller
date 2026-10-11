@@ -24,7 +24,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 317
+const CHECKS := 318
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -2619,6 +2619,24 @@ func _test_wall_run() -> void:
 	_check(capped.velocity.y < -3.0,
 		"while without the slide the same run ends in a free fall",
 		"%.3f m/s" % capped.velocity.y)
+
+	# A run just off a ledge's end keeps the wall beside it. The ledge the player jumped
+	# from ends a hand behind them, and the uncrouch after a slide-jump drops their feet
+	# under its top: nearest-wins took that end face, whose "along" speed is nothing, and
+	# the run ended four ticks in (arena's north gallery, over the wire, 2026-10-10).
+	var ledged := _wall_world()
+	ledged.add_box(AABB(Vector3(-3.0, 0.0, -1.55), Vector3(4.0, 2.52, 6.0)))
+	var ledge_motor := _motor(t, ledged)
+	var off_ledge := _beside_wall(11.8, 4.0, 2.6)
+	# 16 cm off the wall, 10 behind the ledge's end: the ledge is the nearer face.
+	off_ledge.position.x = 1.0 - 0.35 - 0.16
+	off_ledge.wall_run_time = 0.05
+	off_ledge.crouch_fraction = 0.26
+	off_ledge.time_since_grounded = 0.06
+	ledge_motor.simulate(off_ledge, _command(1.0, 0.0, 0.0), STEP)
+	_check(off_ledge.is_wall_running() and off_ledge.wall_normal.dot(Vector3.LEFT) > 0.99,
+		"a run just past a ledge's end keeps the wall beside it, not the ledge's face behind",
+		"%s" % ", ".join(off_ledge.describe_lines()))
 	_done()
 
 

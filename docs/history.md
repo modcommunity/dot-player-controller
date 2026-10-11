@@ -66,6 +66,10 @@ The slide and launch timers first stayed out of the snapshot "like the jump time
 
 Before `DotFpsTunables.jump_reach` existed, game-playground, game-arena, game-g2gfast, mg-buses-from-hell and mg-smash-copter each had their own copy of the arithmetic, and two of them sized courses with the airtime back to the height they left, which nobody could finish. They now delegate to the tunables.
 
+## A wall run that ended four ticks in
+
+game-arena's north gallery, over the wire (2026-10-10): a slide-jump off a ledge's end onto the wall beside it ran on the wall offline and, in `headless_net`, ran four ticks and fell. One lost crouch press moved the slide a tick; the uncrouch in the air then dropped the feet a few centimetres under the ledge's top while its end face was 10 cm behind the hull, nearer than the wall 16 cm beside it, and `_wall_contact` took the nearest wall. Its speed "along" was zero, under `wall_run_end_speed`, so the run ended, on both machines, agreeing perfectly. A run now prefers the sideways probes ([wall-movement](wall-movement.md#the-wall-is-asked-for-never-remembered)).
+
 ## The rewrite
 
 `fp/` began as a single-player controller. What was wrong was not style:
