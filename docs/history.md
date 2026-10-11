@@ -70,6 +70,10 @@ Before `DotFpsTunables.jump_reach` existed, game-playground, game-arena, game-g2
 
 game-arena's north gallery, over the wire (2026-10-10): a slide-jump off a ledge's end onto the wall beside it ran on the wall offline and, in `headless_net`, ran four ticks and fell. One lost crouch press moved the slide a tick; the uncrouch in the air then dropped the feet a few centimetres under the ledge's top while its end face was 10 cm behind the hull, nearer than the wall 16 cm beside it, and `_wall_contact` took the nearest wall. Its speed "along" was zero, under `wall_run_end_speed`, so the run ended, on both machines, agreeing perfectly. A run now prefers the sideways probes ([wall-movement](wall-movement.md#the-wall-is-asked-for-never-remembered)).
 
+## Motor query cost on a 32-player server (2026-10-11)
+
+game-g2gfast's `load_probe` (32 players on surf_mesa at 128 ticks) spends about 7.4 ms a tick in the game half, mostly this motor's queries. Three ways to cut it were measured: skipping the end-of-tick ground check when `_move`'s check was a fixed point (kept, about 0.25 ms; about 50,000 skips checked field for field against a re-run, across load_probe and three g2gfast suites, with no difference before it went in); a one-entry memo of `rest_contact` inside a tick, because `_depenetrate` and the ground probe ask the same question at the same position (reverted: 4% of rest queries repeat once warm-up is over, and the copy and comparison on every call made the game half 0.3 ms slower); and an empty-box pre-check before each sweep (reverted earlier: only 16% of grounded sweeps are clear). Quarter probes only "when they can matter" was not done: no condition short of asking the world rules out the floor they exist to find.
+
 ## The rewrite
 
 `fp/` began as a single-player controller. What was wrong was not style:

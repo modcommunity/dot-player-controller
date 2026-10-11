@@ -71,6 +71,7 @@ Short forms; the reasoning is in the linked file.
 - `cast_motion` ignores anything the shape already overlaps, misses a contact that ends exactly touching, and is imprecise in proportion to its length; every recovery in `DotFpsPhysicsBody` and the motor exists for one of those. Do not remove one because it looks redundant. [collision](docs/collision.md)
 - A grounded player is kept a skin clear of the floor (`_keep_skin`); the ground snap runs only when the player has left the ground. [collision](docs/collision.md#skins-and-snaps)
 - A downward graze is not a floor (`_downward_ray_fallback`); a steep hit is re-asked inside the footprint (`_quadrant_floor`). [collision](docs/collision.md#steep-faces-and-grazes)
+- The end-of-tick ground check is skipped only on a proven fixed point (`_categorise_ground_settled`); never reuse a query answer across ticks, the world moves between them. [collision](docs/collision.md#what-a-tick-costs-and-the-one-repeat-it-skips)
 - A rest normal pointing into the face is turned round only if the turned-round position is clear (`_turn_round_flipped`). [collision](docs/collision.md#a-normal-that-points-into-the-face)
 - Set the collision mask with `DotFpsController.set_collision_mask(mask)`; a plain write to `tunables.collision_mask` reverts at the next style. [extending](docs/extending.md#the-collision-mask)
 

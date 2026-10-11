@@ -144,6 +144,11 @@ var duplicate_plane_ticks: int = 0
 ## the same thing to within a margin, so a tick or two of a few microns is ordinary.
 ## A count that tracks the tick rate on one surface is that surface eating players.
 var depenetrated_ticks: int = 0
+
+## Ticks whose end-of-tick ground check was not re-run because the ground snap's check in
+## [method _move] had already settled the same question on the same state. Diagnostic;
+## see [method _categorise_ground_settled].
+var settled_ground_ticks: int = 0
 func _init(p_tunables: DotFpsTunables, p_body: DotFpsBody) -> void:
 	tunables = p_tunables
 	body = p_body
@@ -447,11 +452,22 @@ func simulate(
 			_wall_slide_vertical(state, falling_at, delta)
 
 	_clamp_velocity(state)
-	_move(state, delta, jumped or launched)
+	var settled := _move(state, delta, jumped or launched)
 
 	# After the move, so the next tick starts from the truth rather than from where
 	# the player was before sliding into a wall or off a ledge.
-	_categorise_ground(state)
+	#
+	# [b]Unless the move's own check already is that truth.[/b] A grounded walker's
+	# [method _move] categorises after the slide (for the ground snap), and nothing runs
+	# between that and here. When that check changed nothing but the ground fields and left
+	# the player GROUNDED as it found them, running it again is the same function of the
+	# same inputs: it would make the same queries, get the same answers and write the same
+	# fields. [method _categorise_ground_settled] says when that is provable; it is one
+	# ground probe a tick (plus four quarter probes against a wall) for every walker.
+	if settled:
+		settled_ground_ticks += 1
+	else:
+		_categorise_ground(state)
 
 	state.previous_buttons = command.buttons
 
@@ -700,10 +716,28 @@ func _position_for_crouch(
 ## of the last physics step and this has to be answerable at any point in the tick,
 ## including mid-slide.
 func _categorise_ground(state: DotFpsState) -> void:
+	_categorise_ground_settled(state)
+
+
+## [method _categorise_ground], answering whether this call was a FIXED POINT: whether a
+## second call on the state it leaves would make exactly the same queries and write exactly
+## the same values. True only on the floor branch, for a player who was GROUNDED on entry
+## and whose position and velocity it did not touch (no [method _keep_skin] lift, no slide
+## onto the floor). The argument, because it is what makes skipping the second call safe:
+## the function reads the mode, position, velocity, crouch height and -- only in the rising
+## branch -- the ground normal. Mode, position, velocity and height are unchanged, so the
+## probe, [method _standable_normal] and the quarter probes repeat exactly, against a world
+## nothing has stepped. The ground normal is now the floor's, and the rising branch then
+## tests [code]velocity . floor <= LEAVING_SPEED[/code], which held here or the slide onto
+## the floor would have changed the velocity. Every other branch -- AIR, the embedded
+## recovery, an unstandable surface -- answers false and is simply run again.
+func _categorise_ground_settled(state: DotFpsState) -> bool:
 	if state.mode == DotFpsState.Mode.NOCLIP:
-		return
+		return false
 
 	var was_grounded := state.mode == DotFpsState.Mode.GROUND
+	var position_in := state.position
+	var velocity_in := state.velocity
 	var rising := state.velocity.y > LEAVING_SPEED
 
 	# Moving upward fast enough to have left the ground is not on it, whatever is
@@ -733,7 +767,7 @@ func _categorise_ground(state: DotFpsState) -> void:
 		state.mode = DotFpsState.Mode.AIR
 		state.ground_normal = Vector3.UP
 		state.ground_id = 0
-		return
+		return false
 
 	var height := _height(state)
 	var centre := _capsule_centre(state.position, height)
@@ -777,7 +811,7 @@ func _categorise_ground(state: DotFpsState) -> void:
 			state.mode = DotFpsState.Mode.AIR
 			state.ground_normal = Vector3.UP
 			state.ground_id = 0
-			return
+			return false
 
 		# Along the floor they are on now. At a ramp's crest the velocity still points
 		# up the ramp, and leaving it there makes the next tick see 2 m/s away from the
@@ -797,7 +831,7 @@ func _categorise_ground(state: DotFpsState) -> void:
 			state.ground_id = 0
 			state.surface = &""
 			_resolve_surface(state)
-			return
+			return false
 
 		state.mode = DotFpsState.Mode.GROUND
 		state.ground_normal = floor_normal
@@ -805,7 +839,7 @@ func _categorise_ground(state: DotFpsState) -> void:
 		state.surface = found
 		_resolve_surface(state)
 		_keep_skin(state, hit, probe)
-		return
+		return was_grounded and state.position == position_in and state.velocity == velocity_in
 
 	# The recovery path, and the reason it is worth an extra query.
 	#
@@ -861,7 +895,7 @@ func _categorise_ground(state: DotFpsState) -> void:
 				state.ground_normal = recovered.normal
 				state.ground_id = recovered.collider_id
 				_resolve_surface(state)
-				return
+				return false
 		else:
 			DotLog.debug(
 				CHANNEL,
@@ -870,13 +904,14 @@ func _categorise_ground(state: DotFpsState) -> void:
 			)
 
 		state.mode = DotFpsState.Mode.GROUND
-		return
+		return false
 
 	state.mode = DotFpsState.Mode.AIR
 	state.ground_normal = Vector3.UP
 	state.ground_id = 0
 	state.surface = &""
 	_resolve_surface(state)
+	return false
 
 
 ## Asks the game which surface a collider is. Empty when it has no resolver.
@@ -1784,12 +1819,14 @@ func _sweep(
 
 # --- Movement --------------------------------------------------------------
 
-func _move(state: DotFpsState, delta: float, jumped: bool) -> void:
+## Returns whether the ground check it ran for the snap is already the end-of-tick answer
+## (see [method _categorise_ground_settled]); false whenever it ran none.
+func _move(state: DotFpsState, delta: float, jumped: bool) -> bool:
 	var height := _height(state)
 	var motion := state.velocity * delta
 
 	if motion.length_squared() <= 0.0:
-		return
+		return false
 
 	var was_grounded := state.mode == DotFpsState.Mode.GROUND
 	var velocity_in := state.velocity
@@ -1850,10 +1887,13 @@ func _move(state: DotFpsState, delta: float, jumped: bool) -> void:
 		#
 		# It also removes the most expensive query in the frame from the common case,
 		# which on a server simulating thirty players is the whole point.
-		_categorise_ground(state)
+		if _categorise_ground_settled(state):
+			return true
 
 		if state.mode != DotFpsState.Mode.GROUND:
 			_snap_to_ground(state, height, stood_on)
+
+	return false
 
 
 ## The result of one collide-and-slide.
@@ -2605,6 +2645,7 @@ func describe() -> Dictionary:
 		"ticks": ticks_simulated,
 		"stuck_ticks": stuck_ticks,
 		"depenetrated_ticks": depenetrated_ticks,
+		"settled_ground_ticks": settled_ground_ticks,
 		"surface": _surface.id if _surface != null else &"",
 		"effects": _effects.describe() if not _effects.is_neutral() else "neutral",
 		"custom_modes": Array(mode_names),
