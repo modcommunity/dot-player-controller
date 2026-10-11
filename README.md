@@ -22,7 +22,7 @@ addons/dot_player_controller/
 
 The base moves nothing. `fp/` and `tp/` are the two shipped implementations, and a vehicle, a ladder, a spectator camera and a cutscene rail are the same shape.
 
-**`fp/` was `dot-fps-controller`.** Every `class_name` is unchanged — `DotFpsController`, `DotFpsMotor`, `DotFpsTunables` and the rest — because `class_name` is global in Godot and renaming one is a breaking change for every project that has it installed, to gain nothing: `DotFps` still says exactly what it is. Its documentation is kept whole, further down and in `docs/`.
+**`fp/` was `dot-fps-controller`.** Every `class_name` is unchanged — `DotFpsController`, `DotFpsMotor`, `DotFpsTunables` and the rest — because `class_name` is global in Godot and renaming one is a breaking change for every project that has it installed, to gain nothing: `DotFps` still says exactly what it is. Its documentation lives on, condensed: the first-person half below, and the detail in [`docs/`](docs/README.md).
 
 A game that wants only one half can delete the other folder; the plugin skips a node type whose script is not there, so a trimmed install is a supported shape rather than a broken one.
 
