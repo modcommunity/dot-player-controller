@@ -11,8 +11,8 @@ extends Node
 ## godot --headless --path . res://examples/tps_selftest.tscn
 ## [/codeblock]
 
-const SECTIONS := 7
-const CHECKS := 100
+const SECTIONS := 8
+const CHECKS := 105
 
 var _passed := 0
 var _failed := 0
@@ -35,6 +35,7 @@ func _run() -> void:
 	_test_turning()
 	_test_look()
 	await _test_controller()
+	await _test_rig_in_a_world()
 
 	_line("")
 	_line("%d sections, %d passed, %d failed" % [_section_count, _passed, _failed])
@@ -445,6 +446,64 @@ func _test_look() -> void:
 
 # --- The controller ---------------------------------------------------------
 
+## The rig against a real wall. The rest of this suite has no level, so a rig that
+## collided with nothing passed every check here once (docs/design.md); this section has a
+## wall, and its first check proves the camera would be inside it without the boom.
+func _test_rig_in_a_world() -> void:
+	_section("the rig against a wall")
+
+	var body := CharacterBody3D.new()
+	var shape := CollisionShape3D.new()
+	var capsule := CapsuleShape3D.new()
+	capsule.height = 1.8
+	capsule.radius = 0.35
+	shape.shape = capsule
+	shape.position.y = 0.9
+	body.add_child(shape)
+	body.position = Vector3(50.0, 0.0, 0.0)
+	add_child(body)
+
+	var wall := StaticBody3D.new()
+	var wall_shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(8.0, 4.0, 0.4)
+	wall_shape.shape = box
+	wall.add_child(wall_shape)
+	wall.position = Vector3(50.0, 2.0, 1.8)
+	add_child(wall)
+
+	var rig := DotTpsCameraRig.new()
+	rig.tunables = DotTpsTunables.new()
+	rig.make_current = false
+	body.add_child(rig)
+	rig.exclude_own_body()
+
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	var state := DotTpsState.new()
+	for i in range(30):
+		rig.follow(state, body.global_position, 1.0 / 60.0)
+
+	var space := get_viewport().world_3d.direct_space_state
+	var wanted := rig.arm.global_transform * rig.arm.wanted_local()
+	var at := rig.camera_transform().origin
+	_check(DotCameraProbe.is_inside(space, wanted, 0.18, 1) or wanted.z > 1.6, "armed: with nothing in the way the camera would be in or behind the wall (z %.2f)" % wanted.z)
+	_check(rig.arm.get_hit_length() < rig.tunables.camera_distance - 0.3, "the boom pulls in (%.2f of %.2f m)" % [rig.arm.get_hit_length(), rig.tunables.camera_distance])
+	_check(not DotCameraProbe.is_inside(space, at, 0.18, 1) and at.z < 1.6, "and the camera is in front of the wall (z %.2f)" % at.z)
+	_check(rig.arm.get_hit_length() > 0.5, "but not collapsed into the player it hangs off (%.2f m)" % rig.arm.get_hit_length())
+
+	wall.position.z = 30.0
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	for i in range(120):
+		rig.follow(state, body.global_position, 1.0 / 60.0)
+	_check(absf(rig.arm.get_hit_length() - rig.arm.wanted_local().length()) < 0.05, "with the wall gone it eases back out to the full length (%.2f m)" % rig.arm.get_hit_length())
+
+	body.queue_free()
+	wall.queue_free()
+
+
 func _test_controller() -> void:
 	_section("the controller")
 
@@ -483,7 +542,7 @@ func _test_controller() -> void:
 	await get_tree().process_frame
 	_check(controller.is_active(), "activating takes over")
 	_check(controller.rig != null, "and builds a camera rig for a local player")
-	_check(controller.rig.arm != null, "with a spring arm")
+	_check(controller.rig.arm != null, "with a boom")
 	_check(controller.rig.camera != null, "and a camera")
 
 	var grounded_events: Array = []

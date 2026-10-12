@@ -1,7 +1,8 @@
 class_name DotTpsCameraRig
 extends Node3D
 
-## The orbit camera: a spring arm, a shoulder it can swap, and an aim blend.
+## The orbit camera: a boom that stays out of the level, a shoulder it can swap, and an aim
+## blend.
 ##
 ## [b]The camera is most of what makes third person work, and the shoulder offset is
 ## most of the camera.[/b] A camera on the character's centre line puts the character
@@ -13,10 +14,17 @@ extends Node3D
 ##
 ## [codeblock]
 ## DotTpsCameraRig          moved to the character, yaw applied here
-##   SpringArm3D            pitch and collision
-##     Marker3D             the shoulder offset
+##   DotCameraBoom          pitch, the shoulder offset and collision (dot-core)
+##     Marker3D             where the boom put the camera
 ##       Camera3D
+##         DotCameraFade    characters between the camera and the rig fade
 ## [/codeblock]
+##
+## [b]A [DotCameraBoom], not a SpringArm3D.[/b] The spring arm cast a ray and snapped to
+## its hit; the boom sweeps a sphere along the line to the shoulder point and eases in
+## ahead of an obstacle (dot-core's docs/camera.md). The shoulder is part of that line: a
+## Marker3D offset sideways AFTER the arm's cast put the camera through any wall the
+## shoulder was against.
 
 # No log channel: a camera following a state it is handed every frame. It has nothing
 # outside the process to fail against, and a line from it would be a line per frame.
@@ -26,10 +34,15 @@ extends Node3D
 ## Whether the camera becomes current when this rig is for the local player.
 @export var make_current: bool = true
 
-## Layers the spring arm collides with. Set from a dot-physics layout by the game.
+## Layers the boom stops against. Set from a dot-physics layout by the game.
 @export_flags_3d_physics var collision_mask: int = 1
 
-var arm: SpringArm3D = null
+## Layers whose bodies fade when they come between the camera and the character (other
+## players, NPCs). Zero fades nothing.
+@export_flags_3d_physics var fade_mask: int = 0
+
+var arm: DotCameraBoom = null
+var fade: DotCameraFade = null
 var pivot: Marker3D = null
 var camera: Camera3D = null
 
@@ -48,13 +61,16 @@ func _build() -> void:
 	if arm != null:
 		return
 
-	arm = SpringArm3D.new()
+	arm = DotCameraBoom.new()
 	arm.name = "Arm"
 	arm.spring_length = tunables.camera_distance
 	arm.collision_mask = collision_mask
 	# The margin keeps the camera off the surface it collided with: without it the near
 	# plane sits exactly on the wall and the wall's far side is visible through it.
 	arm.margin = 0.2
+	# Placed by follow(), after the rig itself has moved, rather than on the boom's own
+	# frame: one placement per frame, from this frame's pivot.
+	arm.auto_place = false
 	add_child(arm)
 
 	exclude_own_body()
@@ -67,6 +83,19 @@ func _build() -> void:
 	camera.name = "Camera"
 	pivot.add_child(camera)
 	_base_fov = camera.fov
+
+	fade = DotCameraFade.new()
+	fade.name = "Fade"
+	fade.collision_mask = fade_mask
+	fade.focus = self
+	camera.add_child(fade)
+
+
+## Sets which layers fade between the camera and the character, after the rig is built.
+func set_fade_mask(mask: int) -> void:
+	fade_mask = mask
+	if fade != null:
+		fade.collision_mask = mask
 
 
 ## Places the rig from a state. Called once a frame, not once a tick.
@@ -103,16 +132,19 @@ func _blend_aim(state: DotTpsState, delta: float) -> void:
 		tunables.shoulder_offset, tunables.aim_shoulder_offset, _aim
 	) * float(signi(state.shoulder) if state.shoulder != 0 else 1)
 
-	pivot.position.x = shoulder
+	arm.side_offset = shoulder
+	arm.place(delta)
 
 	if camera != null:
 		camera.fov = lerpf(_base_fov, _base_fov * tunables.aim_fov_scale, _aim)
 
 
-## Keeps the arm from colliding with the player it is attached to.
+## Keeps the arm from colliding with, and the fade from fading, the player it is attached to.
 ##
 ## [b]The rig hangs off the player, so the arm's cast STARTS inside the player's own
-## collider.[/b] `SpringArm3D` does not exclude its own ancestors — it excludes nothing
+## collider.[/b] The boom's sweeps ignore a shape they start in, so today this is belt and
+## braces for the arm; it is what keeps the player's own body off the fade's list, and it
+## is what the rig needed when the arm was a spring arm. `SpringArm3D` does not exclude its own ancestors — it excludes nothing
 ## unless told — so on a third-person game where the player is a `CharacterBody3D` (which
 ## is every third-person game, and is what [DotTpsController] requires) the arm collides
 ## on its first millimetre and collapses to the margin. The camera then sits at the
@@ -127,7 +159,7 @@ func _blend_aim(state: DotTpsState, delta: float) -> void:
 ##
 ## Walks up rather than taking the body as an argument, because the rig is built before
 ## the controller has resolved its player and the body can arrive later. Safe to call
-## again; `SpringArm3D` ignores a duplicate exclusion.
+## again; a duplicate exclusion is ignored.
 func exclude_own_body() -> void:
 	if arm == null:
 		return
@@ -139,6 +171,9 @@ func exclude_own_body() -> void:
 
 		if body != null:
 			arm.add_excluded_object(body.get_rid())
+
+			if fade != null:
+				fade.add_excluded_object(body.get_rid())
 
 		node = node.get_parent()
 
@@ -164,7 +199,7 @@ func set_active(active: bool) -> void:
 	camera.visible = active
 
 
-## Where the camera actually is, after the spring arm has pulled it in.
+## Where the camera actually is, after the boom has pulled it in.
 ##
 ## What a shot should be traced from in a third-person shooter — and it is deliberately
 ## not the muzzle: a shot fired from the muzzle of a model standing behind cover hits
@@ -182,9 +217,10 @@ func aim_point(distance: float = 1000.0) -> Vector3:
 
 func describe_lines() -> PackedStringArray:
 	return PackedStringArray([
-		"tps camera: %.2f m arm, shoulder %+.2f, aim %.2f" % [
+		"tps camera: %.2f of %.2f m arm, shoulder %+.2f, aim %.2f" % [
+			arm.get_hit_length() if arm != null else 0.0,
 			arm.spring_length if arm != null else 0.0,
-			pivot.position.x if pivot != null else 0.0,
+			arm.side_offset if arm != null else 0.0,
 			_aim,
 		]
 	])

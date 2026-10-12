@@ -12,8 +12,8 @@ extends Node
 ## godot --headless --path . res://examples/controller_selftest.tscn
 ## [/codeblock]
 
-const SECTIONS := 6
-const CHECKS := 106
+const SECTIONS := 7
+const CHECKS := 125
 
 var _passed := 0
 var _failed := 0
@@ -35,6 +35,7 @@ func _run() -> void:
 	await _test_controller()
 	await _test_switch()
 	await _test_handover()
+	_test_rules()
 
 	_line("")
 	_line("%d sections, %d passed, %d failed" % [_section_count, _passed, _failed])
@@ -101,6 +102,28 @@ class StubController extends DotPlayerController:
 		vel = Vector3.ZERO
 
 
+## A server cvar as dot-server's DotConVar looks to the rules: a changed signal and a value.
+class FakeCvar:
+	extends RefCounted
+	signal changed(old_value: String, new_value: String)
+	var value := ""
+	func get_string() -> String:
+		return value
+	func set_value(v: String) -> void:
+		var old := value
+		value = v
+		changed.emit(old, v)
+
+
+## A client link as dot-server's DotClientLink looks to the rules.
+class FakeLink:
+	extends RefCounted
+	signal replicated_cvar_changed(cvar_name: String, value: String)
+	var held: Dictionary = {}
+	func replicated_cvar(cvar_name: String, fallback: String) -> String:
+		return String(held.get(cvar_name, fallback))
+
+
 func _player() -> DotPlayer:
 	var p := DotPlayer.new()
 	p.is_local = true
@@ -113,6 +136,59 @@ func _stub(id: StringName, under: Node) -> StubController:
 	c.controller_id = id
 	under.add_child(c)
 	return c
+
+
+# --- Server rules: the view and solid players ----------------------------------
+
+func _test_rules() -> void:
+	_section("mp_forceview and mp_solidplayers")
+
+	var view := DotPlayerViewRules.new()
+	_check(view.may_toggle() and view.force_view == DotPlayerViewRules.ANY, "the view is the player's choice by default")
+	_check(view.toggled(false) == true and view.toggled(true) == false, "and the key swaps it")
+	_check(view.refusal() == "", "with nothing to refuse")
+
+	view.force_view = DotPlayerViewRules.FIRST_ONLY
+	_check(not view.may_toggle() and not view.allows_third(), "first person only forbids the swap")
+	_check(view.toggled(false) == false and view.resolve(true) == false, "and a player in third person is put back in first")
+	_check(view.refusal() != "", "with a line saying why")
+
+	view.force_view = DotPlayerViewRules.THIRD_ONLY
+	_check(view.resolve(false) == true and view.toggled(true) == true, "third person only holds third person")
+	view.force_view = 7
+	_check(view.force_view == DotPlayerViewRules.THIRD_ONLY, "an out-of-range value is clamped, not stored")
+
+	var made: Array = []
+	var cvar := FakeCvar.new()
+	cvar.value = "1"
+	var add := func(cvar_name: String, value: String, _description: String, _flags: int) -> Object:
+		made.append(cvar_name)
+		return cvar
+	var fresh := DotPlayerViewRules.new()
+	var _bound := fresh.bind_cvars(add)
+	_check(made == ["mp_forceview"], "bind_cvars registers mp_forceview")
+	_check(fresh.force_view == DotPlayerViewRules.FIRST_ONLY, "and reads back a value the operator set first")
+	var heard := [0]
+	fresh.changed.connect(func() -> void: heard[0] += 1)
+	cvar.set_value("2")
+	_check(fresh.force_view == DotPlayerViewRules.THIRD_ONLY and heard[0] == 1, "a cvar change applies and is announced once")
+	_check(not fresh.set_cvar("mp_forceview", "nonsense") and fresh.force_view == DotPlayerViewRules.THIRD_ONLY, "a value that is not 0, 1 or 2 is refused")
+
+	var link := FakeLink.new()
+	link.held["mp_forceview"] = "1"
+	var client := DotPlayerViewRules.new()
+	_check(client.follow_cvars(link) and client.force_view == DotPlayerViewRules.FIRST_ONLY, "a client follows the server's value through its link")
+	link.replicated_cvar_changed.emit("mp_forceview", "0")
+	_check(client.may_toggle(), "and every change to it")
+	_check(not client.follow_cvars(RefCounted.new()), "an older link that cannot say leaves the rules alone")
+
+	var body := DotPlayerBodyRules.new()
+	_check(body.solid and body.mask(0b0101, 0b0010) == 0b0111, "players are solid by default: the player layer joins the mask")
+	body.solid = false
+	_check(body.mask(0b0111, 0b0010) == 0b0101, "mp_solidplayers 0 takes it out")
+	link.held["mp_solidplayers"] = "1"
+	_check(body.follow_cvars(link) and body.solid, "and a client follows the server's value")
+	_check(view.describe_lines().size() == 1 and body.describe_lines().size() == 1, "both describe themselves")
 
 
 # --- Intent -----------------------------------------------------------------

@@ -1,0 +1,172 @@
+class_name DotPlayerViewRules
+extends RefCounted
+
+## Whether a player sees through their own eyes or from behind, and what the server owner
+## lets them choose: the `mp_forceview` cvar every first-person game in the family binds.
+##
+## [codeblock]
+## # server module
+## world.view_rules.bind_cvars(add_cvar, DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED)
+## # client, once it has a link
+## game.view_rules.follow_cvars(link)
+## game.view_rules.changed.connect(_apply_view)
+## # the view key
+## third_person = game.view_rules.toggled(third_person)
+## [/codeblock]
+##
+## [b]0 the player's choice, 1 first person only, 2 third person only[/b], the numbering of
+## the spectator rule it sits beside (`mp_forcecamera`, where 0 is also "free"): an owner
+## who knows one reads the other. Christian's words for it (2026-10-11): "first person and
+## third person should be toggleable for server owners if they want to allow users to
+## toggle them". The default is 0, the choice.
+##
+## [b]Presentation, decided by the server.[/b] The simulation does not know which view is on
+## (a third-person camera sees round corners, which is why an owner may forbid it), so the
+## rule replicates and every client applies it; nothing here touches a camera. A server
+## that forces a view does not move a camera by itself either: a client that follows the
+## cvar gets [signal changed] and puts its own camera where [method resolve] says.
+##
+## A solo game has no server: the game's console variable or its config sets
+## [member force_view], and the default leaves the toggle on.
+
+## Emitted when [member force_view] changes, from a cvar or by hand.
+signal changed
+
+const CVAR_FORCE := "mp_forceview"
+
+## The player's choice.
+const ANY := 0
+## First person only.
+const FIRST_ONLY := 1
+## Third person only.
+const THIRD_ONLY := 2
+
+## [constant ANY], [constant FIRST_ONLY] or [constant THIRD_ONLY].
+var force_view: int = ANY:
+	set(value):
+		var clamped := clampi(value, ANY, THIRD_ONLY)
+		if clamped == force_view:
+			return
+		force_view = clamped
+		changed.emit()
+
+
+## Whether the player may switch between the two.
+func may_toggle() -> bool:
+	return force_view == ANY
+
+
+## Whether third person is allowed at all.
+func allows_third() -> bool:
+	return force_view != FIRST_ONLY
+
+
+## Whether first person is allowed at all.
+func allows_first() -> bool:
+	return force_view != THIRD_ONLY
+
+
+## The view a player gets when they want [param third_person]: their wish if allowed, the
+## forced one if not.
+func resolve(third_person: bool) -> bool:
+	match force_view:
+		FIRST_ONLY:
+			return false
+		THIRD_ONLY:
+			return true
+	return third_person
+
+
+## The view after the player pressed the view key while in [param third_person]: the other
+## one if they may switch, the forced one otherwise.
+func toggled(third_person: bool) -> bool:
+	return resolve(not third_person) if may_toggle() else resolve(third_person)
+
+
+## Why the view key did nothing, for a HUD line; empty when it did something.
+func refusal() -> String:
+	match force_view:
+		FIRST_ONLY:
+			return "This server is first person only"
+		THIRD_ONLY:
+			return "This server is third person only"
+	return ""
+
+
+# --- Server cvars ------------------------------------------------------------
+
+func cvar_specs() -> Array[Dictionary]:
+	return [
+		{"name": CVAR_FORCE, "value": str(force_view), "min": float(ANY), "max": float(THIRD_ONLY),
+			"description": "Players' view: 0 their choice (the view key toggles), 1 first person only, 2 third person only"},
+	]
+
+
+## Registers `mp_forceview` through [param add] (a server module's `add_cvar`, or anything
+## shaped `(name, default, description, flags) -> cvar` with a `changed` signal and
+## `get_string()`) and keeps these rules in step with it. Pass dot-server's
+## FLAG_REPLICATED: the clients are the ones that place cameras. Duck-typed, because
+## dot-server is not a dependency here; the value a cvar already holds (argv, a config file)
+## is read back after registering.
+func bind_cvars(add: Callable, flags: int = 0) -> Array:
+	var made: Array = []
+	for spec in cvar_specs():
+		var cvar_name: String = spec["name"]
+		var made_cvar: Variant = add.call(cvar_name, String(spec["value"]), String(spec["description"]), flags)
+		if not (made_cvar is Object) or made_cvar == null:
+			continue
+		var cv := made_cvar as Object
+		if cv.has_method(&"with_range"):
+			cv.call(&"with_range", float(spec["min"]), float(spec["max"]))
+		if cv.has_signal(&"changed"):
+			cv.connect(&"changed", _on_cvar_changed.bind(cvar_name))
+		if cv.has_method(&"get_string"):
+			var _applied := set_cvar(cvar_name, String(cv.call(&"get_string")))
+		made.append(cv)
+	return made
+
+
+## Follows a server's value through [param source] (dot-server's `DotClientLink`, or
+## anything with `replicated_cvar(name, fallback)` and a `replicated_cvar_changed(name,
+## value)` signal). False when it cannot (an older shell's link); the rules keep their own.
+func follow_cvars(source: Object) -> bool:
+	if source == null or not is_instance_valid(source):
+		return false
+	if not source.has_method(&"replicated_cvar") or not source.has_signal(&"replicated_cvar_changed"):
+		return false
+	var held := String(source.call(&"replicated_cvar", CVAR_FORCE, ""))
+	if held != "":
+		var _applied := set_cvar(CVAR_FORCE, held)
+	if not source.is_connected(&"replicated_cvar_changed", _on_replicated_cvar):
+		source.connect(&"replicated_cvar_changed", _on_replicated_cvar)
+	return true
+
+
+## Applies one cvar by name. False for another name or a value that is not 0, 1 or 2.
+func set_cvar(cvar_name: String, value: String) -> bool:
+	if cvar_name != CVAR_FORCE:
+		return false
+	var text := value.strip_edges()
+	if not text.is_valid_int() or text.to_int() < ANY or text.to_int() > THIRD_ONLY:
+		DotLog.debug("player.view", "mp_forceview refused a value", {"value": value})
+		return false
+	force_view = text.to_int()
+	return true
+
+
+func _on_cvar_changed(_old: Variant, new_value: Variant, cvar_name: String) -> void:
+	var _applied := set_cvar(cvar_name, str(new_value))
+
+
+func _on_replicated_cvar(cvar_name: String, value: String) -> void:
+	var _applied := set_cvar(cvar_name, value)
+
+
+func describe() -> Dictionary:
+	return {"force_view": force_view, "may_toggle": may_toggle()}
+
+
+func describe_lines() -> PackedStringArray:
+	return PackedStringArray([
+		"view: %s" % ["the player's choice", "first person only", "third person only"][force_view]
+	])

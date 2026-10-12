@@ -22,13 +22,14 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 
 | Path | What |
 | --- | --- |
-| `addons/dot_player_controller/core/` | `DotPlayerIntent` (one tick of intent and its wire form), `DotPlayerLook` |
+| `addons/dot_player_controller/core/` | `DotPlayerIntent` (one tick of intent and its wire form), `DotPlayerLook`, `DotPlayerViewRules` (`mp_forceview`), `DotPlayerBodyRules` (`mp_solidplayers`) |
 | `addons/dot_player_controller/nodes/` | `DotPlayerController` (abstract base, five methods), `DotPlayerControllerSwitch` |
 | `addons/dot_player_controller/fp/core/` | data: `DotFpsTunables`, `DotFpsState`, `DotFpsCommand`, styles, surfaces, modifiers, admin modifiers, stats |
 | `addons/dot_player_controller/fp/motion/` | the simulation: `DotFpsMotor`, `DotFpsBody` and its flat and physics implementations, `DotFpsMoveMode`, `DotFpsSwimMode` |
 | `addons/dot_player_controller/fp/nodes/` | `DotFpsController`, `DotFpsSampler`, `DotFpsTouchSampler`, `DotFpsView`, `DotFpsViewMotion` (its motion cues without nodes) |
 | `addons/dot_player_controller/fp/net/` | `DotFpsNetSync`: what replicates, at what precision |
-| `addons/dot_player_controller/tp/` | `core/` (motor, state, tunables) and `nodes/` (controller, `DotTpsCameraRig`) |
+| `addons/dot_player_controller/tp/` | `core/` (motor, state, tunables) and `nodes/` (controller, `DotTpsCameraRig` on dot-core's `DotCameraBoom` and `DotCameraFade`) |
+| `addons/dot_player_controller/dot_player_controller_api.gd` | the API level (2 since the view and body rules) |
 | `examples/` | six self-test scenes, `sandbox.tscn` (a course to feel the movement out, not a test) |
 
 ## Running and testing
@@ -89,4 +90,9 @@ Short forms; the reasoning is in the linked file.
 - Draw the owner's view from `DotFpsSampler.look_now()` once a frame, not from the state's angles, or a frame with no tick in it does not turn. [networking](docs/networking.md#rendering-between-ticks)
 - A camera cue on an event (a landing) kicks a velocity or eases toward a target, never sets the eye on that frame; the cues live in `DotFpsViewMotion`, which a game writing its own camera calls rather than copies. [history](docs/history.md)
 - A field added to `DotFpsViewMotion` is also exported on `DotFpsView` and forwarded in `_sync_motion`; `fps_controller_selftest` checks every field by reflection. [extending](docs/extending.md)
-- `tps_selftest` has no physics world: anything about the camera rig colliding is only checked by a rendered frame. [design](docs/design.md#the-third-person-half)
+- The rig's arm is dot-core's `DotCameraBoom`, placed by `follow()` (`auto_place` off), with the shoulder as the boom's `side_offset` so the sweep covers it; never a `SpringArm3D` again. `tps_selftest`'s "against a wall" section is the only one with a level; the rest still collides with nothing. [design](docs/design.md#the-third-person-half)
+
+**Server rules a game binds**
+
+- `mp_forceview` (`DotPlayerViewRules`): 0 the player's choice, 1 first person only, 2 third person only; bound REPLICATED by the server module and followed by the client through its link; a client never decides it. [design](docs/design.md#the-view-and-solid-players)
+- `mp_solidplayers` (`DotPlayerBodyRules`, 1 by default): apply it with `mask()` wherever a player's collision mask is set, on every machine, or prediction disagrees with the server. [design](docs/design.md#the-view-and-solid-players)
