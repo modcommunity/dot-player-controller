@@ -88,4 +88,5 @@ Short forms; the reasoning is in the linked file.
 - `render_state()` needs the host to step once per physics frame at `tick_rate`; a connected client sets `render_clock` (dot-net's clock, by name) so a slip is drawn through; never call it for a `Drive.REMOTE` player. [networking](docs/networking.md#rendering-between-ticks)
 - Draw the owner's view from `DotFpsSampler.look_now()` once a frame, not from the state's angles, or a frame with no tick in it does not turn. [networking](docs/networking.md#rendering-between-ticks)
 - A camera cue on an event (a landing) kicks a velocity or eases toward a target, never sets the eye on that frame; the cues live in `DotFpsViewMotion`, which a game writing its own camera calls rather than copies. [history](docs/history.md)
+- A field added to `DotFpsViewMotion` is also exported on `DotFpsView` and forwarded in `_sync_motion`; `fps_controller_selftest` checks every field by reflection. [extending](docs/extending.md)
 - `tps_selftest` has no physics world: anything about the camera rig colliding is only checked by a rendered frame. [design](docs/design.md#the-third-person-half)

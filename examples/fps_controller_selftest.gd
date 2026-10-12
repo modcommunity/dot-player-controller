@@ -18,7 +18,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 83
+const CHECKS := 85
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -1216,6 +1216,56 @@ func _test_view_motion() -> void:
 		off.advance(strafing, frame)
 	_check(off.roll() == 0.0 and off.eye_drop() == 0.0 and off.pitch() == 0.0 and off.fov_added() == 0.0,
 		"every amount at 0 moves nothing", str(off.describe()))
+
+	# DotFpsView forwards every field of the motion object. Read by reflection, so a field
+	# added to DotFpsViewMotion later and not to the view fails here rather than leaving a
+	# game on the view stuck at its default. Armed: without the five forwards 824a645 left
+	# out, this names landing_min_speed, landing_pitch, roll_limit, fov_speed_floor and
+	# wall_run_fov_gain.
+	var forwarding := DotFpsView.new()
+	var unforwarded := PackedStringArray()
+	var fields := 0
+	for property in DotFpsViewMotion.new().get_property_list():
+		var field := String(property.name)
+		if not (property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE) or field.begins_with("_"):
+			continue
+		fields += 1
+		if not field in forwarding:
+			unforwarded.append(field + " (no export)")
+			continue
+		forwarding.set(field, float(forwarding.get(field)) + 0.25)
+	forwarding._sync_motion()
+	for property in forwarding._motion.get_property_list():
+		var field := String(property.name)
+		if (property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE) and not field.begins_with("_") \
+				and field in forwarding and forwarding._motion.get(field) != forwarding.get(field):
+			unforwarded.append(field)
+	_check(fields >= 18 and unforwarded.is_empty(), "DotFpsView exports and forwards every DotFpsViewMotion field",
+		"%d fields, not reaching the motion: %s" % [fields, ", ".join(unforwarded)])
+	forwarding.free()
+
+	# And one of them end to end: a landing under landing_min_speed dips nothing through the view.
+	var floor_body := Node3D.new()
+	add_child(floor_body)
+	var floor_head := Node3D.new()
+	floor_body.add_child(floor_head)
+	floor_head.add_child(Camera3D.new())
+	var floored := DotFpsView.new()
+	floored.strafe_roll = 0.0
+	floored.fov_speed_gain = 0.0
+	floored.landing_min_speed = 12.0
+	floor_body.add_child(floored)
+	for _i in range(30):
+		floored.apply(state, motor, frame)
+	var floor_rest := floor_head.position.y
+	floored.note_landing(10.0)
+	var floor_deepest := 0.0
+	for _i in range(72):
+		floored.apply(state, motor, frame)
+		floor_deepest = minf(floor_deepest, floor_head.position.y - floor_rest)
+	_check(absf(floor_deepest) < 1e-5, "a landing under DotFpsView.landing_min_speed dips nothing",
+		"%.2f mm" % (-floor_deepest * 1000.0))
+	floor_body.queue_free()
 	_done()
 
 

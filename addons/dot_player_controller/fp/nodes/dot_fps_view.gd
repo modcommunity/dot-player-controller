@@ -53,6 +53,10 @@ const CHANNEL := "fps.view"
 ## How quickly the field of view follows speed, per second.
 @export_range(0.5, 40.0, 0.5) var fov_response: float = 6.0
 
+## Horizontal speed at which the widening starts, in m/s. A game whose plain run is fast
+## puts this at the run, so only going faster than running widens.
+@export_range(0.0, 100.0, 0.5) var fov_speed_floor: float = 0.0
+
 @export_group("Feel")
 
 ## How far the camera leans into a turn or a strafe, in degrees. 0 disables it.
@@ -80,6 +84,14 @@ const CHANNEL := "fps.view"
 ## Seconds the landing dip takes to recover.
 @export_range(0.0, 1.0, 0.01) var landing_recovery: float = 0.28
 
+## Downward speed under which a landing dips nothing, in m/s; the dip grows from here to
+## [member landing_reference_speed]. A game that hops all the time puts this over a plain
+## hop's landing speed, so only a real fall is felt.
+@export_range(0.0, 60.0, 0.5) var landing_min_speed: float = 0.0
+
+## Degrees the view nods down at the deepest of a full landing dip. 0 for none.
+@export_range(0.0, 10.0, 0.1) var landing_pitch: float = 1.5
+
 ## Vertical camera travel of the walk cycle, in metres. 0 disables the bob.
 ##
 ## Off by default. Head bob is divisive and a competitive game usually wants none;
@@ -106,6 +118,14 @@ const CHANNEL := "fps.view"
 ## How quickly the wall-run roll eases in and out, per second. Exponential, so it starts
 ## and ends without a snap; about a sixth of a second to settle at the default.
 @export_range(0.5, 40.0, 0.5) var wall_run_roll_response: float = 6.0
+
+## Extra degrees of field of view while wall running, on top of the speed widening. 0 for
+## none.
+@export_range(0.0, 40.0, 0.5) var wall_run_fov_gain: float = 0.0
+
+## The most the strafe, slide and wall-run rolls may add up to, degrees either way. 0: no
+## bound beyond their sum.
+@export_range(0.0, 45.0, 0.5) var roll_limit: float = 0.0
 
 ## Horizontal sway, as a fraction of [member bob_amount].
 @export_range(0.0, 2.0, 0.05) var bob_sway: float = 0.5
@@ -287,7 +307,9 @@ func apply(
 
 
 ## The exports above onto [member _motion]. Every frame, because they are exports a game
-## may change at any time, and nine assignments cost nothing.
+## may change at any time, and eighteen assignments cost nothing. Every field of
+## [DotFpsViewMotion] is forwarded: one left out keeps the motion object's default, and a
+## game on this node has no way to change it (five were missing until the selftest checked).
 func _sync_motion() -> void:
 	_motion.strafe_roll = strafe_roll
 	_motion.strafe_roll_reference = strafe_roll_reference
@@ -302,6 +324,11 @@ func _sync_motion() -> void:
 	_motion.fov_speed_reference = fov_speed_reference
 	_motion.fov_response = fov_response
 	_motion.slide_fov_gain = slide_fov_gain
+	_motion.wall_run_fov_gain = wall_run_fov_gain
+	_motion.landing_min_speed = landing_min_speed
+	_motion.landing_pitch = landing_pitch
+	_motion.fov_speed_floor = fov_speed_floor
+	_motion.roll_limit = roll_limit
 
 
 ## The wall-run roll as drawn this frame, in degrees. For a test or a HUD.
