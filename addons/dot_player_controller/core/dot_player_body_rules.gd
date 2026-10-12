@@ -30,8 +30,11 @@ extends RefCounted
 ## a few centimetres when two players lean on each other; the reconcile corrects it. A
 ## server that wants the genre's pass-through sets 0.
 ##
-## Two bodies that start overlapping (a shared spawn, a teleport) are never stuck: a sweep
-## ignores what it starts inside, so they walk apart, or through, and are solid once clear.
+## Two bodies that start overlapping (a shared spawn, a teleport) are never stuck: the cast
+## ignores what it starts inside, and [method apply_to] tells the controller every other
+## question ignores the players' layer, so they walk apart, or through, and are solid once
+## clear. Without that second half both pushed into each other's hull and stood still
+## (mg-look-at-me's door check, two players placed on one spot).
 
 signal changed
 
@@ -67,6 +70,19 @@ func apply_hull(body: CollisionObject3D, height: float, radius: float) -> void:
 	capsule.height = maxf(height, radius * 2.0)
 	hull.position = Vector3(0.0, capsule.height * 0.5, 0.0)
 	hull.disabled = not solid
+
+
+## Sets a first-person controller's mask ([method mask]) and the layers it may walk out of
+## (the players' own, while they are solid): two players spawned in one place walk apart,
+## where hulls that blocked from inside held both still. Duck-typed on
+## `set_collision_mask` / `set_pass_out_layers`, so an older controller gets the mask alone.
+func apply_to(controller: Object, base: int, player_layers: int) -> void:
+	if controller == null or not is_instance_valid(controller):
+		return
+	if controller.has_method(&"set_collision_mask"):
+		controller.call(&"set_collision_mask", mask(base, player_layers))
+	if controller.has_method(&"set_pass_out_layers"):
+		controller.call(&"set_pass_out_layers", player_layers if solid else 0)
 
 
 ## [param base] (a player's mask from the layout) with [param player_layers] added when

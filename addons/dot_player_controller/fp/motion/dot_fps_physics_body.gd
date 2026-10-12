@@ -73,7 +73,9 @@ func _configure(height: float, radius: float) -> void:
 	# simulation thinks it has is unfindable from the symptom.
 	_shape.height = maxf(height, radius * 2.0)
 
-	_shape_params.collision_mask = collision_mask
+	# Everything but the sweep's own cast and the contact it found asks about what the
+	# capsule is already in, and a layer it may walk out of is not part of that answer.
+	_shape_params.collision_mask = collision_mask & ~pass_out_mask
 	_shape_params.exclude = exclude
 
 
@@ -134,7 +136,19 @@ func sweep(
 	_configure(height, radius)
 	query_count += 1
 
+	# The cast sees players' hulls too, unless the capsule starts inside one: a convex cast
+	# that starts overlapping another convex shape reports it at fraction 0, and two players
+	# on one spot then held each other still for good. Inside one, the cast leaves the
+	# players' layers out until they are apart.
+	_shape_params.collision_mask = collision_mask
 	_shape_params.transform = Transform3D(Basis.IDENTITY, from)
+	_shape_params.motion = Vector3.ZERO
+	if pass_out_mask != 0:
+		_shape_params.collision_mask = collision_mask & pass_out_mask
+		if not _space.intersect_shape(_shape_params, 1).is_empty():
+			_shape_params.collision_mask = collision_mask & ~pass_out_mask
+		else:
+			_shape_params.collision_mask = collision_mask
 	_shape_params.motion = motion
 
 	# cast_motion returns [safe, unsafe]: the last fraction with no contact and the
@@ -150,6 +164,7 @@ func sweep(
 	var unsafe: float = fractions[1]
 
 	if safe >= 1.0:
+		_shape_params.collision_mask = collision_mask & ~pass_out_mask
 		# Nothing along the sweep. That is two different worlds and they need
 		# different answers: genuinely open space, or a collider the sweep refuses to
 		# see because the capsule is already inside it. Ask the resting question
@@ -313,7 +328,7 @@ func _downward_ray_fallback(
 	var foot := from - Vector3.UP * (height * 0.5)
 
 	var query := PhysicsRayQueryParameters3D.create(foot, foot + motion)
-	query.collision_mask = collision_mask
+	query.collision_mask = collision_mask & ~pass_out_mask
 	query.exclude = exclude
 	query.collide_with_areas = false
 	query_count += 1

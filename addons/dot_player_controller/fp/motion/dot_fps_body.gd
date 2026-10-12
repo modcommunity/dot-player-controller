@@ -136,6 +136,12 @@ var collision_mask: int = 1
 ## Bodies excluded from every query — the player's own collider, above all.
 var exclude: Array[RID] = []
 
+## Layers a player may walk out of when it starts inside them: a sweep stops at them, every
+## question about what the player is already touching or standing in ignores them. Other
+## players' hulls (dot-player-controller's DotPlayerBodyRules): two players spawned in one
+## place walk apart, where a hull that also blocked from inside held both still forever.
+var pass_out_mask: int = 0
+
 
 func describe() -> Dictionary:
 	return {

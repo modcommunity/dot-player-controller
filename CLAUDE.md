@@ -75,6 +75,7 @@ Short forms; the reasoning is in the linked file.
 - The end-of-tick ground check is skipped only on a proven fixed point (`_categorise_ground_settled`); never reuse a query answer across ticks, the world moves between them. [collision](docs/collision.md#what-a-tick-costs-and-the-one-repeat-it-skips)
 - A rest normal pointing into the face is turned round only if the turned-round position is clear (`_turn_round_flipped`). [collision](docs/collision.md#a-normal-that-points-into-the-face)
 - Set the collision mask with `DotFpsController.set_collision_mask(mask)`; a plain write to `tunables.collision_mask` reverts at the next style. [extending](docs/extending.md#the-collision-mask)
+- Other players' hulls are a pass-out layer (`set_pass_out_layers`): stopped at, never held inside; the cast skips them while overlapping, every rest/overlap question always. [collision](docs/collision.md#other-players-a-layer-a-player-may-walk-out-of)
 
 **Extending and the wire**
 
@@ -95,4 +96,4 @@ Short forms; the reasoning is in the linked file.
 **Server rules a game binds**
 
 - `mp_forceview` (`DotPlayerViewRules`): 0 the player's choice, 1 first person only, 2 third person only; bound REPLICATED by the server module and followed by the client through its link; a client never decides it. [design](docs/design.md#the-view-and-solid-players)
-- `mp_solidplayers` (`DotPlayerBodyRules`, 1 by default): apply it with `mask()` wherever a player's collision mask is set AND `apply_hull()` on the body (players carry no shape of their own, so a mask alone hits nothing), on every machine, or prediction disagrees with the server. [design](docs/design.md#the-view-and-solid-players)
+- `mp_solidplayers` (`DotPlayerBodyRules`, 1 by default): apply it with `apply_to(controller, base, player_layers)` wherever a player's collision mask is set AND `apply_hull()` on the body (players carry no shape of their own, so a mask alone hits nothing), on every machine, or prediction disagrees with the server. [design](docs/design.md#the-view-and-solid-players)

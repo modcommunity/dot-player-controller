@@ -221,6 +221,7 @@ var stats := DotFpsStats.new()
 ## style's output — otherwise two style changes compound their scales and a player
 ## who switched to low-gravity and back lands in a third of the gravity they started
 ## with.
+var _pass_out_mask: int = 0
 var _base_tunables: DotFpsTunables = null
 
 ## The command the statistics last saw, for their own edge detection.
@@ -638,6 +639,14 @@ func set_collision_mask(mask: int) -> void:
 		body.collision_mask = mask
 
 
+## Layers this player may walk out of when it starts inside them (other players' hulls; see
+## [member DotFpsBody.pass_out_mask]). Kept across a rebuilt body.
+func set_pass_out_layers(mask: int) -> void:
+	_pass_out_mask = mask
+	if body != null:
+		body.pass_out_mask = mask
+
+
 ## Switches movement mode, running the mode's exit and enter hooks.
 func set_mode(mode: int) -> void:
 	if motor != null:
@@ -648,6 +657,7 @@ func set_mode(mode: int) -> void:
 func _make_body() -> DotFpsBody:
 	var physics := DotFpsPhysicsBody.new()
 	physics.collision_mask = tunables.collision_mask
+	physics.pass_out_mask = _pass_out_mask
 
 	if _body_node is CollisionObject3D:
 		# Excluded, or every downward probe hits the player's own collider and the
