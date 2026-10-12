@@ -6,7 +6,8 @@ extends RefCounted
 ## raised to LEVEL when something a game could have called is removed or changes meaning.
 
 # 1: everything before this file existed.
-# 2: DotPlayerViewRules (mp_forceview) and DotPlayerBodyRules (mp_solidplayers);
+# 2: DotPlayerViewRules (mp_forceview) and DotPlayerBodyRules (mp_solidplayers: mask(),
+#    apply_to(), apply_hull()); DotFpsBody.pass_out_mask, DotFpsController.set_pass_out_layers;
 #    DotTpsCameraRig's arm is a dot-core DotCameraBoom (same spring_length, margin,
 #    collision_mask, add_excluded_object), fade_mask/set_fade_mask() and its fade.
 const LEVEL := 2
