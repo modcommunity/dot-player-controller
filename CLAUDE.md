@@ -95,4 +95,4 @@ Short forms; the reasoning is in the linked file.
 **Server rules a game binds**
 
 - `mp_forceview` (`DotPlayerViewRules`): 0 the player's choice, 1 first person only, 2 third person only; bound REPLICATED by the server module and followed by the client through its link; a client never decides it. [design](docs/design.md#the-view-and-solid-players)
-- `mp_solidplayers` (`DotPlayerBodyRules`, 1 by default): apply it with `mask()` wherever a player's collision mask is set, on every machine, or prediction disagrees with the server. [design](docs/design.md#the-view-and-solid-players)
+- `mp_solidplayers` (`DotPlayerBodyRules`, 1 by default): apply it with `mask()` wherever a player's collision mask is set AND `apply_hull()` on the body (players carry no shape of their own, so a mask alone hits nothing), on every machine, or prediction disagrees with the server. [design](docs/design.md#the-view-and-solid-players)

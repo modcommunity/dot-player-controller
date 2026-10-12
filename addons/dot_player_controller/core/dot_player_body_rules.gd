@@ -7,7 +7,16 @@ extends RefCounted
 ## [codeblock]
 ## # wherever the game sets a player's mask, on every machine
 ## player.controller.set_collision_mask(world.body_rules.mask(physics.collision_mask(&"player"), physics.layer_mask(&"player")))
+## # and once the body is built: the capsule the others' sweeps hit
+## world.body_rules.apply_hull(player, tunables.stand_height, tunables.radius)
 ## [/codeblock]
+##
+## [b]Both halves, or nothing changes.[/b] The family's player bodies carry no collision
+## shape: the motor sweeps a capsule of its own and the hitboxes are analytic, so a mask
+## with the player layer in it hits nothing. [method apply_hull] gives the body a standing
+## capsule on its own layer, which its own controller excludes (it excludes its body) and
+## every other player's sweep stops at. It stays standing height when its owner crouches:
+## a crouched player is not something to walk over.
 ##
 ## [b]Why solid by default.[/b] dot-physics' shooter layout leaves players out of each other's
 ## mask, which is the competitive genre's choice: nobody blocks a doorway. The first play
@@ -34,6 +43,30 @@ var solid: bool = true:
 			return
 		solid = value
 		changed.emit()
+
+
+## The collision shape [method apply_hull] adds, by name.
+const HULL_NAME := &"SolidHull"
+
+
+## Gives [param body] a standing capsule while players are solid (feet at the body's
+## origin, as the motor's state has them), and disables it while they are not. Safe to call
+## again: the hull is found by name and resized. Call it on every machine that simulates
+## players, and again on [signal changed].
+func apply_hull(body: CollisionObject3D, height: float, radius: float) -> void:
+	if body == null or not is_instance_valid(body):
+		return
+	var hull := body.get_node_or_null(NodePath(String(HULL_NAME))) as CollisionShape3D
+	if hull == null:
+		hull = CollisionShape3D.new()
+		hull.name = HULL_NAME
+		hull.shape = CapsuleShape3D.new()
+		body.add_child(hull)
+	var capsule := hull.shape as CapsuleShape3D
+	capsule.radius = radius
+	capsule.height = maxf(height, radius * 2.0)
+	hull.position = Vector3(0.0, capsule.height * 0.5, 0.0)
+	hull.disabled = not solid
 
 
 ## [param base] (a player's mask from the layout) with [param player_layers] added when

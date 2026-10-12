@@ -13,7 +13,7 @@ extends Node
 ## [/codeblock]
 
 const SECTIONS := 7
-const CHECKS := 125
+const CHECKS := 128
 
 var _passed := 0
 var _failed := 0
@@ -189,6 +189,18 @@ func _test_rules() -> void:
 	link.held["mp_solidplayers"] = "1"
 	_check(body.follow_cvars(link) and body.solid, "and a client follows the server's value")
 	_check(view.describe_lines().size() == 1 and body.describe_lines().size() == 1, "both describe themselves")
+
+	var hulled := CharacterBody3D.new()
+	add_child(hulled)
+	body.solid = true
+	body.apply_hull(hulled, 1.8, 0.35)
+	var hull := hulled.get_node_or_null(^"SolidHull") as CollisionShape3D
+	_check(hull != null and not hull.disabled and is_equal_approx(hull.position.y, 0.9), "apply_hull gives a body a standing capsule, feet at its origin")
+	body.solid = false
+	body.apply_hull(hulled, 1.8, 0.35)
+	_check(hull.disabled, "and disables it when players pass through each other")
+	_check(hulled.get_child_count() == 1, "found again by name, never a second one")
+	hulled.queue_free()
 
 
 # --- Intent -----------------------------------------------------------------
