@@ -30,8 +30,8 @@ extends RefCounted
 ## a few centimetres when two players lean on each other; the reconcile corrects it. A
 ## server that wants the genre's pass-through sets 0.
 ##
-## Two bodies that start overlapping (a shared spawn) separate: a sweep ignores what it
-## starts inside, and the controller's rest check blocks only motion further in.
+## Two bodies that start overlapping (a shared spawn, a teleport) are never stuck: a sweep
+## ignores what it starts inside, so they walk apart, or through, and are solid once clear.
 
 signal changed
 
