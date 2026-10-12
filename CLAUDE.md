@@ -59,7 +59,7 @@ Short forms; the reasoning is in the linked file.
 - Everything read between ticks lives in `DotFpsState`, or a rewind does not restore it. Nothing is stored on a `DotFpsMoveMode` instance. [motor](docs/motor.md#the-one-idea)
 - Collision goes through `DotFpsBody`, never `move_and_slide` (it keeps state a rewind does not restore). [collision](docs/collision.md#why-collision-goes-through-dotfpsbody)
 - A face steeper than `max_slope_angle` never grounds; that is what surf is. [motor](docs/motor.md#surf-and-hops)
-- A duplicate plane is satisfied, not stuck; a full plane list is a real corner. [motor](docs/motor.md#surf-and-hops)
+- A duplicate plane is satisfied, not stuck; a full plane list is a real corner; three or more planes still go along any crease that leaves the rest; a duplicate leg that goes nowhere is split, vertical first (`_split_leg`). [motor](docs/motor.md#surf-and-hops)
 - "Moving away" from the ground is measured along the floor normal (`LEAVING_SPEED`), not +Y. [motor](docs/motor.md#slopes-steps-and-kerbs)
 - A step never lifts more than `step_height` above the floor it left; a kerb a centimetre over is a wall. [motor](docs/motor.md#slopes-steps-and-kerbs)
 - `crest_launch_speed_scale` (1.25 x `max_speed`) is the line between being laid over a crest and thrown off it; 0 restores always-grounded. [motor](docs/motor.md#slopes-steps-and-kerbs)

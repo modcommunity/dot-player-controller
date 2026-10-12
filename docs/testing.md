@@ -26,7 +26,7 @@ Most sections here carry one: the determinism test replays with a deliberate div
 ## What measures what
 
 - **Penetration, not speed**, for anything about a player inside geometry ([collision.md](collision.md#ramps-a-sweep-cannot-see)).
-- **The simulation's own counters** (`embedded_ticks`, `lifted_ticks`, `depenetrated_ticks`, `flipped_normals`, `stuck_ticks`, `duplicate_plane_ticks`), not an overlap test from outside, which reports most resting players as inside solid.
+- **The simulation's own counters** (`embedded_ticks`, `lifted_ticks`, `depenetrated_ticks`, `flipped_normals`, `stuck_ticks`, `duplicate_plane_ticks`, `split_leg_ticks`), not an overlap test from outside, which reports most resting players as inside solid.
 - **A rendered frame** for anything a player sees: the third-person rig and `render_state` jitter were both invisible to every assertion. See the family's note on simulation-to-screen bugs.
 
 ## GDScript traps hit here

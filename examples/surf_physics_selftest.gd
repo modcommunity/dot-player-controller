@@ -27,13 +27,13 @@ extends Node3D
 ## are on can tell you so.
 
 const STEP := 1.0 / 128.0
-const CHECKS := 29
+const CHECKS := 35
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 7
+const SECTIONS := 8
 
 var _passed := 0
 var _failed := 0
@@ -163,6 +163,7 @@ func _run() -> void:
 	await _test_leaving_a_surface_is_not_blocked()
 	await _test_a_surfer_leaves_a_face_over_its_far_end()
 	await _test_a_reversed_rest_normal_is_turned_round()
+	await _test_a_body_falls_out_of_an_acute_corner()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -565,4 +566,96 @@ func _test_a_reversed_rest_normal_is_turned_round() -> void:
 		deepest = maxf(deepest, _penetration(s.position, normal))
 	_check(deepest < 0.001, "depenetration never pushes a resting capsule into the face",
 		"%.3f m past it" % deepest)
+	_done()
+
+
+# --- An acute corner: a wall and an open door's panel (`[hns-door-wedge-1]`) ---------
+
+## A wall whose face is z = 0 (solid behind, z < 0), and a door panel 6 cm thick hinged in
+## the wall's middle and swung 100 degrees, so the panel and the wall's face meet at 80
+## degrees: the shape of game-hide-n-seek's school fire door left open.
+func _add_wall_and_open_door() -> void:
+	_add_floor(0.0)
+	var wall := StaticBody3D.new()
+	var wall_shape := CollisionShape3D.new()
+	var wall_box := BoxShape3D.new()
+	wall_box.size = Vector3(10.0, 3.0, 0.3)
+	wall_shape.shape = wall_box
+	wall.add_child(wall_shape)
+	wall.position = Vector3(-5.0, 1.5, -0.15)
+	add_child(wall)
+
+	var panel := StaticBody3D.new()
+	var panel_shape := CollisionShape3D.new()
+	var panel_box := BoxShape3D.new()
+	panel_box.size = Vector3(1.37, 2.282, 0.06)
+	panel_shape.shape = panel_box
+	panel.add_child(panel_shape)
+	var turn := Basis(Vector3.UP, deg_to_rad(-100.0))
+	panel.transform = Transform3D(turn, Vector3(0.0, 1.15, -0.15) + turn.x * 0.685)
+	add_child(panel)
+
+
+func _test_a_body_falls_out_of_an_acute_corner() -> void:
+	_section("a body hopping into the corner of a wall and an open door comes down")
+
+	await _clear()
+	_add_wall_and_open_door()
+	await _settle()
+
+	var t := _tunables()
+	t.radius = 0.35
+	t.stand_height = 1.8
+	t.step_height = 0.4
+	var motor := DotFpsMotor.new(t, DotFpsPhysicsBody.for_node(self))
+
+	# Where the bot froze, moved to this wall: touching the wall's face to 15 micrometres and
+	# the panel to under a millimetre, at the top of an unstick hop, still pushing at the panel.
+	# Before the fix: the slide met the wall face at fraction ~0 twice, called it a duplicate
+	# plane, and the leg off it ran into the panel, so the move stopped every tick with the
+	# fall speed kept: hanging at 0.6 m for the rest of the round.
+	var s := DotFpsState.new()
+	s.mode = DotFpsState.Mode.AIR
+	s.position = Vector3(-0.4742, 0.6136, 0.350015)
+	s.velocity = Vector3(1.2, -4.47, 0.0)
+	var body := DotFpsPhysicsBody.for_node(self)
+	var centre := s.position + Vector3.UP * (t.stand_height * 0.5)
+	var down := body.sweep(centre, Vector3(0.0, -0.15, 0.0), t.stand_height, t.radius)
+	var rest := body.rest_contact(centre, t.stand_height, t.radius)
+	_check(not down.hit and rest.hit and absf(rest.normal.z - 1.0) < 1e-3,
+		"the capsule is placed as the bot was: free straight down, resting on the wall's face",
+		"down %s, rest %s n=%v" % [down.hit, rest.hit, rest.normal])
+
+	# The query the bug was in: a push at the panel, beside the wall, names the WALL, a face
+	# square to the motion. If the engine ever names the panel here, this setup no longer
+	# reproduces the hang and needs another.
+	var into := body.sweep(centre, Vector3(0.04, -0.15, 0.0), t.stand_height, t.radius)
+	_check(into.hit and absf(into.normal.dot(Vector3(0.04, -0.15, 0.0).normalized())) < 0.02,
+		"a push at the panel is reported as the wall it grazes (the engine's answer the fix copes with)",
+		"hit %s n=%v" % [into.hit, into.normal])
+
+	var command := DotFpsCommand.new()
+	command.move = Vector2(1.0, 0.0)
+	var lowest := s.position.y
+	for _i in range(48):
+		motor.simulate(s, command, 1.0 / 32.0)
+		lowest = minf(lowest, s.position.y)
+	_check(lowest < 0.05, "it reaches the floor within a second and a half", "lowest feet %.3f, at %v" % [lowest, s.position])
+	_check(s.mode == DotFpsState.Mode.GROUND and motor.split_leg_ticks > 0, "and stands there, and says how it got out",
+		"mode %d, %d split legs" % [s.mode, motor.split_leg_ticks])
+
+	# The second wedge the school's doors found: three planes at once, the classic slide's
+	# "stop dead". Measured in a room's corner under a window: the side wall, an upright
+	# edge and a downward-leaning edge of the window's boxes, with a push into the corner
+	# and gravity. Straight down leaves all three, so the answer must not be zero.
+	var corner: Array[Vector3] = [Vector3(-1.0, 0.0, 0.0), Vector3(0.0, -0.140875, -0.990027).normalized(),
+		Vector3(0.142474, 0.0, -0.989798).normalized()]
+	var out := motor._resolve_planes(corner, Vector3(0.013258, -0.004883, 0.013258))
+	var leaves_all := out.length() > 1e-4
+	for plane in corner:
+		leaves_all = leaves_all and out.dot(plane) >= -1e-5
+	_check(leaves_all and out.y < 0.0, "three planes with a way down between them give the way down", "%v" % out)
+	var pocket: Array[Vector3] = [Vector3.RIGHT, Vector3.UP, Vector3.BACK]
+	_check(motor._resolve_planes(pocket, Vector3(-1.0, -1.0, -1.0)).is_zero_approx(),
+		"and a real pocket, with none, still stops")
 	_done()

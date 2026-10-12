@@ -131,6 +131,10 @@ var lifted_ticks: int = 0
 ## brush, where a curved ramp is a fan of faces a degree apart and every one of them is
 ## a near-copy of the last.
 var duplicate_plane_ticks: int = 0
+## Duplicate-plane legs that went nowhere whole and were spent split into their vertical and
+## horizontal parts ([method _split_leg]): a capsule touching two faces whose rest query named
+## the one it was not moving into. Zero almost everywhere; rising, somebody is in a corner.
+var split_leg_ticks: int = 0
 
 ## Ticks that began with the capsule inside geometry and pushed it back out.
 ##
@@ -2024,6 +2028,9 @@ func _slide(
 			if _leave_face(result, current * time_left, hit.normal, height):
 				time_left = 0.0
 				break
+			if _split_leg(result, current * time_left, height):
+				time_left = 0.0
+				break
 			result.stopped_on_duplicate = true
 			# The same plane again. The velocity has already been resolved against
 			# it, so resolving again is a no-op and the loop would spin until it ran
@@ -2087,6 +2094,38 @@ func _leave_face(
 		var spent := 1.0 if not along.hit else along.fraction
 		if spent > 1e-6:
 			result.position = from + leg * spent
+			return true
+
+	return false
+
+
+## The duplicate-plane leg's very last resort (`[hns-door-wedge-1]`, 2026-10-12): spend
+## [param leg]'s vertical part alone, or failing that its horizontal part alone. True and
+## [param result] moved if either got anywhere.
+##
+## [b]A rest query names one contact, and with two touching it can be the wrong one.[/b] A
+## capsule in the 80 degree corner of a wall and an open door's panel, touching the wall's
+## face to 15 micrometres and pushing at the panel, was stopped by the panel and told it had
+## met the wall: a normal square to the motion, which clips nothing. The slide met "the wall"
+## again at fraction zero, called it a duplicate, the leg off it and the lift off it both ran
+## into the panel, and the move stopped every tick with the fall speed kept: a body that
+## hopped into the corner hung 0.6 m up for the rest of the round (game-hide-n-seek's school
+## fire door; most of the school's doors did it). Straight down was clear all along. The panel
+## cannot be added as a plane, because no query along the motion names it; and asking the
+## rest query to look past a grazed face for the one the motion goes into (tried first) also
+## re-ordered the two faces of a surf crease and hung a rider there (game-g2gfast's surf
+## bonus). Splitting the leg asks nothing new of the world, runs only where the move was
+## otherwise lost for the tick, and moves no further than the leg itself. The velocity is
+## not touched.
+func _split_leg(result: MoveResult, leg: Vector3, height: float) -> bool:
+	for part: Vector3 in [Vector3(0.0, leg.y, 0.0), Vector3(leg.x, 0.0, leg.z)]:
+		if part.length_squared() <= 1e-12:
+			continue
+		var along := _sweep(_capsule_centre(result.position, height), part, height)
+		var spent := 1.0 if not along.hit else along.fraction
+		if spent > 1e-6:
+			result.position += part * spent
+			split_leg_ticks += 1
 			return true
 
 	return false
@@ -2157,19 +2196,36 @@ func _resolve_planes(planes: Array[Vector3], original: Vector3) -> Vector3:
 		if clear:
 			return candidate
 
-	if count != 2:
-		return Vector3.ZERO
+	# [b]Every crease, not only the first two planes[/b] (`[hns-door-wedge-1]`). The
+	# classic slide stops dead at three planes, which is right for a corner with no way
+	# out and wrong for one with a way down: a body hopping into a room's corner under a
+	# window (game-hide-n-seek's school washroom) met the side wall and two edges of the
+	# boxes the window is cut from, one leaning down, and the line where the side wall and
+	# the upright edge meet (straight down) left all three; with the velocity zeroed every
+	# tick it hung 0.7 m up for good. A crease of two planes that also leaves
+	# every other one is a real way out; with two planes this is the old answer exactly.
+	for i in range(count):
+		for j in range(i + 1, count):
+			var crease := planes[i].cross(planes[j])
 
-	var crease := planes[0].cross(planes[1])
+			# Parallel planes — two faces of the same wall the player is sandwiched
+			# between. There is no crease and no way through.
+			if crease.length_squared() < 1e-12:
+				continue
 
-	# Parallel planes — two faces of the same wall the player is sandwiched between.
-	# There is no crease and no way through.
-	if crease.length_squared() < 1e-12:
-		return Vector3.ZERO
+			crease = crease.normalized()
+			var along := crease * crease.dot(original)
+			var leaves := true
 
-	crease = crease.normalized()
+			for k in range(count):
+				if k != i and k != j and along.dot(planes[k]) < -1e-5:
+					leaves = false
+					break
 
-	return crease * crease.dot(original)
+			if leaves:
+				return along
+
+	return Vector3.ZERO
 
 
 ## Whether there is a drop just in front of the player. For [member DotFpsTunables.edge_friction].
