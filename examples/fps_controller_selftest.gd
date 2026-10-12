@@ -18,7 +18,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 80
+const CHECKS := 83
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -957,6 +957,43 @@ func _test_local_drive_accumulator() -> void:
 		"and reaches both ends of the tick it is drawn across"
 	)
 
+	# [b]A connected client draws at its clock's alpha, which leaves 0..1 after a slip.[/b]
+	# The clock stretches its ticks while it settles, so a physics frame now and then runs
+	# none or two, and drawn at the engine's fraction the eye stood still or moved double.
+	# Past 1 the drawing goes on along the last step; below 0 it is between the two before.
+	# Armed by clamping the clock's alpha to 0..1: this check fails (10 cm and 0 cm drawn).
+	var clock := FakeClock.new()
+	controller._position_two_back = Vector3(0.0, 0.0, -10.0)
+	controller.render_clock = clock
+	clock.alpha = 0.25
+	var on_clock := controller.render_state()
+	clock.alpha = 1.5
+	var past := controller.render_state()
+	clock.alpha = -0.5
+	var before := controller.render_state()
+	_check(
+		on_clock.position.is_equal_approx(Vector3(0.0, 0.0, 2.5))
+		and past.position.is_equal_approx(Vector3(0.0, 0.0, 15.0))
+		and before.position.is_equal_approx(Vector3(0.0, 0.0, -5.0)),
+		"a render_clock's alpha draws the eye, extrapolated past 1 and two ticks back below 0",
+		"%s %s %s" % [on_clock.position, past.position, before.position]
+	)
+	controller._position_two_back = Vector3(NAN, NAN, NAN)
+	_check(
+		controller.render_state().position.is_equal_approx(Vector3.ZERO),
+		"and with no tick two back, below 0 holds the previous tick",
+		str(controller.render_state().position)
+	)
+	# A clock without render_alpha (an older dot-net) is the engine's fraction, 0..1.
+	controller.render_clock = RefCounted.new()
+	var engine := controller.render_state().position.z
+	_check(
+		engine >= 0.0 and engine <= 10.0,
+		"a clock without render_alpha leaves the engine's fraction in charge",
+		str(engine)
+	)
+	controller.render_clock = null
+
 	# A remote player is written by the interpolator every frame and has no second
 	# tick to blend from; blending would drag it back toward a state nothing updates.
 	controller.drive = DotFpsController.Drive.REMOTE
@@ -1180,3 +1217,11 @@ func _test_view_motion() -> void:
 	_check(off.roll() == 0.0 and off.eye_drop() == 0.0 and off.pitch() == 0.0 and off.fov_added() == 0.0,
 		"every amount at 0 moves nothing", str(off.describe()))
 	_done()
+
+
+## Stands in for dot-net's DotNetClock: all `render_state` asks of a clock is `render_alpha`.
+class FakeClock extends RefCounted:
+	var alpha: float = 0.0
+
+	func render_alpha() -> float:
+		return alpha

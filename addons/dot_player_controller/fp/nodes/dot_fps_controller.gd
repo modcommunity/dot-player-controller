@@ -233,6 +233,26 @@ var _capsule: CapsuleShape3D = null
 ## State at the end of the previous tick, for render interpolation.
 var _previous_state: DotFpsState = DotFpsState.new()
 
+## Where the player stood two ticks back, for a frame drawn before [member _previous_state]
+## (a [member render_clock] alpha below 0). NAN until a tick has run since the last reset.
+var _position_two_back: Vector3 = Vector3(NAN, NAN, NAN)
+
+## The clock this controller's ticks are counted on, for a client predicting it: anything
+## with a [code]render_alpha() -> float[/code] (dot-net's [code]DotNetClock[/code]), asked by
+## name so this addon needs no dot-net. Null draws at the engine's physics fraction, which is
+## right offline and on a server. See [method render_state].
+##
+## [b]Because a connected client's ticks are the clock's, not the engine's.[/b] The clock
+## stretches or shrinks its ticks while it settles on the server, so now and then a physics
+## frame runs no tick and a later one two. Drawn at the engine's fraction, the frame after one
+## with none goes back over the step it drew (the eye stands still) and the frame after one
+## with two moves double: game-arena measured 4 to 8 frames in 5 s 10 to 16 cm off at 60 Hz.
+## The clock's alpha carries the slip and takes it back slowly, from -1 to 2 for a moment.
+##
+## Set it, rather than passing an alpha, by [code]controller.set(&"render_clock", clock)[/code]
+## from a game pack: a shell carrying an older copy of this addon then ignores it.
+var render_clock: Object = null
+
 ## collider instance id -> surface id. See _resolve_surface_id.
 var _surface_cache: Dictionary = {}
 
@@ -348,6 +368,7 @@ func setup() -> DotResult:
 	if _body_node != null:
 		state.position = _body_node.global_position
 		_previous_state.copy_from(state)
+	_position_two_back = Vector3(NAN, NAN, NAN)
 
 	_apply_collider(state)
 
@@ -757,6 +778,9 @@ func simulate_tick(tick: int, delta: float) -> void:
 		current_command.yaw = state.yaw
 		current_command.pitch = state.pitch
 
+	# A reset (setup, teleport) makes the previous state the current one, so this is never
+	# from before one.
+	_position_two_back = _previous_state.position
 	_previous_state.copy_from(state)
 
 	var before_mode := state.mode
@@ -974,7 +998,11 @@ func _apply_collider(from: DotFpsState) -> void:
 ##   still moved 74 mm on six frames out of seven and 112 mm on the seventh — a 47%
 ##   change in apparent speed, eight times a second, which is the whole of the jitter.
 ##   Putting the engine on the server's rate is [method G2GNetBridge._adopt_tick_rate]'s
-##   job and this is the half that reads it.
+##   job and this is the half that reads it. With a [member render_clock] set (a
+##   connected client) the clock's [code]render_alpha()[/code] replaces the engine's
+##   fraction, and runs from -1 to 2 for a moment after a physics frame that ran no
+##   tick or two: past the newest tick the drawing goes on along the last step, below
+##   the previous one it is between the two before it.
 ## - [constant Drive.REMOTE] is not simulated here at all. Its position arrives over
 ##   the network already interpolated by [DotNetInterpolator] and blending toward a
 ##   [member _previous_state] nothing updates would drag it backwards every frame.
@@ -982,17 +1010,34 @@ func render_state(alpha: float = -1.0) -> DotFpsState:
 	if drive == Drive.REMOTE or tick_rate <= 0:
 		return state
 
+	var beyond := 0.0
 	if alpha < 0.0:
-		alpha = (
-			clampf(_accumulator / (1.0 / float(tick_rate)), 0.0, 1.0)
-			if drive == Drive.LOCAL
-			else Engine.get_physics_interpolation_fraction()
-		)
+		if drive == Drive.LOCAL:
+			alpha = clampf(_accumulator / (1.0 / float(tick_rate)), 0.0, 1.0)
+		elif (
+			render_clock != null and is_instance_valid(render_clock)
+			and render_clock.has_method(&"render_alpha")
+		):
+			# By name: the clock is dot-net's, which this addon does not depend on, and
+			# one older than `render_alpha` leaves the engine's fraction in charge.
+			var from_clock := float(render_clock.call(&"render_alpha"))
+			alpha = clampf(from_clock, 0.0, 1.0)
+			beyond = clampf(from_clock, -1.0, 2.0) - alpha
+		else:
+			alpha = Engine.get_physics_interpolation_fraction()
 
 	alpha = clampf(alpha, 0.0, 1.0)
 
 	var blended := state.duplicate_state()
 	blended.position = _previous_state.position.lerp(state.position, alpha)
+	if beyond > 0.0:
+		# Later than the newest tick (a slip that ran a physics frame with no tick): on
+		# along the last tick's step, as the drawing would have been had the tick run.
+		blended.position += (state.position - _previous_state.position) * beyond
+	elif beyond < 0.0 and _position_two_back.is_finite():
+		# Earlier than the previous tick (a physics frame that ran two): between the two
+		# before. Clamped to the previous tick when there is no third, as before.
+		blended.position = _position_two_back.lerp(_previous_state.position, 1.0 + beyond)
 	blended.crouch_fraction = lerpf(
 		_previous_state.crouch_fraction, state.crouch_fraction, alpha
 	)
@@ -1027,6 +1072,7 @@ func teleport(
 		state.pitch = clampf(pitch, tunables.pitch_min, tunables.pitch_max)
 
 	_previous_state.copy_from(state)
+	_position_two_back = Vector3(NAN, NAN, NAN)
 	_last_modifiers = state.modifiers.duplicate()
 
 	if sampler != null:
