@@ -52,9 +52,11 @@ var delta: float = 1.0 / 60.0
 ## each tick. Unset, every state is [constant EVENT_NONE].
 var oracle: Callable = Callable()
 
-## `func(state: DotFpsState, motor: DotFpsMotor, delta: float) -> int` (an EVENT_*), run after
-## each motor tick and before [member oracle]: whatever a game runs on a player beside the motor
-## (a map's boosters, gravity volumes). It may change the state; a non-zero answer ends the step.
+## `func(state: DotFpsState, motor: DotFpsMotor, delta: float, start: Vector3) -> int` (an
+## EVENT_*), run after each motor tick and before [member oracle]: whatever a game runs on a
+## player beside the motor (a map's boosters, gravity volumes). [param start] is where the tick
+## began, for a game that asks "was this player in it last tick" of the position rather than
+## remembering it. It may change the state; a non-zero answer ends the step.
 var mechanics: Callable = Callable()
 
 ## Motor ticks this simulator has run, and the microseconds they took: the compute cost.
@@ -93,10 +95,11 @@ func setup(tunables: DotFpsTunables, live_motor: DotFpsMotor, live_body: DotFpsB
 ## One tick of [param state] (changed in place) under [param command]; what it ended in.
 func step(state: DotFpsState, command: DotFpsCommand) -> int:
 	var began := Time.get_ticks_usec()
+	var start := state.position
 	motor.simulate(state, command, delta)
 	var event := EVENT_NONE
 	if mechanics.is_valid():
-		event = int(mechanics.call(state, motor, delta))
+		event = int(mechanics.call(state, motor, delta, start))
 	steps += 1
 	usec += Time.get_ticks_usec() - began
 	if event == EVENT_NONE and oracle.is_valid():
