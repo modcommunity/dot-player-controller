@@ -5,7 +5,7 @@ The reasoning behind the controllers, one subject per file. [CLAUDE.md](../CLAUD
 | File | What it covers |
 | --- | --- |
 | [design.md](design.md) | The base contract and the switch, the dependency direction, the name collisions, freezing, what goes on the wire, what this addon does not do, and the third-person half |
-| [motor.md](motor.md) | The first-person simulation: determinism, surf and hops, slopes, steps and kerbs, crests, jump reach, styles, statistics, and what is deliberately not here |
+| [motor.md](motor.md) | The first-person simulation: determinism, surf and hops, slopes, steps and kerbs, crests, jump reach, styles, statistics, simulating ahead (`DotFpsSimulator`), and what is deliberately not here |
 | [collision.md](collision.md) | `DotFpsBody` and why it exists, the swept-query traps, embedded players, ramps a sweep cannot see, late and missing contacts, reversed normals, steep faces and grazes |
 | [extending.md](extending.md) | Surfaces, modifiers, admin abilities, custom modes and swimming, slide/launch/dash, the collision mask, and the full "where a game plugs in" table |
 | [wall-movement.md](wall-movement.md) | Wall running, wall jumping and the wall slide: entry and end, smoothness, the per-wall and per-air limits, the bits they take in `net_flags`, the camera roll |

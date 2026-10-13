@@ -410,6 +410,15 @@ func overlaps(at: Vector3, height: float, radius: float) -> bool:
 	return false
 
 
+## The same boxes, planes and floor (shared: a sweep only reads them), with this body's masks.
+func copy_for_simulation() -> DotFpsBody:
+	var copy: DotFpsFlatBody = (get_script() as GDScript).new()
+	copy.floor_y = floor_y
+	copy.boxes = boxes
+	copy.planes = planes
+	return copy_filters_to(copy)
+
+
 func describe() -> Dictionary:
 	var out := super.describe()
 	out["floor_y"] = floor_y

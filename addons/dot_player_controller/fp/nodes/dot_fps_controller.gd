@@ -653,6 +653,17 @@ func set_mode(mode: int) -> void:
 		motor.set_mode(state, mode)
 
 
+## A [DotFpsSimulator] of this player's movement: a second motor with copies of its tunables
+## and body and its modifiers and modes, which a bot runs ahead on copies of [member state].
+## [param p_body] replaces the copy of [member body] (a game body that cannot copy itself).
+## Null before [method setup], or when the body cannot be copied. Build a new one after a style
+## or the map changes this controller's tunables or body; it does not follow them.
+func simulator(p_body: DotFpsBody = null) -> DotFpsSimulator:
+	if motor == null:
+		return null
+	return DotFpsSimulator.new().setup(tunables, motor, body, tick_rate, p_body)
+
+
 ## Builds the collision adapter. Override to simulate against your own geometry.
 func _make_body() -> DotFpsBody:
 	var physics := DotFpsPhysicsBody.new()

@@ -530,6 +530,17 @@ func overlaps(at: Vector3, height: float, radius: float) -> bool:
 	return not _space.intersect_shape(_shape_params, 1).is_empty()
 
 
+## A body over the same physics space (bound to the node this one is), with its masks and
+## exclusions: the player's own collider stays excluded. Null while this one is unbound.
+func copy_for_simulation() -> DotFpsBody:
+	if _owner == null or not _owner.is_inside_tree():
+		return null
+	var copy: DotFpsPhysicsBody = (get_script() as GDScript).new()
+	if not copy.bind(_owner).ok:
+		return null
+	return copy_filters_to(copy)
+
+
 func describe() -> Dictionary:
 	var out := super.describe()
 	out["bound"] = is_bound()

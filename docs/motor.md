@@ -64,6 +64,16 @@ The ranking half of a style (ranked, points multiplier, minimum time) is `DotTim
 
 `DotFpsState.ground_ticks` counts in **ticks**: a perfect hop leaves on the tick of the landing, and deriving that from a seconds timer scores the same run differently at 64 Hz and at 128 Hz.
 
+## Simulating ahead
+
+`DotFpsSimulator` (`controller.simulator()`) is a second `DotFpsMotor` over a copy of the player's body, with a duplicate of the tunables, the same modifiers and custom modes registered in the same order, and the same surfaces. A bot that surfs plans on it offline and checks its next second against it at run time (dot-bot's surf planner and pilot, which reach it by duck typing because dot-bot names no other addon).
+
+- **A second motor, not a model.** The motor is a pure function of (state, command, delta, tunables, body), and every body only queries, so the copy is the game itself: game-g2gfast measured 0.0000 m between a simulated ride of 486 ticks and the live player given the same commands. A re-implementation of the clip and air-acceleration rule would drift, and a ride planned on it falls off the real ramp.
+- **The body copies itself** (`DotFpsBody.copy_for_simulation`): a physics body binds to the same node with the same masks and exclusions, a flat body shares its boxes and planes. A copy, not the live body, because the physics body counts its queries and a game's body may cache per sweep, and a simulation run between two live ticks must not show in either. A game body that cannot copy itself returns null and the caller hands `setup` (or `simulator(body)`) one of its own; game-arena hands its map body without the other players' hulls.
+- **The duplicate tunables** are because the controller re-gates abilities on its own every tick; nothing a simulation does may reach the live player's. So a simulator does not follow a later style or map change: build a new one.
+- **What a game runs beside the motor is the caller's**: `mechanics` (a map's boosters, run after each tick) and `oracle` (what a position means: a goal, a pit, below the course). Both are callables, so this addon still knows nothing about maps.
+- `steps` and `usec` are the compute cost; a tick on a physics body costs 75 to 97 us in GDScript.
+
 ## Deliberately not here
 
 - **Ladders and vehicles.** `DotFpsMoveMode` is the hook; the modes are a game's decision about feel. The self-test's ladder is a worked example of the interface, not something to use. Swimming is here ([extending.md](extending.md#custom-modes-and-swimming)) because its hard part, determinism, is this addon's.

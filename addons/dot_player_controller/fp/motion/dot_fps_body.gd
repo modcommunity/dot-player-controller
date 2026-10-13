@@ -143,6 +143,25 @@ var exclude: Array[RID] = []
 var pass_out_mask: int = 0
 
 
+## A body that answers every question this one does, for a [DotFpsSimulator]: the same world,
+## the same masks, exclusions and pass-out layers, and none of this one's counters. Null when
+## the type cannot copy itself, which a simulator refuses (a caller hands it a body instead).
+##
+## [b]A copy, not this body.[/b] Every body here only queries the world, but a physics body
+## counts its queries and a game's own body may cache per sweep; a simulation run between two
+## live ticks must not show up in either. Override in a body of a game's own.
+func copy_for_simulation() -> DotFpsBody:
+	return null
+
+
+## The masks and exclusions [param into] needs to ask what this body asks. For overrides.
+func copy_filters_to(into: DotFpsBody) -> DotFpsBody:
+	into.collision_mask = collision_mask
+	into.exclude = exclude.duplicate()
+	into.pass_out_mask = pass_out_mask
+	return into
+
+
 func describe() -> Dictionary:
 	return {
 		"implementation": get_script().get_global_name() if get_script() != null else "?",

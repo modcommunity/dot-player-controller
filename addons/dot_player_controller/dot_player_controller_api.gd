@@ -10,5 +10,8 @@ extends RefCounted
 #    apply_to(), apply_hull()); DotFpsBody.pass_out_mask, DotFpsController.set_pass_out_layers;
 #    DotTpsCameraRig's arm is a dot-core DotCameraBoom (same spring_length, margin,
 #    collision_mask, add_excluded_object), fade_mask/set_fade_mask() and its fade.
-const LEVEL := 2
+# 3: DotFpsSimulator (a second motor over a copy of a player's body: step, command, oracle,
+#    mechanics, EVENT_*), DotFpsController.simulator(), DotFpsBody.copy_for_simulation() and
+#    copy_filters_to() (flat and physics bodies copy themselves).
+const LEVEL := 3
 const OLDEST := 1

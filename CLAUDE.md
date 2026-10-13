@@ -25,11 +25,11 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | `addons/dot_player_controller/core/` | `DotPlayerIntent` (one tick of intent and its wire form), `DotPlayerLook`, `DotPlayerViewRules` (`mp_forceview`), `DotPlayerBodyRules` (`mp_solidplayers`) |
 | `addons/dot_player_controller/nodes/` | `DotPlayerController` (abstract base, five methods), `DotPlayerControllerSwitch` |
 | `addons/dot_player_controller/fp/core/` | data: `DotFpsTunables`, `DotFpsState`, `DotFpsCommand`, styles, surfaces, modifiers, admin modifiers, stats |
-| `addons/dot_player_controller/fp/motion/` | the simulation: `DotFpsMotor`, `DotFpsBody` and its flat and physics implementations, `DotFpsMoveMode`, `DotFpsSwimMode` |
+| `addons/dot_player_controller/fp/motion/` | the simulation: `DotFpsMotor`, `DotFpsBody` and its flat and physics implementations, `DotFpsMoveMode`, `DotFpsSwimMode`, `DotFpsSimulator` (a second motor a bot runs ahead) |
 | `addons/dot_player_controller/fp/nodes/` | `DotFpsController`, `DotFpsSampler`, `DotFpsTouchSampler`, `DotFpsView`, `DotFpsViewMotion` (its motion cues without nodes) |
 | `addons/dot_player_controller/fp/net/` | `DotFpsNetSync`: what replicates, at what precision |
 | `addons/dot_player_controller/tp/` | `core/` (motor, state, tunables) and `nodes/` (controller, `DotTpsCameraRig` on dot-core's `DotCameraBoom` and `DotCameraFade`) |
-| `addons/dot_player_controller/dot_player_controller_api.gd` | the API level (2 since the view and body rules) |
+| `addons/dot_player_controller/dot_player_controller_api.gd` | the API level (3 since `DotFpsSimulator`) |
 | `examples/` | six self-test scenes, `sandbox.tscn` (a course to feel the movement out, not a test) |
 
 ## Running and testing
@@ -66,6 +66,7 @@ Short forms; the reasoning is in the linked file.
 - Ask `DotFpsTunables.jump_reach(rise)` / `climb_limit()` / `jump_airtime(rise)` (or the static `reach_for` / `airtime_for`) when sizing a gap; never write the airtime back to the height you left. [motor](docs/motor.md#how-far-a-jump-goes)
 - `DotFpsStyle.apply_to` derives from the base tunables, never the previous style; `filter_command` runs on both machines, idempotently. [motor](docs/motor.md#styles)
 - Statistics are counted per simulated tick and never during a replay. [motor](docs/motor.md#statistics)
+- A simulator runs on copies: `copy_for_simulation()` of the body, a duplicate of the tunables; it never touches the live motor, body or controller, and does not follow a later style (build a new one). [motor](docs/motor.md#simulating-ahead)
 
 **Collision**
 

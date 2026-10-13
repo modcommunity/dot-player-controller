@@ -27,13 +27,13 @@ extends Node3D
 ## are on can tell you so.
 
 const STEP := 1.0 / 128.0
-const CHECKS := 35
+const CHECKS := 40
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 8
+const SECTIONS := 9
 
 var _passed := 0
 var _failed := 0
@@ -164,6 +164,7 @@ func _run() -> void:
 	await _test_a_surfer_leaves_a_face_over_its_far_end()
 	await _test_a_reversed_rest_normal_is_turned_round()
 	await _test_a_body_falls_out_of_an_acute_corner()
+	await _test_a_simulator_is_the_motor()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -658,4 +659,81 @@ func _test_a_body_falls_out_of_an_acute_corner() -> void:
 	var pocket: Array[Vector3] = [Vector3.RIGHT, Vector3.UP, Vector3.BACK]
 	_check(motor._resolve_planes(pocket, Vector3(-1.0, -1.0, -1.0)).is_zero_approx(),
 		"and a real pocket, with none, still stops")
+	_done()
+
+
+# --- The simulator a bot plans with --------------------------------------------
+
+## DotFpsSimulator is a second motor over a copy of the body. What a surf bot stands on: a ride
+## simulated ahead is the ride the player will have, and simulating it changes nothing live.
+## Armed by dropping the tunables duplicate (the sim then shares the live ones; the counter
+## check still passes) and by making copy_for_simulation return the live body itself (the
+## query-count check fails).
+func _test_a_simulator_is_the_motor() -> void:
+	_section("a simulator rides a ramp exactly as the live motor does, and touches nothing live")
+
+	await _clear()
+	_add_ramp(60.0)
+	_add_floor(-30.0)
+	await _settle()
+
+	var normal := _normal_for(60.0)
+	var live_body := DotFpsPhysicsBody.for_node(self)
+	var live := DotFpsMotor.new(_tunables(), live_body)
+	var start := _on_ramp(normal, 6.0, 0.05)
+	start.velocity = Vector3(6.0, 0.0, 0.0)
+	var commands: Array[DotFpsCommand] = []
+	for i in range(256):
+		var c := DotFpsCommand.new()
+		c.yaw = -90.0
+		c.move = Vector2(-1.0 if i < 128 else 1.0, 0.0)
+		commands.append(c)
+
+	var sim := DotFpsSimulator.new().setup(live.tunables, live, live_body, 128)
+	var queries_before := live_body.query_count
+	var a := start.duplicate_state()
+	for c in commands:
+		var _e := sim.step(a, c)
+	var b := start.duplicate_state()
+	for c in commands:
+		var _e := sim.step(b, c)
+	_check(live.ticks_simulated == 0 and live_body.query_count == queries_before,
+		"simulating moves no counter of the live motor or its body",
+		"%d ticks, %d queries" % [live.ticks_simulated, live_body.query_count - queries_before])
+	_check(a.equals(b, 0.0), "the same start and commands end bit-identical", "%.6f m" % a.divergence(b))
+
+	var s := start.duplicate_state()
+	for c in commands:
+		live.simulate(s, c, STEP)
+	_check(s.position.distance_to(a.position) < 0.0001 and a.horizontal_speed() > 6.0,
+		"the live motor given the same commands ends where the simulation did",
+		"%.6f m apart, %.2f m/s" % [s.position.distance_to(a.position), a.horizontal_speed()])
+
+	# The oracle ends a step: a pit under the ramp.
+	sim.oracle = func(state: DotFpsState) -> int:
+		return DotFpsSimulator.EVENT_PIT if state.position.y < -3.0 else DotFpsSimulator.EVENT_NONE
+	var fall := start.duplicate_state()
+	var event := DotFpsSimulator.EVENT_NONE
+	var ticks := 0
+	while event == DotFpsSimulator.EVENT_NONE and ticks < 2048:
+		event = sim.step(fall, DotFpsCommand.new())
+		ticks += 1
+	_check(event == DotFpsSimulator.EVENT_PIT and fall.position.y < -3.0,
+		"the oracle reports the pit the ride falls into", "event %d after %d ticks" % [event, ticks])
+
+	# A flat body copies itself too: the same boxes, the same answer.
+	var flat := DotFpsFlatBody.with_floor(0.0)
+	var _box := flat.add_box(AABB(Vector3(2.0, 0.0, -2.0), Vector3(1.0, 2.0, 4.0)))
+	var flat_motor := DotFpsMotor.new(_tunables(), flat)
+	var flat_sim := DotFpsSimulator.new().setup(flat_motor.tunables, flat_motor, flat, 128)
+	var walk := DotFpsCommand.new()
+	walk.yaw = -90.0
+	walk.move = Vector2(0.0, 1.0)
+	var f1 := DotFpsState.new()
+	var f2 := DotFpsState.new()
+	for _i in range(128):
+		flat_motor.simulate(f1, walk, STEP)
+		var _e := flat_sim.step(f2, walk)
+	_check(flat_sim != null and f1.equals(f2, 0.0) and f1.position.x > 1.0 and f1.position.x < 2.0,
+		"a flat body's copy stops at the same box", "x %.3f and %.3f" % [f1.position.x, f2.position.x])
 	_done()
