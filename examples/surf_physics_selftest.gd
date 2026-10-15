@@ -27,13 +27,13 @@ extends Node3D
 ## are on can tell you so.
 
 const STEP := 1.0 / 128.0
-const CHECKS := 40
+const CHECKS := 43
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 9
+const SECTIONS := 10
 
 var _passed := 0
 var _failed := 0
@@ -165,6 +165,7 @@ func _run() -> void:
 	await _test_a_reversed_rest_normal_is_turned_round()
 	await _test_a_body_falls_out_of_an_acute_corner()
 	await _test_a_simulator_is_the_motor()
+	await _test_a_surfer_rides_the_crease_of_two_slabs()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -642,8 +643,11 @@ func _test_a_body_falls_out_of_an_acute_corner() -> void:
 		motor.simulate(s, command, 1.0 / 32.0)
 		lowest = minf(lowest, s.position.y)
 	_check(lowest < 0.05, "it reaches the floor within a second and a half", "lowest feet %.3f, at %v" % [lowest, s.position])
-	_check(s.mode == DotFpsState.Mode.GROUND and motor.split_leg_ticks > 0, "and stands there, and says how it got out",
-		"mode %d, %d split legs" % [s.mode, motor.split_leg_ticks])
+	# Out by the crease of the wall and the panel (straight down) since the crease leg runs
+	# first; by the split leg before that existed. Either is the counter that says so.
+	_check(s.mode == DotFpsState.Mode.GROUND and motor.split_leg_ticks + motor.crease_leg_ticks > 0,
+		"and stands there, and says how it got out",
+		"mode %d, %d split legs, %d crease legs" % [s.mode, motor.split_leg_ticks, motor.crease_leg_ticks])
 
 	# The second wedge the school's doors found: three planes at once, the classic slide's
 	# "stop dead". Measured in a room's corner under a window: the side wall, an upright
@@ -736,4 +740,114 @@ func _test_a_simulator_is_the_motor() -> void:
 		var _e := flat_sim.step(f2, walk)
 	_check(flat_sim != null and f1.equals(f2, 0.0) and f1.position.x > 1.0 and f1.position.x < 2.0,
 		"a flat body's copy stops at the same box", "x %.3f and %.3f" % [f1.position.x, f2.position.x])
+	_done()
+
+
+# --- The crease of two surf slabs ------------------------------------------------
+
+## Two slabs leaning 40 degrees from upright, so each broad face is a 50 degree surf
+## face, crossing to make a V whose crease runs level along Z at x = [param x0]: the
+## geometry of game-g2gfast's stages bonus, in metres.
+func _add_crease(x0: float) -> void:
+	var unit := 0.01905
+	for side: float in [1.0, -1.0]:
+		var sb := StaticBody3D.new()
+		var cs := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(64.0, 1536.0, 2560.0) * unit
+		cs.shape = box
+		sb.add_child(cs)
+		sb.transform = Transform3D(
+			Basis(Vector3.FORWARD, deg_to_rad(side * 40.0)),
+			Vector3(x0 + side * 384.0 * unit, 320.0 * unit, 0.0)
+		)
+		add_child(sb)
+
+
+func _crease_tunables() -> DotFpsTunables:
+	var t := DotFpsTunables.new()
+	t.max_speed = 4.7625
+	t.air_accelerate = 1000.0
+	t.max_air_wish_speed = 0.5715
+	t.gravity = 15.24
+	t.auto_hop = true
+	t.stand_height = 1.3716
+	t.radius = 0.3048
+	t.step_height = 0.3429
+	t.max_slope_angle = 45.57
+	return t
+
+
+## Rides the crease from [param start] for [param ticks] ticks and returns
+## [distance along -Z, longest run of ticks frozen with speed, crease legs].
+func _ride_crease(start: DotFpsState, ticks: int) -> Array:
+	var motor := DotFpsMotor.new(_crease_tunables(), DotFpsPhysicsBody.for_node(self))
+	var s := start.duplicate_state()
+	var command := DotFpsCommand.new()
+	command.move = Vector2(0.0, 1.0)
+	var frozen := 0
+	var longest := 0
+	for _i in range(ticks):
+		var before := s.position
+		motor.simulate(s, command, STEP)
+		if s.position.distance_to(before) < 1e-6 and s.velocity.length() > 1.0:
+			frozen += 1
+			longest = maxi(longest, frozen)
+		else:
+			frozen = 0
+	return [start.position.z - s.position.z, longest, motor.crease_leg_ticks]
+
+
+## `g2gfast-surf-crease-hang-1`: in the V of two 50 degree slabs the capsule sits in both
+## faces at once, equally deep, and which one the physics server's rest query names is its
+## own business. game-g2gfast's surf bonus rider froze there, speed kept, for 32 to 1,469
+## ticks or for good, and which depended only on the absolute tick the ride began on. Here the
+## same geometry is ridden from 48 starts (two places in the world, six along the crease, four
+## micrometre offsets across it), because each start is a different tie. Armed: with
+## [method DotFpsMotor._leave_crease] skipped, all 48 starts freeze at some point, the worst for 218
+## ticks, and the shortest ride covers 3.1 m of 23.
+func _test_a_surfer_rides_the_crease_of_two_slabs() -> void:
+	_section("a surfer in the crease of two slabs rides along it, whatever it starts from")
+
+	var speed := 11.53392
+	var ticks := 256
+	var free := speed * STEP * ticks
+	var rides := 0
+	var frozen_rides := PackedStringArray()
+	var short_rides := PackedStringArray()
+	var crease_legs := 0
+	var shortest := INF
+	for x0: float in [0.0, 117.0432]:
+		await _clear()
+		_add_crease(x0)
+		await _settle()
+		# Dropped into the V and left to settle, so the start is where a rider really sits.
+		var motor := DotFpsMotor.new(_crease_tunables(), DotFpsPhysicsBody.for_node(self))
+		var drop := DotFpsState.new()
+		drop.mode = DotFpsState.Mode.AIR
+		drop.position = Vector3(x0, 1.0, 20.0)
+		for _i in range(256):
+			motor.simulate(drop, DotFpsCommand.new(), STEP)
+		for dz: float in [0.0, 0.0123, 0.37, 1.1, 2.5, 3.33]:
+			for dx: float in [0.0, 1e-5, -1e-5, 3e-4]:
+				var start := drop.duplicate_state()
+				start.position += Vector3(dx, 0.0, -dz)
+				start.velocity = Vector3(0.0, 0.0, -speed)
+				var r := _ride_crease(start, ticks)
+				rides += 1
+				crease_legs += int(r[2])
+				shortest = minf(shortest, float(r[0]))
+				var name := "x %.5f z -%.4f" % [x0 + dx, dz]
+				if int(r[1]) > 0:
+					frozen_rides.append("%s: %d ticks" % [name, r[1]])
+				if float(r[0]) < free * 0.98:
+					short_rides.append("%s: %.2f m" % [name, r[0]])
+
+	_check(rides == 48 and crease_legs > 0,
+		"the rides reach the tie the hang came from (some leg goes along a crease no query named)",
+		"%d rides, %d crease legs" % [rides, crease_legs])
+	_check(frozen_rides.is_empty(), "no start freezes in the crease with its speed",
+		"%d of %d: %s" % [frozen_rides.size(), rides, ", ".join(frozen_rides.slice(0, 4))])
+	_check(short_rides.is_empty(), "every start covers the crease at its speed (98%% of %.2f m in %d ticks)" % [free, ticks],
+		"shortest %.2f m; %s" % [shortest, ", ".join(short_rides.slice(0, 4))])
 	_done()

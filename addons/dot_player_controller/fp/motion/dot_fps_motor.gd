@@ -135,6 +135,10 @@ var duplicate_plane_ticks: int = 0
 ## horizontal parts ([method _split_leg]): a capsule touching two faces whose rest query named
 ## the one it was not moving into. Zero almost everywhere; rising, somebody is in a corner.
 var split_leg_ticks: int = 0
+## Duplicate-plane legs spent along a crease the slide was never told about
+## ([method _leave_crease]): the capsule sat in a two-face wedge and every query named the
+## same one of the two. Zero off a crease; on a V of two surf slabs, a few per ride.
+var crease_leg_ticks: int = 0
 
 ## Ticks that began with the capsule inside geometry and pushed it back out.
 ##
@@ -2014,6 +2018,14 @@ func _slide(
 			var spent := 1.0 if not clear.hit else clear.fraction
 			result.position += rest * spent
 			if spent > 1e-6:
+				# Stopped part of the way along: in a wedge, by the other face, and the
+				# rest of the tick goes along the crease instead of nowhere. Off a wedge
+				# there is no other face and this changes nothing.
+				if spent < 1.0:
+					var _along := _leave_crease(
+						result, planes, motion, velocity, time_left * (1.0 - spent),
+						hit.normal, height
+					)
 				time_left = 0.0
 				break
 			# [b]Still nothing: step off the face first, then go along it[/b]
@@ -2025,6 +2037,12 @@ func _slide(
 			# the rest query names the face underneath, the plane list calls it a
 			# duplicate, and a rider hung there at 75 u/s for good. Lifted a
 			# millimetre, the same leg ran 40 cm clear.
+			#
+			# A wedge first, though: when the face the queries keep naming is one of two
+			# the capsule is in, none of the legs below can leave it ([method _leave_crease]).
+			if _leave_crease(result, planes, motion, velocity, time_left, hit.normal, height):
+				time_left = 0.0
+				break
 			if _leave_face(result, current * time_left, hit.normal, height):
 				time_left = 0.0
 				break
@@ -2094,6 +2112,84 @@ func _leave_face(
 		var spent := 1.0 if not along.hit else along.fraction
 		if spent > 1e-6:
 			result.position = from + leg * spent
+			return true
+
+	return false
+
+
+## The duplicate-plane leg's answer in a wedge (`g2gfast-surf-crease-hang-1`, 2026-10-15): find
+## the second face, and spend the leg along the crease of the two. True and [param result]
+## moved (velocity laid along the crease too) if that got anywhere; false and untouched if
+## there is no second face or no way along it.
+##
+## [b]Two faces equally deep, and the queries name one of them every time.[/b] A surfer
+## sliding down the V of two 50 degree slabs sits in both, a fraction of a millimetre deep.
+## The rest query reports one contact, and which of two equal ones it picks is the physics
+## server's business: in game-g2gfast it changed with how many physics frames had run before
+## the ride, from the same state. Named the faces in turn, the plane list learns both and
+## [method _resolve_planes] goes along the crease. Named the same face twice, the leg along it
+## (which runs into the other), the lift off it and both halves of the split all start into
+## the unnamed face and stop at fraction zero, and the rider hung there with its speed for
+## 32 to 1,469 ticks, or for good. Which of those happened depended only on the tick the ride
+## began on. Asked before [method _leave_face] and [method _split_leg], because both can
+## succeed by a hair there: a tick spent as a few millimetres instead of a crease leg, and
+## the same ride finishing in different times.
+func _leave_crease(
+	result: MoveResult,
+	planes: Array[Vector3],
+	motion: Vector3,
+	velocity: Vector3,
+	time_left: float,
+	normal: Vector3,
+	height: float
+) -> bool:
+	if tunables.skin_width <= 0.0:
+		return false
+
+	# The face the queries are not naming. A skin or more off the one they do name, that one
+	# is no longer touched and the rest query has only the other left to report.
+	var other := Vector3.ZERO
+	for scale: float in [1.0, 2.0, 4.0]:
+		var probe := body.rest_contact(
+			_capsule_centre(result.position + normal * tunables.skin_width * scale, height),
+			height, tunables.radius
+		)
+		if probe.hit and probe.normal.dot(normal) < 0.999:
+			other = probe.normal
+			break
+
+	if other == Vector3.ZERO:
+		return false
+
+	# Two faces almost back to back are a slot, not a crease: there is no lift off both.
+	var c := normal.dot(other)
+	if c < -0.9:
+		return false
+
+	var wedge: Array[Vector3] = planes.duplicate()
+	if _remember_plane(wedge, other) == PLANE_FULL:
+		return false
+
+	var leg := _resolve_planes(wedge, motion) * time_left
+	if leg.length_squared() <= 1e-12:
+		return false
+
+	# From where the capsule is first, and only then lifted off both faces at once: the
+	# lift that leaves each face by a skin lies along their sum. Unlifted first because a
+	# crease leg that is clear from here is exactly the leg the slide takes when the query
+	# happens to name the faces the other way round, so either answer rides the same line.
+	var off_both := (normal + other) * (tunables.skin_width / (1.0 + c))
+	for scale: float in [0.0, 1.0, 2.0, 4.0]:
+		var lift := off_both * scale
+		if scale > 0.0 and _sweep(_capsule_centre(result.position, height), lift, height).hit:
+			continue
+		var from := result.position + lift
+		var along := _sweep(_capsule_centre(from, height), leg, height)
+		var spent := 1.0 if not along.hit else along.fraction
+		if spent > 1e-6 and (scale > 0.0 or not along.hit):
+			result.position = from + leg * spent
+			result.velocity = _resolve_planes(wedge, velocity)
+			crease_leg_ticks += 1
 			return true
 
 	return false
