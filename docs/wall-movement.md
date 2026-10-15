@@ -51,6 +51,10 @@ The negative controls in `movement_selftest`'s "wall movement replays" drop thes
 
 `DotFpsView.wall_run_roll` (6 degrees; the arithmetic is `DotFpsViewMotion`'s, which a game writing its own camera uses directly) rolls the camera away from the wall, toward the open side, while `is_wall_running()`, eased by its own `wall_run_roll_response` so it starts and ends without a snap. It is scaled by how square the view is to the wall, so looking along the wall gives the full roll and turning away blends toward none rather than flipping. View only: the simulation never reads it. `fps_controller_selftest`'s "wall-run camera roll" checks the side, the easing and that 0 turns it off; whether it looks right is still a rendered frame's question.
 
+## The drawn body
+
+A body drawn from outside (third person, or anyone else's) is posed by `DotFpsViewMotion.body_roll()` and `body_yaw()`, eased like the camera's lean and from the same side and squareness: feet toward the wall and head away (`wall_run_body_roll`, 25 degrees), turned toward the wall (`wall_run_body_yaw`, 12 degrees), at `wall_run_body_response` a second. The motion only computes them: the game applies them to its body (about forward, then about up), because this addon does not own a game's mesh. Both are exported on `DotFpsView` too. `wall_normal` is not replicated, so a body whose state arrives only over the wire has no wall to lean toward and stays upright; one this machine ticks is posed. `fps_controller_selftest`'s "wall-run body pose" checks side, easing and off; `movement_selftest`'s "a wall run along a corridor, end to end" checks the run staying up, leaping off, and dropping on stopping or turning away.
+
 ## Signals
 
 `DotFpsController.wall_run_changed(running)` and `wall_jumped()`, not emitted during a prediction replay, like `slide_changed`: they are where a game hangs a footstep or a sound, and a replayed tick is one the player already heard. **The game marks the replay** (`begin_replay` / `end_replay` around each replayed tick); one that does not hears a run once per correction, which is how game-arena found it had never marked one.

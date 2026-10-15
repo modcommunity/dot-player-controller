@@ -18,13 +18,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 85
+const CHECKS := 90
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 14
+const SECTIONS := 15
 
 var _passed := 0
 var _failed := 0
@@ -1033,6 +1033,36 @@ func _test_local_drive_accumulator() -> void:
 ## View only, so it is driven here straight from states; the motor's half is in
 ## movement_selftest.
 func _test_wall_run_roll() -> void:
+	_section("wall-run body pose")
+	var bm := DotFpsViewMotion.new()
+	var bs := DotFpsState.new()
+	bs.mode = DotFpsState.Mode.AIR
+	bs.velocity = Vector3(0.0, 0.0, -9.0)
+	bs.wall_run_time = 0.1
+	bs.wall_normal = Vector3.LEFT
+	for _i in range(120):
+		bm.advance(bs, 1.0 / 144.0)
+	_check_near(bm.body_roll(), bm.wall_run_body_roll, 0.5,
+		"a wall on the right rolls the body left (head away, feet to the wall)")
+	_check_near(bm.body_yaw(), -bm.wall_run_body_yaw, 0.5, "and turns it toward the wall")
+	bs.wall_normal = Vector3.RIGHT
+	for _i in range(120):
+		bm.advance(bs, 1.0 / 144.0)
+	_check(bm.body_roll() < -1.0 and bm.body_yaw() > 1.0, "a wall on the left mirrors both")
+	bs.wall_run_time = -1.0
+	bs.wall_normal = Vector3.ZERO
+	for _i in range(240):
+		bm.advance(bs, 1.0 / 144.0)
+	_check(absf(bm.body_roll()) < 0.1 and absf(bm.body_yaw()) < 0.1, "and both settle off the wall")
+	bm.wall_run_body_roll = 0.0
+	bm.wall_run_body_yaw = 0.0
+	bs.wall_run_time = 0.1
+	bs.wall_normal = Vector3.LEFT
+	for _i in range(120):
+		bm.advance(bs, 1.0 / 144.0)
+	_check(absf(bm.body_roll()) < 0.01 and absf(bm.body_yaw()) < 0.01, "0 turns the body pose off")
+	_done()
+
 	_section("wall-run camera roll")
 
 	var body := Node3D.new()

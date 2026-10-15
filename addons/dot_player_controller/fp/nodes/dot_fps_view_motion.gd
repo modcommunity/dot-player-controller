@@ -46,6 +46,18 @@ var wall_run_roll: float = 6.0
 ## a sixth of a second to settle at 6.
 var wall_run_roll_response: float = 6.0
 
+## Degrees a drawn body (third person, or anyone else's) rolls while wall running, feet toward
+## the wall and head away, so it reads as running on the wall. Scaled like [member wall_run_roll].
+## 0 for none. The body is the game's to rotate: it applies [method body_roll] and [method body_yaw].
+var wall_run_body_roll: float = 25.0
+
+## Degrees a drawn body turns toward the wall while wall running, so the shoulder leads into it.
+## 0 for none.
+var wall_run_body_yaw: float = 12.0
+
+## How quickly the body's wall-run pose eases in and out, per second.
+var wall_run_body_response: float = 10.0
+
 ## The most the strafe, slide and wall-run rolls may add up to, degrees either way. 0: no
 ## bound beyond the sum of the three.
 var roll_limit: float = 0.0
@@ -95,6 +107,8 @@ var wall_run_fov_gain: float = 0.0
 var _roll_a: float = 0.0
 var _roll: float = 0.0
 var _wall_roll: float = 0.0
+var _body_roll: float = 0.0
+var _body_yaw: float = 0.0
 var _dip: float = 0.0
 var _dip_velocity: float = 0.0
 var _fov_a: float = 0.0
@@ -125,6 +139,14 @@ func advance(state: DotFpsState, delta: float) -> void:
 	if wall_run_roll > 0.0 and state.is_wall_running() and state.wall_normal != Vector3.ZERO:
 		wall = -state.wall_normal.dot(right) * wall_run_roll
 	_wall_roll = lerpf(_wall_roll, wall, 1.0 - exp(-wall_run_roll_response * delta))
+
+	# The drawn body's pose on the wall: the same side and squareness as the camera's lean.
+	var body_side := 0.0
+	if state.is_wall_running() and state.wall_normal != Vector3.ZERO:
+		body_side = -state.wall_normal.dot(right)
+	var b := 1.0 - exp(-wall_run_body_response * delta)
+	_body_roll = lerpf(_body_roll, body_side * wall_run_body_roll, b)
+	_body_yaw = lerpf(_body_yaw, -body_side * wall_run_body_yaw, b)
 
 	_advance_dip(delta)
 
@@ -193,6 +215,8 @@ func snap() -> void:
 	_roll_a = 0.0
 	_roll = 0.0
 	_wall_roll = 0.0
+	_body_roll = 0.0
+	_body_yaw = 0.0
 	_dip = 0.0
 	_dip_velocity = 0.0
 	_fov_a = 0.0
@@ -204,6 +228,17 @@ func snap() -> void:
 func roll() -> float:
 	var total := _roll + _wall_roll
 	return clampf(total, -roll_limit, roll_limit) if roll_limit > 0.0 else total
+
+
+## The roll to give a drawn body, degrees about its forward axis (positive tips the head left,
+## so a wall on the right gives a positive roll). Zero off a wall.
+func body_roll() -> float:
+	return _body_roll
+
+
+## The extra turn to give a drawn body, degrees about up (positive turns left), toward the wall.
+func body_yaw() -> float:
+	return _body_yaw
 
 
 ## The strafe and slide part of [method roll], degrees.

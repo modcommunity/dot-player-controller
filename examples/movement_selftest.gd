@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 318
+const CHECKS := 326
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 47
+const SECTIONS := 48
 
 var _passed := 0
 var _failed := 0
@@ -79,6 +79,7 @@ func _run() -> void:
 	_test_launch()
 	_test_dash()
 	_test_wall_run()
+	_test_wall_run_corridor()
 	_test_wall_jump()
 	_test_wall_replay()
 	_test_walls_off_identical()
@@ -2637,6 +2638,66 @@ func _test_wall_run() -> void:
 	_check(off_ledge.is_wall_running() and off_ledge.wall_normal.dot(Vector3.LEFT) > 0.99,
 		"a run just past a ledge's end keeps the wall beside it, not the ledge's face behind",
 		"%s" % ", ".join(off_ledge.describe_lines()))
+	_done()
+
+
+func _test_wall_run_corridor() -> void:
+	_section("a wall run along a corridor, end to end")
+	var jump := DotFpsCommand.BUTTON_JUMP
+	var t := _wall_tunables()
+	var wall_x := 1.0
+
+	# Stays up: a second of running along the wall holds the player near their height and
+	# on the wall the whole way (the cap is wall_run_max_time).
+	var motor := _motor(t, _wall_world())
+	var s := _beside_wall(11.0, 1.0, 8.0)
+	var start_y := s.position.y
+	var held := 0
+	var near_wall := true
+	for _i in range(int(0.8 / STEP)):
+		motor.simulate(s, _command(1.0, 0.0, 0.0), STEP)
+		if s.is_wall_running():
+			held += 1
+		near_wall = near_wall and wall_x - s.position.x < 0.6
+	_check(held * STEP >= 0.75, "it keeps running for most of a second", "%.2f s" % (held * STEP))
+	_check(near_wall and s.position.y > start_y - 0.8,
+		"and stays up and beside the wall while it does", "y %.2f from %.2f" % [s.position.y, start_y])
+	_check(s.horizontal_speed() > 10.0, "at the speed it arrived with (the speed floor holds)",
+		"%.2f m/s" % s.horizontal_speed())
+
+	# Space leaps off, away from the wall, and the run does not come back.
+	motor.simulate(s, _command(1.0, 0.0, 0.0, jump), STEP)
+	_check(not s.is_wall_running() and s.velocity.x < 0.0, "space leaps off, away from the wall",
+		"vx %.2f" % s.velocity.x)
+	for _i in range(20):
+		motor.simulate(s, _command(1.0, 0.0, 0.0), STEP)
+	_check(wall_x - s.position.x > 1.0 and not s.is_wall_running(),
+		"and a third of a second later the player is clear of the wall",
+		"%.2f m off" % (wall_x - s.position.x))
+
+	# Stopping drops you: forward released, the player falls and is not re-caught.
+	var stop_motor := _motor(t, _wall_world())
+	var stop := _beside_wall(11.0, 1.0, 8.0)
+	for _i in range(15):
+		stop_motor.simulate(stop, _command(1.0, 0.0, 0.0), STEP)
+	_check(stop.is_wall_running(), "ready to be stopped: running")
+	var y_stop := stop.position.y
+	for _i in range(30):
+		stop_motor.simulate(stop, _command(0.0, 0.0, 0.0), STEP)
+	_check(not stop.is_wall_running() and stop.velocity.y < -2.0 and stop.position.y < y_stop - 0.3,
+		"releasing forward drops the player, who then falls",
+		"vy %.2f, dropped %.2f m" % [stop.velocity.y, y_stop - stop.position.y])
+
+	# Turning away drops you: the view turned off the wall with forward held steers the
+	# player away, and the run ends once the velocity leaves the wall.
+	var turn_motor := _motor(t, _wall_world())
+	var turn := _beside_wall(11.0, 1.0, 8.0)
+	for _i in range(10):
+		turn_motor.simulate(turn, _command(1.0, 0.0, 0.0), STEP)
+	for _i in range(90):
+		turn_motor.simulate(turn, _command(1.0, 0.0, 80.0), STEP)
+	_check(not turn.is_wall_running(), "turning away from the wall ends the run",
+		"%s" % ", ".join(turn.describe_lines()))
 	_done()
 
 

@@ -13,5 +13,7 @@ extends RefCounted
 # 3: DotFpsSimulator (a second motor over a copy of a player's body: step, command, oracle,
 #    mechanics, EVENT_*), DotFpsController.simulator(), DotFpsBody.copy_for_simulation() and
 #    copy_filters_to() (flat and physics bodies copy themselves).
-const LEVEL := 3
+# 4: DotFpsViewMotion.body_roll()/body_yaw() and wall_run_body_roll/_yaw/_response (the pose of
+#    a drawn body on a wall), exported on DotFpsView.
+const LEVEL := 4
 const OLDEST := 1
