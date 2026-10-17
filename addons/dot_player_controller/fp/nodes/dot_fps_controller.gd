@@ -979,12 +979,25 @@ func _apply_collider(from: DotFpsState) -> void:
 		return
 
 	var height := tunables.height_at(from.crouch_fraction)
-	_capsule.height = maxf(height, tunables.radius * 2.0)
-	_capsule.radius = tunables.radius
+	var shape_height := maxf(height, tunables.radius * 2.0)
+
+	# Written only when it differs from what the shape holds, as the physics body does for
+	# its query shape (`DotFpsPhysicsBody._configure`): assigning a size, even the same
+	# one, makes the shape emit `changed` and re-send itself to the physics server. A
+	# player standing or strafing has the same two sizes every tick, so this was two
+	# server updates per player per tick for nothing. Compared against the shape itself,
+	# not a cached copy, so a size changed from outside is still put back.
+	if _capsule.height != shape_height:
+		_capsule.height = shape_height
+
+	if _capsule.radius != tunables.radius:
+		_capsule.radius = tunables.radius
 
 	if _collider != null:
 		# The collider's origin is its centre and the body's is its feet.
-		_collider.position.y = height * 0.5
+		var centre := height * 0.5
+		if _collider.position.y != centre:
+			_collider.position.y = centre
 
 
 # --- Rendering -------------------------------------------------------------

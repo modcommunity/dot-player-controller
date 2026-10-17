@@ -237,6 +237,11 @@ static func _step_of(controller: DotFpsController, steps: Array, speed: bool) ->
 	if controller == null:
 		return 1.0
 
+	# No modifier at all is the usual case, and every step's id is built as a string and
+	# looked up only to be found absent. Per player per tick, from a game's timer.
+	if controller.state.modifiers.is_empty():
+		return 1.0
+
 	for step in steps:
 		if controller.has_modifier(speed_id(float(step)) if speed else gravity_id(float(step))):
 			return float(step)

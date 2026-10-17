@@ -332,6 +332,12 @@ func remove_modifier(state: DotFpsState, id: StringName) -> bool:
 
 
 func has_modifier(state: DotFpsState, id: StringName) -> bool:
+	# Nearly every player nearly always has none, and the answer is then no for every id;
+	# the lookup below is a linear search of the registered ids, asked a dozen times a tick
+	# per player by the admin-modifier readers.
+	if state.modifiers.is_empty():
+		return false
+
 	var index := modifier_index(id)
 
 	for entry in state.modifiers:
