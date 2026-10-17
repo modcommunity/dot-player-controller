@@ -21,6 +21,8 @@ var _shape: CapsuleShape3D = CapsuleShape3D.new()
 
 var _motion_params := PhysicsTestMotionParameters3D.new()
 var _shape_params := PhysicsShapeQueryParameters3D.new()
+var _ray_params := PhysicsRayQueryParameters3D.new()
+var _ray_exclude: Array[RID] = []
 
 ## Queries run this tick. Reset by the controller; watched by the server operator.
 var query_count: int = 0
@@ -66,17 +68,49 @@ func is_bound() -> bool:
 
 
 func _configure(height: float, radius: float) -> void:
-	_shape.radius = radius
+	# Writing a shape's size re-sends it to the physics server and emits `changed` even
+	# when the value is the same, and a tick asks a dozen questions with two or three
+	# distinct sizes. So the shape is touched only when a size or the exclusion list
+	# actually differs from what it already holds. The mask is a plain int, set always:
+	# [method sweep] overwrites it per query and this has to put it back.
+	var total := maxf(height, radius * 2.0)
+	if radius != _cfg_radius:
+		_shape.radius = radius
+		_cfg_radius = radius
 	# Godot's capsule height is the total including both hemispherical caps, and it
 	# silently clamps to 2 * radius. DotFpsTunables.validate() rejects a configuration
 	# that would hit that clamp, because a collider a different size from the one the
 	# simulation thinks it has is unfindable from the symptom.
-	_shape.height = maxf(height, radius * 2.0)
+	if total != _cfg_height:
+		_shape.height = total
+		_cfg_height = total
 
 	# Everything but the sweep's own cast and the contact it found asks about what the
 	# capsule is already in, and a layer it may walk out of is not part of that answer.
-	_shape_params.collision_mask = collision_mask & ~pass_out_mask
-	_shape_params.exclude = exclude
+	_set_mask(collision_mask & ~pass_out_mask)
+	# The setter rebuilds the engine's set from the array each time. A copy is kept, not
+	# the array itself, so an in-place edit of [member exclude] is seen.
+	if exclude != _cfg_exclude:
+		_shape_params.exclude = exclude
+		_cfg_exclude = exclude.duplicate()
+
+
+## [member PhysicsShapeQueryParameters3D.collision_mask], written only when it changes: a
+## property write on an engine object costs a call, and most queries ask for the mask the
+## last one left.
+func _set_mask(mask: int) -> void:
+	if mask != _cfg_mask:
+		_shape_params.collision_mask = mask
+		_cfg_mask = mask
+
+
+var _cfg_mask: int = -1
+
+
+## What [method _configure] last wrote to the shape; NAN until the first write.
+var _cfg_radius: float = NAN
+var _cfg_height: float = NAN
+var _cfg_exclude: Array[RID] = []
 
 
 ## The node this body was bound to, so a stale space can be recovered.
@@ -140,15 +174,15 @@ func sweep(
 	# that starts overlapping another convex shape reports it at fraction 0, and two players
 	# on one spot then held each other still for good. Inside one, the cast leaves the
 	# players' layers out until they are apart.
-	_shape_params.collision_mask = collision_mask
+	_set_mask(collision_mask)
 	_shape_params.transform = Transform3D(Basis.IDENTITY, from)
 	_shape_params.motion = Vector3.ZERO
 	if pass_out_mask != 0:
-		_shape_params.collision_mask = collision_mask & pass_out_mask
+		_set_mask(collision_mask & pass_out_mask)
 		if not _space.intersect_shape(_shape_params, 1).is_empty():
-			_shape_params.collision_mask = collision_mask & ~pass_out_mask
+			_set_mask(collision_mask & ~pass_out_mask)
 		else:
-			_shape_params.collision_mask = collision_mask
+			_set_mask(collision_mask)
 	_shape_params.motion = motion
 
 	# cast_motion returns [safe, unsafe]: the last fraction with no contact and the
@@ -164,7 +198,7 @@ func sweep(
 	var unsafe: float = fractions[1]
 
 	if safe >= 1.0:
-		_shape_params.collision_mask = collision_mask & ~pass_out_mask
+		_set_mask(collision_mask & ~pass_out_mask)
 		# Nothing along the sweep. That is two different worlds and they need
 		# different answers: genuinely open space, or a collider the sweep refuses to
 		# see because the capsule is already inside it. Ask the resting question
@@ -172,15 +206,18 @@ func sweep(
 		# exactly.
 		var resting := _blocking_rest_contact(from, motion, height, radius)
 
-		if resting.hit:
+		if resting != null:
 			return resting
 
-		var below := _downward_ray_fallback(from, motion, height)
+		# The ray answers downward motion only (motion.y < 0 is necessary for that).
+		if motion.y < 0.0:
+			var below := _downward_ray_fallback(from, motion, height)
 
-		if below.hit:
-			return below
+			if below.hit:
+				return below
 
-		return _end_overlap_fallback(from, motion, height, radius)
+		var ending := _end_overlap_fallback(from, motion, height, radius)
+		return ending if ending != null else result
 
 	result.hit = true
 	result.fraction = clampf(safe, 0.0, 1.0)
@@ -243,7 +280,8 @@ func sweep(
 		# _end_overlap_fallback already answers for a sweep that saw nothing at all: a
 		# surface the move ends inside and goes into, backed off by its depth; clear
 		# space or a surface being left, a miss.
-		return _end_overlap_fallback(from, motion, height, radius)
+		var ending := _end_overlap_fallback(from, motion, height, radius)
+		return ending if ending != null else Hit.miss()
 
 	result.normal = contacts.get("normal", -motion.normalized())
 	result.point = contacts.get("point", from + motion * safe)
@@ -327,9 +365,14 @@ func _downward_ray_fallback(
 	# The capsule's lowest point, which is what a downward sweep is asking about.
 	var foot := from - Vector3.UP * (height * 0.5)
 
-	var query := PhysicsRayQueryParameters3D.create(foot, foot + motion)
+	# One query object kept: a fresh one per ray is an allocation on the hot path.
+	var query := _ray_params
+	query.from = foot
+	query.to = foot + motion
 	query.collision_mask = collision_mask & ~pass_out_mask
-	query.exclude = exclude
+	if exclude != _ray_exclude:
+		query.exclude = exclude
+		_ray_exclude = exclude.duplicate()
 	query.collide_with_areas = false
 	query_count += 1
 
@@ -368,19 +411,22 @@ func _downward_ray_fallback(
 ## surface the motion is driving into, so it can never make the motor collide with less.
 func _end_overlap_fallback(
 	from: Vector3, motion: Vector3, height: float, radius: float
-) -> Hit:
-	var end := rest_contact(from + motion, height, radius)
+) -> Hit:  # null for a miss
+	var at := from + motion
+	var end := _raw_rest_or_null(at, height, radius)
 
-	if not end.hit:
-		return Hit.miss()
+	if end == null:
+		return null
+
+	_turn_round_flipped(end, at, height, radius)
 
 	var approach := -motion.dot(end.normal)
 
 	# Moving along it or out of it: a floor underfoot, or a surface being left.
 	if approach <= 1e-9 or end.depth <= 0.0:
-		return Hit.miss()
+		return null
 
-	var result := Hit.miss()
+	var result := Hit.new()
 	result.hit = true
 	result.fraction = clampf(1.0 - end.depth / approach, 0.0, 1.0)
 	result.normal = end.normal
@@ -399,11 +445,16 @@ func _end_overlap_fallback(
 ## blocks; one being left is not this query's business.
 func _blocking_rest_contact(
 	from: Vector3, motion: Vector3, height: float, radius: float
-) -> Hit:
-	var resting := rest_contact(from, height, radius)
+) -> Hit:  # null when nothing blocks, to spare a miss
+	var resting := _raw_rest_or_null(from, height, radius)
 
-	if not resting.hit or motion.dot(resting.normal) >= 0.0:
-		return Hit.miss()
+	if resting == null:
+		return null
+
+	_turn_round_flipped(resting, from, height, radius)
+
+	if motion.dot(resting.normal) >= 0.0:
+		return null
 
 	return resting
 
@@ -475,10 +526,15 @@ var flipped_normals: int = 0
 
 ## One [method PhysicsDirectSpaceState3D.get_rest_info], taken as the engine reports it.
 func _raw_rest_contact(at: Vector3, height: float, radius: float) -> Hit:
-	var result := Hit.miss()
+	var found := _raw_rest_or_null(at, height, radius)
+	return found if found != null else Hit.miss()
 
+
+## [method _raw_rest_contact] without the allocation of a miss: null when nothing is found.
+## Most rest queries in open air find nothing, and a tick makes several.
+func _raw_rest_or_null(at: Vector3, height: float, radius: float) -> Hit:
 	if _space == null and not revalidate():
-		return result
+		return null
 
 	_configure(height, radius)
 	query_count += 1
@@ -489,7 +545,7 @@ func _raw_rest_contact(at: Vector3, height: float, radius: float) -> Hit:
 	var contact: Dictionary = _space.get_rest_info(_shape_params)
 
 	if contact.is_empty():
-		return result
+		return null
 
 	var normal: Vector3 = contact.get("normal", Vector3.ZERO)
 
@@ -497,7 +553,7 @@ func _raw_rest_contact(at: Vector3, height: float, radius: float) -> Hit:
 	# degenerate normal has no safe substitute and the honest answer is "no contact".
 	# Reporting a made-up one would push the player somewhere arbitrary.
 	if not normal.is_normalized():
-		return Hit.miss()
+		return null
 
 	var point: Vector3 = contact.get("point", at)
 
@@ -506,6 +562,7 @@ func _raw_rest_contact(at: Vector3, height: float, radius: float) -> Hit:
 	# and checked to 4 decimal places at depths from 0 to 1 m on 4.7.2.
 	var deepest := at - normal * DotFpsBody.capsule_support(normal, height, radius)
 
+	var result := Hit.new()
 	result.hit = true
 	result.fraction = 0.0
 	result.normal = normal
