@@ -18,13 +18,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 90
+const CHECKS := 96
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 15
+const SECTIONS := 16
 
 var _passed := 0
 var _failed := 0
@@ -56,6 +56,7 @@ func _run() -> void:
 	await _test_command_veto()
 	_test_wall_run_roll()
 	_test_view_motion()
+	await _test_wheel_jump()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -1305,3 +1306,93 @@ class FakeClock extends RefCounted:
 
 	func render_alpha() -> float:
 		return alpha
+
+
+func _wheel_event(pressed: bool) -> InputEventMouseButton:
+	var e := InputEventMouseButton.new()
+	e.button_index = MOUSE_BUTTON_WHEEL_UP
+	e.pressed = pressed
+	return e
+
+
+## A wheel tick on jump is one press of jump in the sampled command. The wheel arrives as a
+## press and a release in one pair of events, so it is never "held" when a tick polls: armed
+## by taking the latch and the poll out of DotFpsSampler.sample, four of the six fail.
+func _test_wheel_jump() -> void:
+	_section("a wheel tick is one jump")
+
+	var had := InputMap.has_action(&"dot_fps_jump")
+	var kept: Array = InputMap.action_get_events(&"dot_fps_jump") if had else []
+	if not had:
+		InputMap.add_action(&"dot_fps_jump")
+	InputMap.action_erase_events(&"dot_fps_jump")
+	InputMap.action_add_event(&"dot_fps_jump", _wheel_event(false))
+
+	var s := DotFpsSampler.new(DotFpsTunables.new())
+	s.handle_event(_wheel_event(true))
+	s.handle_event(_wheel_event(false))
+	var first := s.sample(STEP)
+	var second := s.sample(STEP)
+	_check(first.is_pressed(DotFpsCommand.BUTTON_JUMP), "a wheel tick forwarded to handle_event is jump in the next command")
+	_check(not second.is_pressed(DotFpsCommand.BUTTON_JUMP), "and in that command only: a tick is a press, not a hold")
+
+	# Two ticks between samples are one press; a tick, a gap and a tick are two press edges,
+	# as the motor counts them (buttons & ~previous).
+	var seq: Array[int] = []
+	for n in [2, 0, 1]:
+		for _i in range(n):
+			s.handle_event(_wheel_event(true))
+			s.handle_event(_wheel_event(false))
+		seq.append(s.sample(STEP).buttons & DotFpsCommand.BUTTON_JUMP)
+	var edges := 0
+	var prev := 0
+	for b in seq:
+		edges += 1 if (b & ~prev) != 0 else 0
+		prev = b
+	_check(edges == 2 and seq[1] == 0, "scrolling is repeated presses, each its own edge", str(seq))
+
+	s.handle_event(_wheel_event(true))
+	s.suspended = true
+	var _quiet := s.sample(STEP)
+	s.suspended = false
+	_check(not s.sample(STEP).is_pressed(DotFpsCommand.BUTTON_JUMP), "a press while suspended (a menu open) is dropped, not kept for later")
+
+	# A client that forwards only mouse motion: the frame's just_pressed reaches the first
+	# command of that physics frame, and only that one.
+	var polled := DotFpsSampler.new(DotFpsTunables.new())
+	Input.parse_input_event(_wheel_event(true))
+	Input.parse_input_event(_wheel_event(false))
+	await get_tree().physics_frame
+	var p1 := polled.sample(STEP)
+	var p2 := polled.sample(STEP)
+	_check(p1.is_pressed(DotFpsCommand.BUTTON_JUMP) and not p2.is_pressed(DotFpsCommand.BUTTON_JUMP),
+		"without the event, the first command of the frame still gets the press, the second does not",
+		"%d %d" % [p1.buttons, p2.buttons])
+
+	# The whole way: a LOCAL controller standing on the floor jumps on a wheel tick sent
+	# through the engine's input, as a player's mouse would send it.
+	var world := _make_world()
+	var controller := _make_player(world, DotFpsController.Drive.LOCAL, func(c: DotFpsController) -> void: c.tick_rate = 60)
+	await get_tree().physics_frame
+	controller.teleport(Vector3(0.0, 0.05, 0.0))
+	for _i in range(20):
+		await get_tree().physics_frame
+	var grounded := controller.state.mode == DotFpsState.Mode.GROUND and controller.state.velocity.y <= 0.001
+	Input.parse_input_event(_wheel_event(true))
+	Input.parse_input_event(_wheel_event(false))
+	var rose := false
+	for _i in range(10):
+		await get_tree().physics_frame
+		rose = rose or controller.state.velocity.y > 0.5
+	_check(grounded and rose, "a standing player jumps on one wheel tick",
+		"grounded %s, vy %.2f" % [grounded, controller.state.velocity.y])
+
+	world.queue_free()
+	InputMap.action_erase_events(&"dot_fps_jump")
+	if had:
+		for e in kept:
+			InputMap.action_add_event(&"dot_fps_jump", e)
+	else:
+		InputMap.erase_action(&"dot_fps_jump")
+	await get_tree().process_frame
+	_done()

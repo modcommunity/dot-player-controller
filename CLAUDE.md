@@ -89,6 +89,7 @@ Short forms; the reasoning is in the linked file.
 - `net_flags` is full at 64 bits since the wall fields; anything else that must replicate needs a new property. [wall-movement](docs/wall-movement.md#what-the-wire-carries)
 - dot-net is never named: `DotFpsCommand` and `DotFpsNetSync` reach it by method name. `_net_state_applied` restores the whole state; `delta` is the tick; compare `fingerprint()` at connect. [networking](docs/networking.md)
 - `render_state()` needs the host to step once per physics frame at `tick_rate`; a connected client sets `render_clock` (dot-net's clock, by name) so a slip is drawn through; never call it for a `Drive.REMOTE` player. [networking](docs/networking.md#rendering-between-ticks)
+- Forward EVERY input event to `DotFpsSampler.handle_event`, not only mouse motion: a wheel tick on jump reaches a command only through its latch. [networking](docs/networking.md#rendering-between-ticks)
 - Draw the owner's view from `DotFpsSampler.look_now()` once a frame, not from the state's angles, or a frame with no tick in it does not turn. [networking](docs/networking.md#rendering-between-ticks)
 - A camera cue on an event (a landing) kicks a velocity or eases toward a target, never sets the eye on that frame; the cues live in `DotFpsViewMotion`, which a game writing its own camera calls rather than copies. [history](docs/history.md)
 - A field added to `DotFpsViewMotion` is also exported on `DotFpsView` and forwarded in `_sync_motion`; `fps_controller_selftest` checks every field by reflection. [extending](docs/extending.md)

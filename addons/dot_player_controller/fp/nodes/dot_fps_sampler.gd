@@ -66,18 +66,54 @@ var _mouse_delta: Vector2 = Vector2.ZERO
 ## Buttons from the previous sample, for edge detection outside the motor.
 var _previous_buttons: int = 0
 
+## Button presses seen since the last [method sample], as [constant DotFpsCommand] bits.
+##
+## [b]Why a latch.[/b] A mouse wheel tick arrives as a press AND a release in one pair of
+## events, so [code]Input.is_action_pressed[/code] is never true for it at any moment a
+## tick can poll (measured: false in every frame, `is_action_just_pressed` true for one
+## physics frame). The same holds for a key tapped faster than a tick. The press is kept
+## here until the next command takes it, so each one reaches exactly one command as its
+## button bit, which is what the prediction, the server and a replay all see: nothing
+## downstream reads the latch, only the command it went into.
+var _latched: int = 0
+
+## The frame [method sample] last polled `is_action_just_pressed` on, so a frame that runs
+## several ticks gives a press to the first of them only.
+var _polled_frame: int = -1
+
+## Roles whose presses are latched, and their command bits.
+const _BUTTON_ROLES := {
+	"jump": DotFpsCommand.BUTTON_JUMP,
+	"crouch": DotFpsCommand.BUTTON_CROUCH,
+	"sprint": DotFpsCommand.BUTTON_SPRINT,
+	"walk": DotFpsCommand.BUTTON_WALK,
+	"noclip": DotFpsCommand.BUTTON_NOCLIP,
+}
+
 
 func _init(p_tunables: DotFpsTunables) -> void:
 	tunables = p_tunables
 
 
-## Feeds a mouse-motion event. Call from [method Node._input].
+## Feeds an input event. Call from [method Node._input] (or `_unhandled_input`) with
+## EVERY event, not only mouse motion: a press of a button action is latched until the next
+## [method sample] ([member _latched]), which is the only way a wheel tick bound to jump
+## reaches a command. [DotFpsController] forwards everything; a client driving its own
+## sampler should too.
 func handle_event(event: InputEvent) -> void:
 	if suspended:
 		return
 
 	if event is InputEventMouseMotion:
 		_mouse_delta += (event as InputEventMouseMotion).relative
+		return
+
+	if not event.is_pressed() or event.is_echo():
+		return
+	for role in _BUTTON_ROLES:
+		var action: StringName = actions.get(role, &"")
+		if action != &"" and InputMap.has_action(action) and event.is_action_pressed(action):
+			_latched |= int(_BUTTON_ROLES[role])
 
 
 ## Builds the command for this tick and clears the accumulated mouse motion.
@@ -93,6 +129,7 @@ func sample(delta: float = 0.0) -> DotFpsCommand:
 		command.yaw = yaw
 		command.pitch = pitch
 		_previous_buttons = 0
+		_latched = 0
 		return command
 
 	_apply_mouse()
@@ -110,11 +147,17 @@ func sample(delta: float = 0.0) -> DotFpsCommand:
 	# where the extra √2 of speed would otherwise come from.
 	command.move = move.limit_length(1.0)
 
-	command.set_button(DotFpsCommand.BUTTON_JUMP, _pressed("jump"))
-	command.set_button(DotFpsCommand.BUTTON_CROUCH, _pressed("crouch"))
-	command.set_button(DotFpsCommand.BUTTON_SPRINT, _pressed("sprint"))
-	command.set_button(DotFpsCommand.BUTTON_WALK, _pressed("walk"))
-	command.set_button(DotFpsCommand.BUTTON_NOCLIP, _pressed("noclip"))
+	# Held, or pressed since the last sample (the latch), or pressed this frame where nobody
+	# forwarded the event (the poll: a client that passes only mouse motion to
+	# handle_event). The poll is once per frame, so a frame of several ticks gives a press
+	# to the first only; the latch covers a frame that ran no tick at all.
+	var frame := Engine.get_physics_frames() if Engine.is_in_physics_frame() else -1 - Engine.get_process_frames()
+	var poll := frame != _polled_frame
+	_polled_frame = frame
+	for role in _BUTTON_ROLES:
+		var bit := int(_BUTTON_ROLES[role])
+		command.set_button(bit, _pressed(role) or (_latched & bit) != 0 or (poll and _just_pressed(role)))
+	_latched = 0
 
 	_previous_buttons = command.buttons
 	return command
@@ -165,6 +208,13 @@ func _pressed(role: String) -> bool:
 	if action == &"" or not InputMap.has_action(action):
 		return false
 	return Input.is_action_pressed(action)
+
+
+func _just_pressed(role: String) -> bool:
+	var action: StringName = actions.get(role, &"")
+	if action == &"" or not InputMap.has_action(action):
+		return false
+	return Input.is_action_just_pressed(action)
 
 
 func _strength(role: String) -> float:

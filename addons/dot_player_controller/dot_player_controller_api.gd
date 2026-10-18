@@ -15,5 +15,8 @@ extends RefCounted
 #    copy_filters_to() (flat and physics bodies copy themselves).
 # 4: DotFpsViewMotion.body_roll()/body_yaw() and wall_run_body_roll/_yaw/_response (the pose of
 #    a drawn body on a wall), exported on DotFpsView.
-const LEVEL := 4
+# 5: DotFpsSampler latches button presses between samples (handle_event takes every event,
+#    sample() also polls is_action_just_pressed once a frame), so a mouse-wheel tick on jump
+#    is one press of jump in a command.
+const LEVEL := 5
 const OLDEST := 1
