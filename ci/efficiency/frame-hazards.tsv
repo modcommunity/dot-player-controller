@@ -1,0 +1,4 @@
+# frame-hazards
+# Baselines only shrink: scripts/<gate> --update lowers or drops entries and refuses to add.
+addons/dot_player_controller/fp/nodes/dot_fps_controller.gd::_physics_process::string_build	1
+examples/sandbox.gd::_process::string_build	2
