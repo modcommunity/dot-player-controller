@@ -89,7 +89,7 @@ func _run() -> void:
 # --- Helpers ---------------------------------------------------------------
 
 func _tunables() -> DotFpsTunables:
-	var t := DotFpsTunables.new()
+	var t := DotFpsTunables.with_profile("legacy")
 	# A bhop/surf server's values, not the shooter defaults: hold to hop, no landing
 	# cap, and enough air acceleration for strafing to pay.
 	t.auto_hop = true

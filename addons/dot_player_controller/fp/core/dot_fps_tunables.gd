@@ -19,9 +19,11 @@ extends DotConfig
 ## own set at connect time rather than trusting the client's copy; see
 ## [method fingerprint].
 ##
-## The defaults are the classic ones: fast acceleration, low friction, air control
-## that permits strafe-jumping and bunny-hopping. They are a starting point for a
-## movement shooter, not a recommendation for every game.
+## The defaults are the classic competitive-shooter profile ([constant PROFILE_CLASSIC]):
+## every number is that genre's, converted from its 0.01905 m units, so ground friction with
+## a stop speed, a low-wish-speed air cap and strafe-jumping behave as players know them.
+## [constant PROFILE_LEGACY] is the movement-shooter set this class shipped before; see
+## [method apply_profile]. Every number is also a server cvar ([method cvar_specs]).
 
 @export_group("Look")
 
@@ -44,10 +46,16 @@ extends DotConfig
 @export_range(-90.0, 0.0, 0.5) var pitch_min: float = -89.0
 @export_range(0.0, 90.0, 0.5) var pitch_max: float = 89.0
 
+@export_group("Profile")
+
+## The named starting set ([constant PROFILE_CLASSIC] or [constant PROFILE_LEGACY]) that
+## [method load_layered] applies below the file, environment and command line.
+@export var movement_profile: String = "classic"
+
 @export_group("Speeds")
 
 ## Ground speed with no modifier held, in metres per second.
-@export_range(0.1, 100.0, 0.1) var max_speed: float = 7.0
+@export_range(0.1, 100.0, 0.1) var max_speed: float = 4.7625
 
 ## Multipliers applied to [member max_speed]. They do not stack; the most restrictive
 ## one held wins, in the order crouch, walk, sprint.
@@ -57,9 +65,9 @@ extends DotConfig
 ## release, so releasing sprint while still crouched restored full speed and the
 ## player crouch-ran at sprint speed. Deriving the scale from the held buttons every
 ## tick makes that unrepresentable.
-@export_range(0.0, 5.0, 0.01) var crouch_speed_scale: float = 0.4
-@export_range(0.0, 5.0, 0.01) var walk_speed_scale: float = 0.45
-@export_range(0.0, 5.0, 0.01) var sprint_speed_scale: float = 1.5
+@export_range(0.0, 5.0, 0.01) var crouch_speed_scale: float = 0.34
+@export_range(0.0, 5.0, 0.01) var walk_speed_scale: float = 0.52
+@export_range(0.0, 5.0, 0.01) var sprint_speed_scale: float = 1.0
 
 ## Speed multiplier applied when moving backwards, as those games do.
 ##
@@ -71,16 +79,22 @@ extends DotConfig
 ## A backstop against a bug or an exploit compounding into an unbounded velocity, not
 ## a gameplay number. Keep it well above anything the game can legitimately reach —
 ## clamping a launcher or a conveyor is a worse failure than the runaway it prevents.
-@export_range(1.0, 10000.0, 1.0) var max_velocity: float = 400.0
+@export_range(1.0, 10000.0, 1.0) var max_velocity: float = 66.675
+
+## Ceiling on the wish speed a held key asks for, before modifiers, in m/s. 0 disables it.
+##
+## The familiar [code]sv_maxspeed[/code]. A scale above 1 (or a raised [member max_speed]) cannot
+## ask for more than this, as on the shooter servers; a modifier still multiplies past it.
+@export_range(0.0, 1000.0, 0.01) var max_wish_speed: float = 6.096
 
 @export_group("Ground movement")
 
 ## Acceleration toward the wish direction on the ground, in units of wish speed
 ## per second. The familiar [code]sv_accelerate[/code].
-@export_range(0.1, 100.0, 0.1) var accelerate: float = 10.0
+@export_range(0.1, 100.0, 0.1) var accelerate: float = 5.0
 
 ## Friction applied on the ground. The familiar [code]sv_friction[/code].
-@export_range(0.0, 20.0, 0.1) var friction: float = 6.0
+@export_range(0.0, 20.0, 0.1) var friction: float = 4.0
 
 ## Speed below which friction is applied as if the player were moving this fast.
 ##
@@ -88,7 +102,7 @@ extends DotConfig
 ## player drifts for a long time at walking pace after releasing the keys. The
 ## familiar
 ## [code]sv_stopspeed[/code].
-@export_range(0.0, 50.0, 0.1) var stop_speed: float = 4.0
+@export_range(0.0, 50.0, 0.1) var stop_speed: float = 1.42875
 
 @export_group("Air movement")
 
@@ -97,7 +111,7 @@ extends DotConfig
 ## Large — 100 is not a typo. It is bounded by [member max_air_wish_speed], not by
 ## this, which is exactly the mechanism that makes air-strafing work: see
 ## [method DotFpsMotor.accelerate].
-@export_range(0.0, 1000.0, 1.0) var air_accelerate: float = 100.0
+@export_range(0.0, 1000.0, 1.0) var air_accelerate: float = 10.0
 
 ## The cap that makes air-strafing possible, in m/s.
 ##
@@ -106,14 +120,14 @@ extends DotConfig
 ## strafe and turning adds speed perpendicular to motion — which barely reduces the
 ## projection, so it can be added again next tick. Raise it and air control becomes
 ## a jetpack; set it to zero and there is none at all.
-@export_range(0.0, 100.0, 0.1) var max_air_wish_speed: float = 1.0
+@export_range(0.0, 100.0, 0.1) var max_air_wish_speed: float = 0.5715
 
 ## Downward acceleration, in m/s².
 ##
 ## Not read from the project's physics settings: those are a rendering-side default
 ## that a host project may change for its rigid bodies, and a value the client and
 ## server could disagree about is a value the simulation cannot use.
-@export_range(0.0, 200.0, 0.1) var gravity: float = 20.0
+@export_range(0.0, 200.0, 0.1) var gravity: float = 15.24
 
 ## Air friction. Zero in this movement model, and changing it breaks strafe-jumping.
 @export_range(0.0, 20.0, 0.05) var air_friction: float = 0.0
@@ -124,7 +138,7 @@ extends DotConfig
 ##
 ## Converted to a launch speed with [code]sqrt(2 * gravity * height)[/code], so it
 ## stays honest when gravity is changed.
-@export_range(0.0, 20.0, 0.01) var jump_height: float = 1.1
+@export_range(0.0, 20.0, 0.01) var jump_height: float = 1.08585
 
 ## Jump by holding the button rather than tapping it.
 ##
@@ -143,13 +157,13 @@ extends DotConfig
 ##
 ## Players press jump slightly late and read the failure as the game missing the
 ## input. Costs nothing when the player is on the ground.
-@export_range(0.0, 0.5, 0.005) var coyote_time: float = 0.1
+@export_range(0.0, 0.5, 0.005) var coyote_time: float = 0.0
 
 ## Seconds before landing during which a jump press is remembered.
 ##
 ## The other half of the same forgiveness: pressing jump just before touching down
 ## should jump on touchdown, not be swallowed.
-@export_range(0.0, 0.5, 0.005) var jump_buffer_time: float = 0.1
+@export_range(0.0, 0.5, 0.005) var jump_buffer_time: float = 0.0
 
 ## Minimum seconds between jumps. 0 allows one per tick.
 @export_range(0.0, 2.0, 0.005) var jump_cooldown: float = 0.0
@@ -250,7 +264,7 @@ extends DotConfig
 ## The familiar [code]sv_stepsize[/code]. Without it every kerb and stair tread stops the
 ## player dead, which is the single most common thing wrong with a hand-written
 ## character controller — the previous version of this one included.
-@export_range(0.0, 2.0, 0.01) var step_height: float = 0.4
+@export_range(0.0, 2.0, 0.01) var step_height: float = 0.3429
 
 ## Keep the player attached to the ground when walking down slopes and steps.
 ##
@@ -495,6 +509,133 @@ extends DotConfig
 @export_range(0, 3, 1) var wall_jump_max_per_air: int = 3
 
 
+# --- Profiles and cvars -----------------------------------------------------
+
+## One source unit in metres (16 units to the foot, 0.75 scale): what a map made in them
+## and every value in [method cvar_specs] is converted by.
+const SOURCE_UNIT := 0.01905
+
+const PROFILE_CLASSIC := "classic"
+const PROFILE_LEGACY := "legacy"
+
+const CVAR_PROFILE := "sv_movement_profile"
+
+## The members the profiles differ in. Everything else is the same in both.
+const _PROFILES := {
+	"classic": {
+		"max_speed": 4.7625, "crouch_speed_scale": 0.34, "walk_speed_scale": 0.52,
+		"sprint_speed_scale": 1.0, "max_velocity": 66.675, "max_wish_speed": 6.096,
+		"accelerate": 5.0, "friction": 4.0, "stop_speed": 1.42875,
+		"air_accelerate": 10.0, "max_air_wish_speed": 0.5715, "gravity": 15.24,
+		"jump_height": 1.08585, "coyote_time": 0.0, "jump_buffer_time": 0.0,
+		"step_height": 0.3429, "bhop_speed_cap_scale": 0.0, "auto_hop": false,
+	},
+	"legacy": {
+		"max_speed": 7.0, "crouch_speed_scale": 0.4, "walk_speed_scale": 0.45,
+		"sprint_speed_scale": 1.5, "max_velocity": 400.0, "max_wish_speed": 0.0,
+		"accelerate": 10.0, "friction": 6.0, "stop_speed": 4.0,
+		"air_accelerate": 100.0, "max_air_wish_speed": 1.0, "gravity": 20.0,
+		"jump_height": 1.1, "coyote_time": 0.1, "jump_buffer_time": 0.1,
+		"step_height": 0.4, "bhop_speed_cap_scale": 0.0, "auto_hop": false,
+	},
+}
+
+## cvar name -> [member, factor to metres (1 for a ratio), description]. Source units in.
+const _CVARS := {
+	"sv_accelerate": ["accelerate", 1.0, "Ground acceleration"],
+	"sv_airaccelerate": ["air_accelerate", 1.0, "Air acceleration"],
+	"sv_friction": ["friction", 1.0, "Ground friction"],
+	"sv_stopspeed": ["stop_speed", SOURCE_UNIT, "Speed friction treats as the minimum, units/s"],
+	"sv_gravity": ["gravity", SOURCE_UNIT, "Gravity, units/s^2"],
+	"sv_maxspeed": ["max_wish_speed", SOURCE_UNIT, "Ceiling on a key's wish speed, units/s; 0 off"],
+	"sv_maxvelocity": ["max_velocity", SOURCE_UNIT, "Ceiling on total speed, units/s"],
+	"sv_stepsize": ["step_height", SOURCE_UNIT, "Tallest walkable step, units"],
+	"sv_airwishspeed": ["max_air_wish_speed", SOURCE_UNIT, "Air wish-speed cap that makes strafe-jumping, units/s"],
+	"sv_runspeed": ["max_speed", SOURCE_UNIT, "Running speed, units/s"],
+	"sv_crouchspeed": ["crouch_speed_scale", 1.0, "Crouch speed, fraction of run"],
+	"sv_walkspeed": ["walk_speed_scale", 1.0, "Walk speed, fraction of run"],
+	"sv_jumpheight": ["jump_height", SOURCE_UNIT, "Apex of a standing jump, units"],
+	"sv_autohop": ["auto_hop", 1.0, "1 jumps again on landing while jump is held"],
+	"sv_bhopcap": ["bhop_speed_cap_scale", 1.0, "Landing speed cap as a multiple of run speed; 0 none"],
+	"sv_edgefriction": ["edge_friction", 1.0, "Friction multiplier near a ledge; 1 off"],
+}
+
+
+## A tunables set to [param profile_name] ([constant PROFILE_CLASSIC] or [constant PROFILE_LEGACY]).
+static func with_profile(profile_name: String) -> DotFpsTunables:
+	var t := DotFpsTunables.new()
+	var _res := t.apply_profile(profile_name)
+	return t
+
+
+## Sets every member the profiles differ in to [param profile_name]'s values and remembers it.
+## Fails on an unknown name and changes nothing. Members outside the table are left alone.
+func apply_profile(profile_name: String) -> DotResult:
+	if not _PROFILES.has(profile_name):
+		return DotResult.fail(
+			DotError.CODE_INVALID, "Unknown movement profile.",
+			"%s (have %s)" % [profile_name, ", ".join(profile_names())]
+		)
+	var values: Dictionary = _PROFILES[profile_name]
+	for key in values:
+		set(key, values[key])
+	movement_profile = profile_name
+	return DotResult.success(self)
+
+
+static func profile_names() -> PackedStringArray:
+	return PackedStringArray(_PROFILES.keys())
+
+
+## One entry per movement cvar: name, value (in the cvar's own source units), description, and
+## the member it sets. The profile cvar is first.
+func cvar_specs() -> Array[Dictionary]:
+	var out: Array[Dictionary] = [{
+		"name": CVAR_PROFILE, "value": movement_profile, "member": "movement_profile",
+		"description": "Named movement set applied first: %s" % ", ".join(profile_names()),
+	}]
+	for cvar_name in _CVARS:
+		var entry: Array = _CVARS[cvar_name]
+		var current: Variant = get(entry[0])
+		var shown := (1.0 if current else 0.0) if current is bool else float(current) / float(entry[1])
+		out.append({
+			"name": cvar_name, "value": snappedf(shown, 0.0001), "member": entry[0],
+			"description": String(entry[2]),
+		})
+	return out
+
+
+## Applies one cvar by name (source units in). A profile name replaces the profile's members.
+## False for an unknown cvar or a value that is not a number or profile.
+func set_cvar(cvar_name: String, value: String) -> bool:
+	var text := value.strip_edges()
+	if cvar_name == CVAR_PROFILE:
+		return apply_profile(text).ok
+	if not _CVARS.has(cvar_name) or not text.is_valid_float():
+		return false
+	var entry: Array = _CVARS[cvar_name]
+	if get(entry[0]) is bool:
+		set(entry[0], text.to_float() != 0.0)
+	else:
+		set(entry[0], text.to_float() * float(entry[1]))
+	return true
+
+
+## Boots the layers with the profile first: the profile named by the file, environment or
+## command line is applied, then those layers on top of it, so a single number still wins.
+func load_layered(file_path: String = "") -> DotResult:
+	var probe := DotFpsTunables.new()
+	if file_path != "":
+		var _file := probe.apply_json_file(file_path)
+	var _env := probe.apply_env()
+	var _cli := probe.apply_cli()
+	if probe.movement_profile != PROFILE_CLASSIC:
+		var res := apply_profile(probe.movement_profile)
+		if not res.ok:
+			return res
+	return super.load_layered(file_path)
+
+
 func env_prefix() -> String:
 	return "DOT_FPS_"
 
@@ -586,7 +727,8 @@ func speed_for(buttons: int) -> float:
 	elif can_sprint and (buttons & DotFpsCommand.BUTTON_SPRINT):
 		scale = sprint_speed_scale
 
-	return max_speed * scale
+	var wish := max_speed * scale
+	return minf(wish, max_wish_speed) if max_wish_speed > 0.0 else wish
 
 
 # --- Reach -----------------------------------------------------------------

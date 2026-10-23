@@ -423,7 +423,7 @@ func _test_command_veto() -> void:
 		controller.simulate_tick(200 + i, STEP)
 
 	_check(
-		controller.state.horizontal_speed() > 5.0,
+		controller.state.horizontal_speed() > 4.0,
 		"and lifting the veto restores control",
 		"%.2f m/s" % controller.state.horizontal_speed()
 	)
@@ -657,7 +657,7 @@ func _test_noclip_gate() -> void:
 		world,
 		DotFpsController.Drive.EXTERNAL,
 		func(c: DotFpsController) -> void:
-			c.tunables = DotFpsTunables.new()
+			c.tunables = DotFpsTunables.with_profile("legacy")
 			c.tunables.can_noclip = true
 			c.allow_noclip = false
 	)
@@ -692,7 +692,7 @@ func _test_noclip_gate() -> void:
 		allowed_world,
 		DotFpsController.Drive.EXTERNAL,
 		func(c: DotFpsController) -> void:
-			c.tunables = DotFpsTunables.new()
+			c.tunables = DotFpsTunables.with_profile("legacy")
 			c.tunables.can_noclip = true
 			c.allow_noclip = true
 	)
@@ -737,7 +737,7 @@ func _test_admin_abilities() -> void:
 		world,
 		DotFpsController.Drive.EXTERNAL,
 		func(c: DotFpsController) -> void:
-			c.tunables = DotFpsTunables.new()
+			c.tunables = DotFpsTunables.with_profile("legacy")
 			c.tunables.can_noclip = true
 			c.allow_noclip = true
 			c.admin_abilities = true
@@ -1009,7 +1009,7 @@ func _test_local_drive_accumulator() -> void:
 	# the mouse moved, and the next one turned double: one frame in nine at 144 Hz against
 	# 128 ticks. `look_now` folds the pending motion in, and the command after it carries
 	# exactly the same view, so the simulation never sees a different yaw.
-	var looker := DotFpsSampler.new(DotFpsTunables.new())
+	var looker := DotFpsSampler.new(DotFpsTunables.with_profile("legacy"))
 	looker.tunables.mouse_sensitivity = 0.1
 	var motion := InputEventMouseMotion.new()
 	motion.relative = Vector2(-50.0, 0.0)
@@ -1077,7 +1077,7 @@ func _test_wall_run_roll() -> void:
 	view.slide_roll = 0.0
 	body.add_child(view)
 
-	var motor := DotFpsMotor.new(DotFpsTunables.new(), DotFpsFlatBody.with_floor(0.0))
+	var motor := DotFpsMotor.new(DotFpsTunables.with_profile("legacy"), DotFpsFlatBody.with_floor(0.0))
 	var frame := 1.0 / 144.0
 
 	var state := DotFpsState.new()
@@ -1145,7 +1145,7 @@ func _test_view_motion() -> void:
 	view.slide_roll = 0.0
 	view.fov_speed_gain = 0.0
 	body.add_child(view)
-	var motor := DotFpsMotor.new(DotFpsTunables.new(), DotFpsFlatBody.with_floor(0.0))
+	var motor := DotFpsMotor.new(DotFpsTunables.with_profile("legacy"), DotFpsFlatBody.with_floor(0.0))
 	var state := DotFpsState.new()
 	state.mode = DotFpsState.Mode.GROUND
 	for _i in range(30):
@@ -1328,7 +1328,7 @@ func _test_wheel_jump() -> void:
 	InputMap.action_erase_events(&"dot_fps_jump")
 	InputMap.action_add_event(&"dot_fps_jump", _wheel_event(false))
 
-	var s := DotFpsSampler.new(DotFpsTunables.new())
+	var s := DotFpsSampler.new(DotFpsTunables.with_profile("legacy"))
 	s.handle_event(_wheel_event(true))
 	s.handle_event(_wheel_event(false))
 	var first := s.sample(STEP)
@@ -1359,7 +1359,7 @@ func _test_wheel_jump() -> void:
 
 	# A client that forwards only mouse motion: the frame's just_pressed reaches the first
 	# command of that physics frame, and only that one.
-	var polled := DotFpsSampler.new(DotFpsTunables.new())
+	var polled := DotFpsSampler.new(DotFpsTunables.with_profile("legacy"))
 	Input.parse_input_event(_wheel_event(true))
 	Input.parse_input_event(_wheel_event(false))
 	await get_tree().physics_frame

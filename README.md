@@ -119,11 +119,13 @@ It does its own collide-and-slide, deliberately: bunny-hopping and surfing are c
 
 ### Movement
 
+The defaults are the classic competitive-shooter profile (see docs/motor.md, "The default profile"); `DotFpsTunables.with_profile("legacy")` restores the previous set.
+
 The model is the classic one, so the behaviours players expect from it are all present and
 all fall out of the same acceleration function rather than being special-cased:
 
 - **Air-strafing and bunny-hopping.** Airborne acceleration is capped at
-  `max_air_wish_speed` (1 m/s by default) measured as a projection onto the wish
+  `max_air_wish_speed` (30 source units, 0.57 m/s, by default; 1 m/s in the legacy profile) measured as a projection onto the wish
   direction, so turning while holding strafe adds speed perpendicular to motion. Set
   it to 0 for a game that does not want this.
 - **Surfing.** Steep slopes are walls; velocity slides along them and gravity does

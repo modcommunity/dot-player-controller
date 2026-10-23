@@ -49,7 +49,7 @@ func _ready() -> void:
 
 
 func _tunables() -> DotFpsTunables:
-	var t := DotFpsTunables.new()
+	var t := DotFpsTunables.with_profile("legacy")
 	t.auto_hop = true
 	t.bhop_speed_cap_scale = 0.0
 	t.max_speed = 7.0
@@ -765,7 +765,7 @@ func _add_crease(x0: float) -> void:
 
 
 func _crease_tunables() -> DotFpsTunables:
-	var t := DotFpsTunables.new()
+	var t := DotFpsTunables.with_profile("legacy")
 	t.max_speed = 4.7625
 	t.air_accelerate = 1000.0
 	t.max_air_wish_speed = 0.5715

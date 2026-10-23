@@ -156,7 +156,7 @@ class LadderMode extends DotFpsMoveMode:
 
 
 func _tunables() -> DotFpsTunables:
-	var t := DotFpsTunables.new()
+	var t := DotFpsTunables.with_profile("legacy")
 	# Deterministic and easy to reason about, not necessarily fun.
 	t.can_noclip = true
 	return t
@@ -3261,7 +3261,7 @@ func _test_crest_launch() -> void:
 	_check(float(thrown[0.5]) > 0.1, "with the threshold under their speed, the crest throws them",
 		"%.3f m above the plateau" % float(thrown[0.5]))
 	_check(float(thrown[0.0]) < 0.05, "and at 0, never", "%.3f m above the plateau" % float(thrown[0.0]))
-	_check(is_equal_approx(DotFpsTunables.new().crest_launch_speed_scale, 1.25), "the default launches only past running speed")
+	_check(is_equal_approx(DotFpsTunables.with_profile("legacy").crest_launch_speed_scale, 1.25), "the default launches only past running speed")
 
 	world.queue_free()
 	_done()
