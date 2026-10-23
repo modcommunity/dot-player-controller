@@ -18,5 +18,6 @@ extends RefCounted
 # 5: DotFpsSampler latches button presses between samples (handle_event takes every event,
 #    sample() also polls is_action_just_pressed once a frame), so a mouse-wheel tick on jump
 #    is one press of jump in a command.
-const LEVEL := 5
+# 6: DotFpsLadderMode (volumes, climb_speed, jump_off_speed, reach, update()).
+const LEVEL := 6
 const OLDEST := 1

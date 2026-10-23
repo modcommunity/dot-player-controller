@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 326
+const CHECKS := 332
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 48
+const SECTIONS := 49
 
 var _passed := 0
 var _failed := 0
@@ -60,6 +60,7 @@ func _run() -> void:
 	_test_swimming()
 	_test_modifiers()
 	_test_custom_mode()
+	_test_ladder_mode()
 	_test_crouch_headroom()
 	_test_crouch_jump()
 	_test_stair_step()
@@ -1040,6 +1041,57 @@ func _test_modifiers() -> void:
 		not motor.remove_modifier(floaty, &"low_gravity"),
 		"and removing it twice reports nothing to remove"
 	)
+	_done()
+
+
+func _test_ladder_mode() -> void:
+	_section("DotFpsLadderMode")
+
+	var motor := _motor(_tunables())
+	var ladder := DotFpsLadderMode.new()
+	ladder.volumes = [AABB(Vector3(2.0, 0.0, -1.0), Vector3(0.1, 8.0, 2.0))]
+	var id := motor.register_mode(ladder)
+	var s := _standing(motor)
+	s.position = Vector3(1.75, 3.0, 0.0)
+	s.mode = DotFpsState.Mode.AIR
+	s.velocity = Vector3(0.0, -1.0, 0.0)
+	s.time_since_jump = 10.0
+	var yaw := 0.0
+
+	for candidate in [0.0, 90.0, 180.0, 270.0]:
+		if DotFpsMotor._view_basis(candidate, 0.0).forward.x > 0.9:
+			yaw = candidate
+
+	ladder.update(motor, s)
+	_check(s.mode == id, "a falling player beside a ladder is put on it", str(s.mode))
+
+	var command := _command(1.0, 0.0, yaw)
+	command.pitch = 45.0
+
+	for _i in range(30):
+		motor.simulate(s, command, STEP)
+
+	_check(s.position.y > 4.5 and s.mode == id, "forward while looking up climbs, with no gravity", "y = %.2f" % s.position.y)
+
+	command.pitch = -60.0
+
+	for _i in range(60):
+		motor.simulate(s, command, STEP)
+
+	_check(s.position.y < 5.0 and s.mode == id, "looking down and forward goes down", "y = %.2f" % s.position.y)
+
+	motor.simulate(s, _command(0.0, 0.0, yaw, DotFpsCommand.BUTTON_JUMP), STEP)
+	_check(s.mode != id and s.velocity.x < -3.0, "jump lets go and pushes off, away from the wall", str(s.velocity))
+
+	s.position = Vector3(8.0, 3.0, 0.0)
+	s.mode = DotFpsState.Mode.AIR
+	ladder.update(motor, s)
+	_check(s.mode != id, "and away from every ladder nobody is put on one")
+
+	ladder.volumes = []
+	s.position = Vector3(1.75, 3.0, 0.0)
+	ladder.update(motor, s)
+	_check(s.mode != id, "with no ladders, nothing happens")
 	_done()
 
 
