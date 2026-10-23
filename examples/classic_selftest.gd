@@ -7,8 +7,8 @@ extends Node
 
 const STEP := 1.0 / 60.0
 const U := 0.01905
-const CHECKS := 39
-const SECTIONS := 7
+const CHECKS := 50
+const SECTIONS := 8
 
 var _passed := 0
 var _failed := 0
@@ -30,6 +30,7 @@ func _run() -> void:
 	_test_strafe_jump()
 	_test_hops()
 	_test_water_ladder()
+	_test_cvar_binding()
 	print("%d passed, %d failed" % [_passed, _failed])
 	if _entered != SECTIONS or _completed != _entered:
 		print("ERROR: %d sections entered, %d completed, %d expected." % [_entered, _completed, SECTIONS])
@@ -211,6 +212,45 @@ func _test_water_ladder() -> void:
 	_done()
 
 
+func _test_cvar_binding() -> void:
+	_section("cvar binding: console, cfg layer, per-map override")
+	var t := DotFpsTunables.new()
+	var swim := DotFpsSwimMode.new()
+	var ladder := DotFpsLadderMode.new()
+	var cvars := DotFpsCvars.new().add_target(t).add_target(swim).add_target(ladder).add_target(RefCounted.new())
+	_check(cvars.targets.size() == 3, "an object without the two methods is not a target")
+	var made := {}
+	var add := func(cvar_name: String, value: String, _d: String, _f: int) -> Object:
+		var cv := FakeCvar.new()
+		# A cfg or argv value, held before registration.
+		cv.value = "600" if cvar_name == "sv_gravity" else value
+		made[cvar_name] = cv
+		return cv
+	var heard: Array = []
+	cvars.applied.connect(func(n: String, _v: String) -> void: heard.append(n))
+	var _bound := cvars.bind_cvars(add)
+	_check(made.has("sv_gravity") and made.has("sv_waterfriction") and made.has("sv_ladder_dampen") and made.has("sv_movement_profile"), "tunables, water and ladder cvars are all registered")
+	_near(t.gravity, 600.0 * U, 1e-4, "a cfg value held before binding is applied (layered config)")
+	_check(not heard.has("sv_friction"), "a default read back is not re-applied")
+	made["sv_airaccelerate"].set_value("1000")
+	_near(t.air_accelerate, 1000.0, 1e-3, "a cvar change reaches the tunables")
+	made["sv_waterfriction"].set_value("3")
+	made["sv_ladder_dampen"].set_value("0.5")
+	_check(swim.friction == 3.0 and ladder.dampen == 0.5, "and the water and ladder modes")
+	var keys := cvars.map_config_keys()
+	_check(keys.has("sv_gravity") and not keys.has("sv_movement_profile") and keys["sv_autohop"]["type"] == "bool", "the map whitelist lists numeric cvars, bools as bool, not the profile")
+	_check(cvars.map_config_keys(PackedStringArray(["sv_gravity"]), {"sv_friction": {"max": 9.0}}).has("sv_gravity") == false, "a game can exclude keys and tighten limits")
+	# What DotGameMapConfig does: remember, set, then put back through the same cvar.
+	var cv: FakeCvar = made["sv_gravity"]
+	var before := cv.value
+	cv.set_value("200")
+	_near(t.gravity, 200.0 * U, 1e-4, "a per-map override reaches the tunables")
+	cv.set_value(before)
+	_near(t.gravity, 600.0 * U, 1e-4, "and putting it back restores them")
+	_check(not cvars.set_cvar("sv_nothing", "1"), "an unknown cvar is refused")
+	_done()
+
+
 func _test_hops() -> void:
 	_section("bunny hops")
 	var t := DotFpsTunables.new()
@@ -238,6 +278,18 @@ func _test_hops() -> void:
 	var legacy_buffer := DotFpsTunables.with_profile("legacy")
 	_check(legacy_buffer.jump_buffer_time > 0.0 and DotFpsTunables.new().jump_buffer_time == 0.0, "the classic jump has no buffer, legacy keeps one")
 	_done()
+
+
+class FakeCvar:
+	extends RefCounted
+	signal changed(old_value: String, new_value: String)
+	var value := ""
+	func get_string() -> String:
+		return value
+	func set_value(v: String) -> void:
+		var old := value
+		value = v
+		changed.emit(old, v)
 
 
 func _done() -> void:

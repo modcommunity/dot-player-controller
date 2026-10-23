@@ -21,5 +21,7 @@ extends RefCounted
 # 6: DotFpsLadderMode (volumes, climb_speed, jump_off_speed, reach, update()).
 # 7: DotFpsSwimMode.friction/set_cvar/cvar_specs (sv_wateraccelerate, sv_waterfriction) and
 #    DotFpsLadderMode.dampen/set_cvar/cvar_specs (sv_ladder_dampen).
-const LEVEL := 7
+# 8: DotFpsCvars (fp/core): binds the cvar_specs of tunables, swim and ladder to a console, and
+#    map_config_keys() for DotGameMapConfig.
+const LEVEL := 8
 const OLDEST := 1
