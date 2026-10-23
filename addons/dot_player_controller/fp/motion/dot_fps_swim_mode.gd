@@ -53,6 +53,33 @@ var exit_reach: float = 0.5
 ## player who lets go goes back down.
 var idle_sink_speed: float = 0.0
 
+## Drag on the swimmer's speed, per second of the classic water friction scale (0 off, 1 the
+## classic profile): the velocity loses speed * friction * delta before it eases to the wish.
+var friction: float = 0.0
+
+## cvar name -> [member, description]; the values are the classic profile's own units.
+const CVARS := {
+	"sv_wateraccelerate": ["accelerate", "Water acceleration, per second toward the wish"],
+	"sv_waterfriction": ["friction", "Water friction; 0 off"],
+}
+
+
+## Applies one water cvar by name. False for an unknown name or a value that is not a number.
+func set_cvar(cvar_name: String, value: String) -> bool:
+	if not CVARS.has(cvar_name) or not value.strip_edges().is_valid_float():
+		return false
+	set(CVARS[cvar_name][0], maxf(0.0, value.strip_edges().to_float()))
+	return true
+
+
+## One entry per water cvar: name, value, description, member.
+func cvar_specs() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for cvar_name in CVARS:
+		var entry: Array = CVARS[cvar_name]
+		out.append({"name": cvar_name, "value": get(entry[0]), "description": entry[1], "member": entry[0]})
+	return out
+
 
 func _name() -> StringName:
 	return &"swim"
@@ -115,6 +142,8 @@ func _simulate(
 		var floating := surface - float_depth
 		wish.y = clampf((floating - state.position.y) * 2.0, -swim_speed * 0.5, swim_speed * 0.5)
 
+	if friction > 0.0:
+		state.velocity *= maxf(0.0, 1.0 - friction * delta)
 	var t := clampf(accelerate * delta, 0.0, 1.0)
 	state.velocity = state.velocity.lerp(wish, t)
 

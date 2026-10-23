@@ -7,8 +7,8 @@ extends Node
 
 const STEP := 1.0 / 60.0
 const U := 0.01905
-const CHECKS := 31
-const SECTIONS := 6
+const CHECKS := 39
+const SECTIONS := 7
 
 var _passed := 0
 var _failed := 0
@@ -29,6 +29,7 @@ func _run() -> void:
 	_test_jump()
 	_test_strafe_jump()
 	_test_hops()
+	_test_water_ladder()
 	print("%d passed, %d failed" % [_passed, _failed])
 	if _entered != SECTIONS or _completed != _entered:
 		print("ERROR: %d sections entered, %d completed, %d expected." % [_entered, _completed, SECTIONS])
@@ -192,6 +193,21 @@ func _test_strafe_jump() -> void:
 		motor.simulate(plain, _cmd(1.0, 0.0), STEP)
 	_near(plain.horizontal_speed(), v0, 0.01, "holding forward alone adds nothing in the air")
 	_check(s.horizontal_speed() > v0 * 1.3, "so strafing gains well over 30 percent in a second")
+	_done()
+
+
+func _test_water_ladder() -> void:
+	_section("water and ladder cvars")
+	var swim := DotFpsSwimMode.new()
+	_check(swim.set_cvar("sv_wateraccelerate", "10") and swim.accelerate == 10.0, "sv_wateraccelerate sets the water acceleration")
+	_check(swim.set_cvar("sv_waterfriction", "1") and swim.friction == 1.0, "sv_waterfriction sets the water friction")
+	_check(not swim.set_cvar("sv_waterfriction", "x") and not swim.set_cvar("sv_gravity", "1"), "a bad water value or name is refused")
+	_check(swim.cvar_specs().size() == 2, "two water cvars are listed")
+	var ladder := DotFpsLadderMode.new()
+	_check(ladder.set_cvar("sv_ladder_dampen", "0.5") and ladder.dampen == 0.5, "sv_ladder_dampen sets the dampening")
+	_check(not ladder.set_cvar("sv_ladder_dampen", "x") and not ladder.set_cvar("sv_x", "1"), "a bad ladder value or name is refused")
+	_check(DotFpsLadderMode.new().dampen == 0.0 and DotFpsSwimMode.new().friction == 0.0, "both default to off, as before")
+	_check(ladder.cvar_specs()[0]["name"] == "sv_ladder_dampen", "the ladder cvar is listed")
 	_done()
 
 

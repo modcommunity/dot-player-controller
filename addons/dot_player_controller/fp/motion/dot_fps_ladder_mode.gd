@@ -30,6 +30,22 @@ var jump_off_speed: float = 6.86
 ## How far past the hull a ladder still counts as touched.
 var reach: float = 0.05
 
+## Fraction of the sideways part of a climber's move removed, 0 to 1 (the classic ladder_dampen).
+var dampen: float = 0.0
+
+## Applies the ladder cvar. False for an unknown name or a value that is not a number.
+func set_cvar(cvar_name: String, value: String) -> bool:
+	if cvar_name != "sv_ladder_dampen" or not value.strip_edges().is_valid_float():
+		return false
+	dampen = clampf(value.strip_edges().to_float(), 0.0, 1.0)
+	return true
+
+
+## One entry per ladder cvar: name, value, description, member.
+func cvar_specs() -> Array[Dictionary]:
+	return [{"name": "sv_ladder_dampen", "value": dampen,
+		"description": "Fraction of sideways ladder movement removed", "member": "dampen"}]
+
 ## The tick a climber last jumped off, so the ladder they are still touching does not
 ## take them straight back. One per player: every player has their own mode.
 var _jumped_off_tick: int = -1000
@@ -99,7 +115,7 @@ func _simulate(state: DotFpsState, command: DotFpsCommand, delta: float, motor: 
 	var lateral := wish - away * into
 	var perp := Vector3.UP.cross(away).normalized()
 	var up_face := away.cross(perp)
-	var v := lateral - up_face * into
+	var v := lateral * (1.0 - dampen) - up_face * into
 	state.velocity = v.limit_length(climb_speed * 1.5)
 	motor.move_and_slide(state, delta)
 

@@ -19,5 +19,7 @@ extends RefCounted
 #    sample() also polls is_action_just_pressed once a frame), so a mouse-wheel tick on jump
 #    is one press of jump in a command.
 # 6: DotFpsLadderMode (volumes, climb_speed, jump_off_speed, reach, update()).
-const LEVEL := 6
+# 7: DotFpsSwimMode.friction/set_cvar/cvar_specs (sv_wateraccelerate, sv_waterfriction) and
+#    DotFpsLadderMode.dampen/set_cvar/cvar_specs (sv_ladder_dampen).
+const LEVEL := 7
 const OLDEST := 1
