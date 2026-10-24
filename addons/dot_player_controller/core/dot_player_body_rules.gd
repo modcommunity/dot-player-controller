@@ -48,6 +48,43 @@ var solid: bool = true:
 		changed.emit()
 
 
+## Whether two players stop at each other once players are solid: `(a, b) -> bool` over the
+## keys [method apply_exceptions] is given. Unset, every pair stops. dot-team's
+## `DotTeamBlockRules.blocks` is the family's answer (teammates pass, enemies stop); this file
+## names no team class. `mp_solidplayers` 0 overrules it: nobody blocks.
+var pair_fn: Callable = Callable()
+
+
+## Whether [param a] and [param b] stop at each other: [member solid], then [member pair_fn].
+func blocks(a: Variant, b: Variant) -> bool:
+	return solid and (not pair_fn.is_valid() or bool(pair_fn.call(a, b)))
+
+
+## Re-announces [signal changed] after [member pair_fn]'s answers moved (a team change, a request).
+func refresh() -> void:
+	changed.emit()
+
+
+## Hands each controller the bodies it passes through. [param entries] maps a player key to a
+## [code]{"body": CollisionObject3D, "controller": Object}[/code]; a remote player on a client has
+## a body and no controller. Call on every machine, and again on [signal changed], with the
+## same keys on both, or the client predicts a wall the server walks through.
+func apply_exceptions(entries: Dictionary) -> void:
+	for key: Variant in entries:
+		var mine: Dictionary = entries[key]
+		var controller: Object = mine.get("controller")
+		if controller == null or not is_instance_valid(controller) or not controller.has_method(&"set_extra_excludes"):
+			continue
+		var rids: Array[RID] = []
+		for other_key: Variant in entries:
+			if other_key == key:
+				continue
+			var other_body: Object = (entries[other_key] as Dictionary).get("body")
+			if other_body is CollisionObject3D and is_instance_valid(other_body) and not blocks(key, other_key):
+				rids.append((other_body as CollisionObject3D).get_rid())
+		controller.call(&"set_extra_excludes", rids)
+
+
 ## The collision shape [method apply_hull] adds, by name.
 const HULL_NAME := &"SolidHull"
 

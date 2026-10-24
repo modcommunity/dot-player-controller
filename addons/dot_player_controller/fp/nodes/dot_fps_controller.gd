@@ -222,6 +222,7 @@ var stats := DotFpsStats.new()
 ## who switched to low-gravity and back lands in a third of the gravity they started
 ## with.
 var _pass_out_mask: int = 0
+var _extra_exclude: Array[RID] = []
 var _base_tunables: DotFpsTunables = null
 
 ## The command the statistics last saw, for their own edge detection.
@@ -647,6 +648,23 @@ func set_pass_out_layers(mask: int) -> void:
 		body.pass_out_mask = mask
 
 
+## Bodies this player passes through although their hulls are solid: a pair the game's rules let
+## through (`DotPlayerBodyRules.apply_exceptions`). Kept across a rebuilt body, and excluded from
+## every query the body makes, so a rest or ground question ignores them as the sweep does.
+func set_extra_excludes(rids: Array[RID]) -> void:
+	_extra_exclude = rids.duplicate()
+	if body != null:
+		body.exclude = _exclude_list()
+
+
+func _exclude_list() -> Array[RID]:
+	var out: Array[RID] = []
+	if _body_node is CollisionObject3D:
+		out.append((_body_node as CollisionObject3D).get_rid())
+	out.append_array(_extra_exclude)
+	return out
+
+
 ## Switches movement mode, running the mode's exit and enter hooks.
 func set_mode(mode: int) -> void:
 	if motor != null:
@@ -670,10 +688,9 @@ func _make_body() -> DotFpsBody:
 	physics.collision_mask = tunables.collision_mask
 	physics.pass_out_mask = _pass_out_mask
 
-	if _body_node is CollisionObject3D:
-		# Excluded, or every downward probe hits the player's own collider and the
-		# player stands on themselves at the height they spawned.
-		physics.exclude = [(_body_node as CollisionObject3D).get_rid()]
+	# Our own collider is excluded, or every downward probe hits it and the player stands on
+	# themselves at the height they spawned.
+	physics.exclude = _exclude_list()
 
 	var bound := physics.bind(_body_node)
 	if not bound.ok:

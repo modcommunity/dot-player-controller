@@ -23,5 +23,7 @@ extends RefCounted
 #    DotFpsLadderMode.dampen/set_cvar/cvar_specs (sv_ladder_dampen).
 # 8: DotFpsCvars (fp/core): binds the cvar_specs of tunables, swim and ladder to a console, and
 #    map_config_keys() for DotGameMapConfig.
-const LEVEL := 8
+# 9: DotPlayerBodyRules.pair_fn/blocks()/refresh()/apply_exceptions() and
+#    DotFpsController.set_extra_excludes(): per-pair pass-through (dot-team's mp_teamblock).
+const LEVEL := 9
 const OLDEST := 1

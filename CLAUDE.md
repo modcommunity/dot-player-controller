@@ -29,7 +29,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | `addons/dot_player_controller/fp/nodes/` | `DotFpsController`, `DotFpsSampler`, `DotFpsTouchSampler`, `DotFpsView`, `DotFpsViewMotion` (its motion cues without nodes) |
 | `addons/dot_player_controller/fp/net/` | `DotFpsNetSync`: what replicates, at what precision |
 | `addons/dot_player_controller/tp/` | `core/` (motor, state, tunables) and `nodes/` (controller, `DotTpsCameraRig` on dot-core's `DotCameraBoom` and `DotCameraFade`) |
-| `addons/dot_player_controller/dot_player_controller_api.gd` | the API level (8; was 4 since the body pose on a wall) |
+| `addons/dot_player_controller/dot_player_controller_api.gd` | the API level (9; was 4 since the body pose on a wall) |
 | `examples/` | seven self-test scenes, `sandbox.tscn` (a course to feel the movement out, not a test) |
 
 ## Running and testing
@@ -96,6 +96,8 @@ Short forms; the reasoning is in the linked file.
 - The rig's arm is dot-core's `DotCameraBoom`, placed by `follow()` (`auto_place` off), with the shoulder as the boom's `side_offset` so the sweep covers it; never a `SpringArm3D` again. `tps_selftest`'s "against a wall" section is the only one with a level; the rest still collides with nothing. [design](docs/design.md#the-third-person-half)
 
 **Server rules a game binds**
+
+- `DotPlayerBodyRules.pair_fn` (`(a, b) -> bool`, dot-team's `DotTeamBlockRules.blocks`) says which pairs stop at each other; `apply_exceptions(entries)` turns it into `DotFpsController.set_extra_excludes` on every machine, and again on `changed`. `mp_solidplayers` 0 overrules it. [collision](docs/collision.md#pairs-that-pass-through)
 
 - `mp_forceview` (`DotPlayerViewRules`): 0 the player's choice, 1 first person only, 2 third person only; bound REPLICATED by the server module and followed by the client through its link; a client never decides it. [design](docs/design.md#the-view-and-solid-players)
 - `mp_solidplayers` (`DotPlayerBodyRules`, 1 by default): apply it with `apply_to(controller, base, player_layers)` wherever a player's collision mask is set AND `apply_hull()` on the body (players carry no shape of their own, so a mask alone hits nothing), on every machine, or prediction disagrees with the server. [design](docs/design.md#the-view-and-solid-players)

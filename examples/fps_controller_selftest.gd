@@ -18,13 +18,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 96
+const CHECKS := 102
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 16
+const SECTIONS := 17
 
 var _passed := 0
 var _failed := 0
@@ -57,6 +57,7 @@ func _run() -> void:
 	_test_wall_run_roll()
 	_test_view_motion()
 	await _test_wheel_jump()
+	await _test_pair_exceptions()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -1394,5 +1395,63 @@ func _test_wheel_jump() -> void:
 			InputMap.action_add_event(&"dot_fps_jump", e)
 	else:
 		InputMap.erase_action(&"dot_fps_jump")
+	await get_tree().process_frame
+	_done()
+
+
+func _test_pair_exceptions() -> void:
+	_section("players pass through the pairs the rules let through")
+
+	var rules := DotPlayerBodyRules.new()
+	var world := _make_world()
+	var a := _make_player(world, DotFpsController.Drive.EXTERNAL)
+	var b := _make_player(world, DotFpsController.Drive.EXTERNAL)
+	var node_a := a.get_parent() as CharacterBody3D
+	var node_b := b.get_parent() as CharacterBody3D
+	var c := _make_player(world, DotFpsController.Drive.EXTERNAL)
+	var node_c := c.get_parent() as CharacterBody3D
+	await get_tree().physics_frame
+	for pair in [[a, node_a, 1], [b, node_b, 2], [c, node_c, 3]]:
+		var ctrl := pair[0] as DotFpsController
+		var node := pair[1] as CharacterBody3D
+		node.collision_layer = 1 << 4
+		rules.apply_hull(node, ctrl.tunables.stand_height, ctrl.tunables.radius)
+		rules.apply_to(ctrl, 1, 1 << 4)
+	node_a.global_position = Vector3(0.0, 0.0, 0.0)
+	node_b.global_position = Vector3(2.0, 0.0, 0.0)
+	node_c.global_position = Vector3(-2.0, 0.0, 0.0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	var h := a.tunables.stand_height
+	var r := a.tunables.radius
+	var from := Vector3(0.0, 0.9, 0.0)
+	var entries := {
+		1: {"controller": a, "body": node_a},
+		2: {"controller": b, "body": node_b},
+		3: {"controller": c, "body": node_c},
+	}
+
+	rules.apply_exceptions(entries)
+	_check(a.body.sweep(from, Vector3(3.0, 0.0, 0.0), h, r).hit, "with no pair rule every hull stops its neighbour")
+
+	# 1 and 2 are teammates, 3 an enemy of both.
+	rules.pair_fn = func(x: Variant, y: Variant) -> bool: return int(x) == 3 or int(y) == 3
+	rules.apply_exceptions(entries)
+	_check(not a.body.sweep(from, Vector3(3.0, 0.0, 0.0), h, r).hit, "a teammate's hull is passed through")
+	_check(not b.body.sweep(Vector3(2.0, 0.9, 0.0), Vector3(-3.0, 0.0, 0.0), h, r).hit
+		or b.body.sweep(Vector3(2.0, 0.9, 0.0), Vector3(-3.0, 0.0, 0.0), h, r).fraction > 0.5,
+		"both ways: the teammate passes through back, so nobody rubber-bands")
+	_check(a.body.sweep(from, Vector3(-3.0, 0.0, 0.0), h, r).hit, "an enemy's hull still stops")
+
+	rules.solid = false
+	rules.apply_exceptions(entries)
+	rules.solid = true
+	rules.pair_fn = Callable()
+	rules.apply_exceptions(entries)
+	_check(a.body.sweep(from, Vector3(3.0, 0.0, 0.0), h, r).hit, "clearing the rule restores every stop")
+	_check(a.body.exclude.has(node_a.get_rid()), "and the player's own collider stays excluded")
+
+	world.queue_free()
 	await get_tree().process_frame
 	_done()
