@@ -154,7 +154,8 @@ var crease_leg_ticks: int = 0
 var depenetrated_ticks: int = 0
 
 ## Ticks whose end-of-tick ground check was not re-run because the ground snap's check in
-## [method _move] had already settled the same question on the same state. Diagnostic;
+## [method _move], or for a walker who did not move the tick's first check, had already
+## settled the same question on the same state. Diagnostic;
 ## see [method _categorise_ground_settled].
 var settled_ground_ticks: int = 0
 func _init(p_tunables: DotFpsTunables, p_body: DotFpsBody) -> void:
@@ -425,7 +426,10 @@ func simulate(
 	# player in AIR on a ramp, which is exactly the case every earlier guard excluded.
 	_depenetrate(state, _height(state))
 
-	_categorise_ground(state)
+	var start_settled := _categorise_ground_settled(state)
+	var start_position := state.position
+	var start_velocity := state.velocity
+	var start_height := _height(state)
 
 	var jumped := _try_jump(state, command, delta)
 
@@ -478,7 +482,13 @@ func simulate(
 	# same inputs: it would make the same queries, get the same answers and write the same
 	# fields. [method _categorise_ground_settled] says when that is provable; it is one
 	# ground probe a tick (plus four quarter probes against a wall) for every walker.
-	if settled:
+	# Likewise a walker who did not move this tick: the start's check was a fixed point, and
+	# mode, position, velocity and height are as it left them, so it would repeat exactly.
+	if settled or (
+		start_settled and state.mode == DotFpsState.Mode.GROUND
+		and state.position == start_position and state.velocity == start_velocity
+		and _height(state) == start_height
+	):
 		settled_ground_ticks += 1
 	else:
 		_categorise_ground(state)
