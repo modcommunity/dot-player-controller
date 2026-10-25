@@ -24,7 +24,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 336
+const CHECKS := 338
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -2067,6 +2067,22 @@ func _test_net_sync_round_trip() -> void:
 	)
 	_check(untimed.mode == DotFpsState.Mode.AIR and untimed.crouch_held,
 		"without disturbing the mode or the crouch bit")
+	# At 30 Hz a timer counted down a tick at a time is a multiple of 1/30 s, which 1/64 s cannot hold.
+	DotFpsNetSync.set_tick_rate(30)
+	var thirty := DotFpsState.new()
+	thirty.slide_time = 7.0 / 30.0
+	thirty.dash_cooldown_left = 41.0 / 30.0
+	var thirty_back := DotFpsState.new()
+	DotFpsNetSync.unpack_flags(thirty_back, DotFpsNetSync.pack_flags(thirty))
+	_check(
+		is_equal_approx(thirty_back.slide_time, 7.0 / 30.0)
+			and is_equal_approx(thirty_back.dash_cooldown_left, 41.0 / 30.0),
+		"at 30 Hz the timers round-trip exactly (the scale follows the tick rate)",
+		"%.5f %.5f" % [thirty_back.slide_time, thirty_back.dash_cooldown_left]
+	)
+	DotFpsNetSync.set_tick_rate(128)
+	_check(DotFpsNetSync.timer_scale == 64.0, "and above 64 Hz the wire keeps its 1/64 s scale")
+	DotFpsNetSync.set_tick_rate(64)
 	var idle := DotFpsState.new()
 	DotFpsNetSync.unpack_flags(idle, DotFpsNetSync.pack_flags(DotFpsState.new()))
 	_check(not idle.is_sliding() and idle.launch_cooldown_left == 0.0,

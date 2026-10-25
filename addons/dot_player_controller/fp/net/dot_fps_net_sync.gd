@@ -81,6 +81,10 @@ const FLAG_CROUCH_HELD := 1 << MODE_BITS
 ## family's usual rate, so a cooldown counted down a tick at a time quantises exactly.
 const TIMER_SCALE := 64.0
 
+## The scale in use: [constant TIMER_SCALE] at 64 Hz and above, so the wire is unchanged there, and
+## the tick rate below it, so a timer counted down a tick at a time still quantises exactly.
+## Set by [method set_tick_rate] (the simulator and the controller do), one value per process.
+static var timer_scale: float = TIMER_SCALE
 const LAUNCH_BITS := 12
 const SLIDE_BITS := 7
 const SLIDE_COOLDOWN_BITS := 7
@@ -261,22 +265,27 @@ static func pack_flags(state: DotFpsState) -> int:
 	return flags
 
 
+## Derives [member timer_scale] from the simulation's tick rate. Both ends must run the same rate.
+static func set_tick_rate(rate: int) -> void:
+	timer_scale = clampf(float(rate), 1.0, TIMER_SCALE)
+
+
 static func unpack_flags(state: DotFpsState, flags: int) -> void:
 	state.crouch_held = (flags & FLAG_CROUCH_HELD) != 0
 	state.mode = flags & MODE_MASK
 
-	state.launch_cooldown_left = _field(flags, LAUNCH_SHIFT, LAUNCH_BITS) / TIMER_SCALE
+	state.launch_cooldown_left = _field(flags, LAUNCH_SHIFT, LAUNCH_BITS) / timer_scale
 	var slide := _field(flags, SLIDE_SHIFT, SLIDE_BITS)
-	state.slide_time = -1.0 if slide == NOT_SLIDING else slide / TIMER_SCALE
+	state.slide_time = -1.0 if slide == NOT_SLIDING else slide / timer_scale
 	state.slide_cooldown_left = (
-		_field(flags, SLIDE_COOLDOWN_SHIFT, SLIDE_COOLDOWN_BITS) / TIMER_SCALE
+		_field(flags, SLIDE_COOLDOWN_SHIFT, SLIDE_COOLDOWN_BITS) / timer_scale
 	)
 	state.previous_buttons = (flags >> BUTTONS_SHIFT) & ((1 << DotFpsCommand.BUTTON_BITS) - 1)
-	state.dash_cooldown_left = _field(flags, DASH_SHIFT, DASH_BITS) / TIMER_SCALE
+	state.dash_cooldown_left = _field(flags, DASH_SHIFT, DASH_BITS) / timer_scale
 
 	var wall_run := int(_field(flags, WALL_RUN_SHIFT, WALL_RUN_BITS))
 	state.wall_run_time = (
-		(wall_run - WALL_RUN_FIRST_TIME) / TIMER_SCALE if wall_run >= WALL_RUN_FIRST_TIME
+		(wall_run - WALL_RUN_FIRST_TIME) / timer_scale if wall_run >= WALL_RUN_FIRST_TIME
 		else -1.0
 	)
 	state.wall_run_spent = wall_run == WALL_RUN_SPENT
@@ -308,7 +317,7 @@ static func wall_jump_counts(code: int) -> Vector2i:
 ## holds is sent as the longest it can say: the client may then predict an ability a few
 ## ticks early, and the next snapshot takes it back.
 static func _quantise(seconds: float, bits: int) -> int:
-	return clampi(roundi(maxf(seconds, 0.0) * TIMER_SCALE), 0, (1 << bits) - 1)
+	return clampi(roundi(maxf(seconds, 0.0) * timer_scale), 0, (1 << bits) - 1)
 
 
 static func _field(flags: int, shift: int, bits: int) -> float:

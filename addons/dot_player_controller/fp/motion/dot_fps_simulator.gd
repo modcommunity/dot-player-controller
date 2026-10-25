@@ -75,6 +75,7 @@ func setup(tunables: DotFpsTunables, live_motor: DotFpsMotor, live_body: DotFpsB
 		return null
 	motor = DotFpsMotor.new(tunables.duplicate() as DotFpsTunables, body)
 	motor.set_tick_rate(tick_rate)
+	DotFpsNetSync.set_tick_rate(tick_rate)
 	delta = 1.0 / float(maxi(tick_rate, 1))
 	if live_motor != null:
 		motor.surfaces = live_motor.surfaces

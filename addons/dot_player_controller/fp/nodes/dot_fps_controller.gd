@@ -331,6 +331,7 @@ func setup() -> DotResult:
 	body = _make_body()
 	motor = DotFpsMotor.new(tunables, body)
 	motor.set_tick_rate(tick_rate)
+	DotFpsNetSync.set_tick_rate(tick_rate)
 
 	if surfaces != null:
 		motor.surfaces = surfaces
