@@ -91,6 +91,13 @@ func just_pressed(button: int, previous: DotFpsCommand) -> bool:
 	return (pressed_since(previous) & button) != 0
 
 
+## Stands still, releases every button and keeps the view angles (the default of
+## `DotNetInput._neutralise`, for a silent or blacked-out player).
+func neutralise() -> void:
+	move = Vector2.ZERO
+	buttons = 0
+
+
 func duplicate_command() -> DotFpsCommand:
 	var c := DotFpsCommand.new()
 	c.move = move
