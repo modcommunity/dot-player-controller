@@ -77,11 +77,15 @@ Three things that are easy to get wrong:
 
 ## What rides in net_flags
 
-Anything the next replayed tick reads must be in the snapshot, not only in `DotFpsState`. The slide time, the slide, launch and dash cooldowns and `previous_buttons` (which every press edge is detected against) are packed into `net_flags` by `DotFpsNetSync.pack_flags`, the timers in sixty-fourths of a second. Leaving a timer out "like the jump timers" means a snapshot from before a launch arrives, the rewind keeps the client's CURRENT cooldown and buttons, and the replay reaches the press with the cooldown running and the key already down: no launch, and metres between the two ends. Carrying `previous_buttons` closes the same hole for a buffered jump.
+Anything the next replayed tick reads must be in the snapshot, not only in `DotFpsState`. The slide time, the slide, launch and dash cooldowns and `previous_buttons` (which every press edge is detected against) are packed into `net_flags` by `DotFpsNetSync.pack_flags`, the timers in sixty-fourths of a second. Leaving a timer out means a snapshot from before a launch arrives, the rewind keeps the client's CURRENT cooldown and buttons, and the replay reaches the press with the cooldown running and the key already down: no launch, and metres between the two ends. Carrying `previous_buttons` closes the same hole for a buffered jump.
 
 The wall run, the two wall-jump counters and the wall's heading are the last thirteen bits, which fills the word to 64 ([wall-movement.md](wall-movement.md#what-the-wire-carries)); the next field that has to travel needs a property of its own.
 
 They are in the flags word rather than new properties because every game already declares `net_flags` and reads its width from `FLAG_BITS`. A new field that a replay reads goes there too, with a `movement_selftest` section that replays from a snapshot in the middle of the thing and a negative control that drops the field.
+
+## The jump timers
+
+`time_since_grounded`, `time_since_jump` and `time_since_jump_pressed` (coyote time, the jump buffer, the jump cooldown) did not travel, and against a wall that is metres of correction: a rewind to a tick where the server was in the air kept the client's grounded timer, so the replay coyote-jumped or wall-jumped where the server had not, wrong only in height. The flags word is full, so they ride in a property of their own, `net_timers` (42 bits, 1/7680 s, which is whole codes per tick from 20 to 128 Hz). It is opt-in: declare `var net_timers: int` and add `DotFpsNetSync.rewind_specs()` to the owner-only replicated properties; `pull` and `push` carry it when the property exists. A game that ships its own exact copy of the state (game-arena's `net_exact`) can carry the three floats there instead. `movement_selftest`'s "rewinding a wall-pinned hop" section is the check, with the negative control that drops it.
 
 ## Rendering between ticks
 

@@ -29,7 +29,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | `addons/dot_player_controller/fp/nodes/` | `DotFpsController`, `DotFpsSampler`, `DotFpsTouchSampler`, `DotFpsView`, `DotFpsViewMotion` (its motion cues without nodes) |
 | `addons/dot_player_controller/fp/net/` | `DotFpsNetSync`: what replicates, at what precision |
 | `addons/dot_player_controller/tp/` | `core/` (motor, state, tunables) and `nodes/` (controller, `DotTpsCameraRig` on dot-core's `DotCameraBoom` and `DotCameraFade`) |
-| `addons/dot_player_controller/dot_player_controller_api.gd` | the API level (9; was 4 since the body pose on a wall) |
+| `addons/dot_player_controller/dot_player_controller_api.gd` | the API level (10; was 4 since the body pose on a wall) |
 | `examples/` | seven self-test scenes, `sandbox.tscn` (a course to feel the movement out, not a test) |
 
 ## Running and testing

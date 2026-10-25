@@ -25,5 +25,6 @@ extends RefCounted
 #    map_config_keys() for DotGameMapConfig.
 # 9: DotPlayerBodyRules.pair_fn/blocks()/refresh()/apply_exceptions() and
 #    DotFpsController.set_extra_excludes(): per-pair pass-through (dot-team's mp_teamblock).
-const LEVEL := 9
+# 10: DotFpsNetSync.rewind_specs()/pack_timers()/unpack_timers(): the jump timers in net_timers.
+const LEVEL := 10
 const OLDEST := 1

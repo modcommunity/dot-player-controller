@@ -80,6 +80,7 @@ const FLAG_CROUCH_HELD := 1 << MODE_BITS
 ## would be a new [code]var[/code] in every game's net behaviour. 1/64 s is a tick at the
 ## family's usual rate, so a cooldown counted down a tick at a time quantises exactly.
 const TIMER_SCALE := 64.0
+
 const LAUNCH_BITS := 12
 const SLIDE_BITS := 7
 const SLIDE_COOLDOWN_BITS := 7
@@ -352,6 +353,45 @@ static func pull(state: DotFpsState, target: Variant) -> void:
 	target.set(&"net_crouch", state.crouch_fraction)
 	target.set(&"net_flags", pack_flags(state))
 	target.set(&"net_modifiers", pack_modifiers(state))
+	if &"net_timers" in target:
+		target.set(&"net_timers", pack_timers(state))
+
+
+## The jump timers (coyote, jump buffer, cooldown) in 1/7680 s, which is a whole number of
+## codes per tick at 20 to 128 Hz. Code 0 is "longer than the field holds" (restored as 1000 s).
+const JUMP_TIMER_SCALE := 7680.0
+const JUMP_TIMER_BITS := 14
+const TIMERS_BITS := 3 * JUMP_TIMER_BITS
+
+
+## The owner-only property a predicting client rewinds the jump timers from. Opt in by
+## declaring [code]var net_timers: int[/code] and replicating these; [method pull] and
+## [method push] then carry it. See docs/networking.md, "The jump timers".
+static func rewind_specs() -> Array[Dictionary]:
+	return [{"property": &"net_timers", "type": "UINT", "bits": TIMERS_BITS,
+		"interpolated": false, "owner_only": true, "source": "jump timers"}]
+
+
+static func pack_timers(state: DotFpsState) -> int:
+	return (_timer_code(state.time_since_grounded)
+		| _timer_code(state.time_since_jump) << JUMP_TIMER_BITS
+		| _timer_code(state.time_since_jump_pressed) << (2 * JUMP_TIMER_BITS))
+
+
+static func unpack_timers(state: DotFpsState, code: int) -> void:
+	state.time_since_grounded = _timer_value(code)
+	state.time_since_jump = _timer_value(code >> JUMP_TIMER_BITS)
+	state.time_since_jump_pressed = _timer_value(code >> (2 * JUMP_TIMER_BITS))
+
+
+static func _timer_code(seconds: float) -> int:
+	var n := roundi(maxf(seconds, 0.0) * JUMP_TIMER_SCALE)
+	return 0 if n >= (1 << JUMP_TIMER_BITS) - 2 else n + 1
+
+
+static func _timer_value(code: int) -> float:
+	var c := code & ((1 << JUMP_TIMER_BITS) - 1)
+	return 1000.0 if c == 0 else float(c - 1) / JUMP_TIMER_SCALE
 
 
 ## Copies received values back into a state.
@@ -370,6 +410,9 @@ static func push(source: Variant, state: DotFpsState) -> void:
 	state.crouch_fraction = source.get(&"net_crouch")
 	unpack_flags(state, int(source.get(&"net_flags")))
 	unpack_modifiers(state, int(source.get(&"net_modifiers")))
+	var timers: Variant = source.get(&"net_timers")
+	if timers != null:
+		unpack_timers(state, int(timers))
 
 
 # --- Configuration agreement ----------------------------------------------

@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 332
+const CHECKS := 336
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 49
+const SECTIONS := 50
 
 var _passed := 0
 var _failed := 0
@@ -83,6 +83,7 @@ func _run() -> void:
 	_test_wall_run_corridor()
 	_test_wall_jump()
 	_test_wall_replay()
+	_test_wall_hop_rewind()
 	_test_walls_off_identical()
 	_test_flat_rest_axis()
 	await _test_physics_body()
@@ -2898,6 +2899,103 @@ func _test_wall_replay() -> void:
 			"negative control: a rewind that drops the wall fields diverges at %.0f Hz" % (1.0 / rate),
 			"diverged %.6f m" % amnesiac.divergence(full))
 	_done()
+
+
+## The rewind a client really does: the snapshot pushed over its CURRENT state, then replayed.
+## A player pinned against a wall, holding forward and hopping with auto-hop and coyote time.
+func _test_wall_hop_rewind() -> void:
+	_section("rewinding a wall-pinned hop restores the jump timers")
+
+	# A deathmatch's movement: classic air control, auto-hop, coyote time and a jump buffer.
+	var t := DotFpsTunables.new()
+	t.max_speed = 9.0
+	t.accelerate = 12.0
+	t.friction = 5.5
+	t.stop_speed = 3.0
+	t.air_accelerate = 140.0
+	t.max_air_wish_speed = 1.2
+	t.gravity = 22.0
+	t.jump_height = 1.25
+	t.auto_hop = true
+	t.coyote_time = 0.08
+	t.jump_buffer_time = 0.12
+	t.slide_enabled = true
+	t.slide_min_speed = 6.5
+	t.wall_run_enabled = true
+	t.wall_run_min_speed = 9.5
+	t.wall_jump_enabled = true
+	t.wall_slide_speed = 2.5
+	var world := DotFpsFlatBody.with_floor(0.0)
+	world.add_box(AABB(Vector3(1.0, 0.0, -200.0), Vector3(0.5, 12.0, 400.0)))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var commands: Array[DotFpsCommand] = []
+	var jump := false
+	var strafe := 0.0
+	var next := 0
+	for i in range(3000):
+		if i >= next:
+			next = i + rng.randi_range(18, 72)
+			var pick := rng.randi_range(0, 3)
+			jump = pick == 2
+			strafe = -1.0 if pick == 0 else (1.0 if pick == 1 else 0.0)
+		commands.append(_command(1.0, strafe, -90.0 + sin(i * 0.01) * 30.0,
+			DotFpsCommand.BUTTON_JUMP if jump else 0))
+
+	var motor := DotFpsMotor.new(t, world)
+	var s := DotFpsState.new()
+	s.mode = DotFpsState.Mode.GROUND
+	var full: Array[DotFpsState] = []
+	for c in commands:
+		motor.simulate(s, c, STEP)
+		full.append(s.duplicate_state())
+	_check(absf(s.position.x - 0.65) < 0.01, "the run ends pinned against the wall",
+		"x %.3f" % s.position.x)
+
+	var plain: Object = _carrier_script().new()
+	var timed: Object = _timers_carrier_script().new()
+	var counts := []
+	for carrier: Object in [timed, plain]:
+		var bad := 0
+		var worst := 0.0
+		for n in range(3 * (commands.size() - 72)):
+			var lead: int = [4, 8, 12][n % 3]
+			var k := 60 + floori(n / 3.0)
+			var replay := full[k + lead].duplicate_state()
+			DotFpsNetSync.pull(full[k], carrier)
+			DotFpsNetSync.push(carrier, replay)
+			var replay_motor := DotFpsMotor.new(t, world)
+			for j in range(k + 1, k + lead + 1):
+				replay_motor.simulate(replay, commands[j], STEP)
+			var e := replay.position.distance_to(full[k + lead].position)
+			worst = maxf(worst, e)
+			if e > 0.001:
+				bad += 1
+		counts.append([bad, worst])
+	plain.free()
+	timed.free()
+	_check(counts[0][0] == 0, "every rewind through net_timers lands where the server did",
+		"%d diverged, worst %.3f m" % counts[0])
+	_check(counts[1][0] > 0, "negative control: a rewind without net_timers diverges",
+		"%d diverged, worst %.3f m" % counts[1])
+	var back := DotFpsState.new()
+	DotFpsNetSync.unpack_timers(back, DotFpsNetSync.pack_timers(DotFpsState.new()))
+	var spent := DotFpsState.new()
+	spent.time_since_grounded = 1000.5
+	DotFpsNetSync.unpack_timers(spent, DotFpsNetSync.pack_timers(spent))
+	var zero := DotFpsState.new()
+	DotFpsNetSync.unpack_timers(zero, 0)
+	_check(back.time_since_grounded == 0.0 and back.time_since_jump == 1000.0
+		and spent.time_since_grounded == 1000.0 and zero.time_since_grounded == 1000.0,
+		"timers round-trip; long ago and an unsent 0 read as long ago")
+	_done()
+
+
+func _timers_carrier_script() -> GDScript:
+	var script := GDScript.new()
+	script.source_code = (_carrier_script().source_code as String) + "var net_timers: int\n"
+	script.reload()
+	return script
 
 
 ## With every new feature off, the motor makes the same bytes it made before wall movement
