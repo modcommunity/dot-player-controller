@@ -6,6 +6,7 @@
 #   ln -s ../../<repo>/addons/<addon> addons/<addon>
 # Consumers copy every one of them into their own project.
 /addons/dot_core
+/addons/dot_profile
 /addons/dot_net
 /addons/dot_player
 
