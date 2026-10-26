@@ -574,6 +574,8 @@ const _CVARS := {
 	"sv_crouchspeed": ["crouch_speed_scale", 1.0, "Crouch speed, fraction of run"],
 	"sv_walkspeed": ["walk_speed_scale", 1.0, "Walk speed, fraction of run"],
 	"sv_jumpheight": ["jump_height", SOURCE_UNIT, "Apex of a standing jump, units"],
+	"sv_ducktime": ["crouch_transition_time", 1.0, "Seconds to move between standing and crouching; 0 instant"],
+	"sv_airduck": ["instant_air_crouch", 1.0, "1 lets a crouch in the air pull the feet up at once (crouch-jump)"],
 	"sv_autohop": ["auto_hop", 1.0, "1 jumps again on landing while jump is held"],
 	"sv_bhopcap": ["bhop_speed_cap_scale", 1.0, "Landing speed cap as a multiple of run speed; 0 none"],
 	"sv_edgefriction": ["edge_friction", 1.0, "Friction multiplier near a ledge; 1 off"],

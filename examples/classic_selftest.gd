@@ -7,8 +7,8 @@ extends Node
 
 const STEP := 1.0 / 60.0
 const U := 0.01905
-const CHECKS := 50
-const SECTIONS := 8
+const CHECKS := 59
+const SECTIONS := 10
 
 var _passed := 0
 var _failed := 0
@@ -29,6 +29,8 @@ func _run() -> void:
 	_test_jump()
 	_test_strafe_jump()
 	_test_hops()
+	_test_steps()
+	_test_crouch_jump()
 	_test_water_ladder()
 	_test_cvar_binding()
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -194,6 +196,66 @@ func _test_strafe_jump() -> void:
 		motor.simulate(plain, _cmd(1.0, 0.0), STEP)
 	_near(plain.horizontal_speed(), v0, 0.01, "holding forward alone adds nothing in the air")
 	_check(s.horizontal_speed() > v0 * 1.3, "so strafing gains well over 30 percent in a second")
+	_done()
+
+
+func _run_into_box(box_height_units: float) -> Vector2:
+	var t := DotFpsTunables.new()
+	var body := DotFpsFlatBody.with_floor(0.0)
+	body.add_box(AABB(Vector3(-2.0, 0.0, -30.0), Vector3(4.0, box_height_units * U, 30.0)))
+	var motor := DotFpsMotor.new(t, body)
+	var s := _standing(motor, 0.0)
+	s.position.z = 1.0
+	for _i in range(120):
+		motor.simulate(s, _cmd(1.0, 0.0), STEP)
+	return Vector2(s.position.y, s.position.z)
+
+
+func _test_steps() -> void:
+	_section("step handling (sv_stepsize 18)")
+	var up := _run_into_box(18.0)
+	_check(up.x > 17.0 * U and up.x < 18.5 * U and up.y < -0.5, "an 18 unit step is climbed and stood on", "y %.3f z %.2f" % [up.x, up.y])
+	var wall := _run_into_box(19.0)
+	_check(wall.x < 0.01 and wall.y > 0.0, "a 19 unit kerb is a wall", "y %.3f z %.2f" % [wall.x, wall.y])
+	var low := DotFpsTunables.new()
+	_check(low.set_cvar("sv_stepsize", "30") and absf(low.step_height - 30.0 * U) < 1e-4, "sv_stepsize reshapes the limit")
+	_done()
+
+
+func _crouch_jump_peak(crouch_in_air: bool, crouch_time: float) -> float:
+	var t := DotFpsTunables.new()
+	t.crouch_transition_time = crouch_time
+	var motor := _motor(t)
+	var s := _standing(motor)
+	var peak := 0.0
+	for i in range(120):
+		var buttons := DotFpsCommand.BUTTON_JUMP if i == 0 else 0
+		if crouch_in_air and i >= 3:
+			buttons |= DotFpsCommand.BUTTON_CROUCH
+		motor.simulate(s, _cmd(0.0, 0.0, buttons), STEP)
+		peak = maxf(peak, s.position.y)
+	return peak
+
+
+func _test_crouch_jump() -> void:
+	_section("crouch-jump and duck timing")
+	var t := DotFpsTunables.new()
+	var plain := _crouch_jump_peak(false, t.crouch_transition_time)
+	var ducked := _crouch_jump_peak(true, t.crouch_transition_time)
+	_near(ducked - plain, t.stand_height - t.crouch_height, 0.05, "a crouch in the air lifts the feet by the hull difference")
+	_check(ducked > 57.0 * U + 0.5, "so a crouch-jump clears a ledge a standing jump cannot")
+	var slow := _crouch_jump_peak(true, 0.4)
+	_near(slow - plain, t.stand_height - t.crouch_height, 0.05, "the air duck is instant whatever the duck time")
+	_check(t.set_cvar("sv_ducktime", "0.4") and t.crouch_transition_time == 0.4, "sv_ducktime sets the duck time")
+	_check(t.set_cvar("sv_airduck", "0") and not t.instant_air_crouch, "sv_airduck switches the air duck off")
+	var off := DotFpsTunables.new()
+	off.instant_air_crouch = false
+	off.crouch_transition_time = 0.4
+	var m := _motor(off)
+	var s := _standing(m)
+	m.simulate(s, _cmd(0.0, 0.0, DotFpsCommand.BUTTON_JUMP), STEP)
+	m.simulate(s, _cmd(0.0, 0.0, DotFpsCommand.BUTTON_CROUCH), STEP)
+	_check(s.crouch_fraction < 0.5, "with the air duck off a crouch in the air is gradual", "%.2f" % s.crouch_fraction)
 	_done()
 
 
