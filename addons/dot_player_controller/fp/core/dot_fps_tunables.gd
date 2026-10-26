@@ -476,6 +476,8 @@ extends DotConfig
 
 ## Seconds after a run ends before another may start, jump-started or not. 0 for none.
 @export_range(0.0, 10.0, 0.05) var wall_run_cooldown: float = 0.0
+## A jump-started run turns the player's view along the wall (the owner's look input is rotated once).
+@export var wall_run_turn_view: bool = false
 
 ## How far beside the player, in metres, a wall still counts as touched: for a run, and
 ## for a wall jump off a wall the player is not running on.
@@ -583,6 +585,7 @@ const _CVARS := {
 	"sv_wallrun_angle": ["wall_run_max_approach_angle", 1.0, "Widest angle off the wall's plane an automatic run starts at, degrees"],
 	"sv_wallrun_time": ["wall_run_max_time", 1.0, "Longest a wall run lasts, seconds (at most 1.9)"],
 	"sv_wallrun_gravity": ["wall_run_gravity_scale", 1.0, "Share of gravity felt while wall running, 0 to 1"],
+	"sv_wallrun_turnview": ["wall_run_turn_view", 1.0, "A jump-started wall-run turns the view along the wall (0/1)"],
 	"sv_wallrun_cooldown": ["wall_run_cooldown", 1.0, "Seconds after a run ends before another may start"],
 	"sv_wallrun_endspeed": ["wall_run_end_speed", 1.0, "A run ends below this speed along the wall, m/s"],
 	"sv_wallrun_angle_limit": ["wall_max_angle_from_vertical", 1.0, "Steepest lean from vertical a wall may have, degrees"],

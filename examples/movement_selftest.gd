@@ -24,7 +24,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 353
+const CHECKS := 357
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -2816,6 +2816,24 @@ func _test_wall_run_on_jump() -> void:
 	_check(absf(s.velocity.x) < 0.5 and -s.velocity.z > speed * 0.9,
 		"the heading turns along the wall at the speed the player had",
 		"%s from %.2f" % [s.velocity, speed])
+
+	_check(motor.view_turn == 0.0, "the view is left alone unless wall_run_turn_view is on")
+	var tv := _wall_tunables()
+	tv.wall_run_on_jump = true
+	tv.wall_run_turn_view = true
+	tv.wall_run_min_speed = 20.0
+	var turn_motor := _motor(tv, _wall_world())
+	var turned := _beside_wall(2.0, -1.0)
+	turned.velocity = Vector3(5.0, 0.0, -5.0)
+	turn_motor.simulate(turned, _command(1.0, 0.0, -45.0, jump), STEP)
+	_check(turned.is_wall_running() and absf(turn_motor.view_turn - 45.0) < 1.0,
+		"a view looking where the player was heading is turned along the wall", "%.1f" % turn_motor.view_turn)
+	turn_motor.simulate(turned, _command(1.0, 0.0, 0.0), STEP)
+	_check(turn_motor.view_turn == 0.0, "and the turn is reported once")
+	var away := _beside_wall(2.0, -1.0)
+	away.velocity = Vector3(5.0, 0.0, -5.0)
+	turn_motor.simulate(away, _command(1.0, 0.0, 135.0, jump), STEP)
+	_check(away.is_wall_running() and turn_motor.view_turn == 0.0, "a view looking the other way is not turned")
 
 	var held := 0
 	for _i in range(8):

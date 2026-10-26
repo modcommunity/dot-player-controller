@@ -28,6 +28,8 @@ Nothing about the wall is carried between ticks. "Is the wall still there" is a 
 
 A remote player's wall is not replicated, so a game that draws a remote body finds it with `DotFpsWallProbe.find` (two rays beside the velocity) and writes `state.wall_normal` before `DotFpsViewMotion.advance`. Melee needs nothing here: the weapon layer never reads the movement mode, so a swing during a run works.
 
+`sv_wallrun_turnview` (`wall_run_turn_view`, off by default) also turns the owner's view along the wall when a jump starts the run: the motor reports the turn in `view_turn`, and `DotFpsController` rotates its sampler and emits `view_turned(degrees)` for a game that samples its own look input. A view looking more than 90 degrees away from the new heading is left alone. Remote players need nothing: the heading is in the replicated velocity, and the run's flag already replicates. The settings are server rules every client receives, and the cooldown is owner-only because only the owner predicts.
+
 ## The wall jump
 
 - **On the press**, buffered by `jump_buffer_time` like a ground jump, never on the hold: with `auto_hop` on, holding jump would otherwise wall-jump the instant a wall came within reach. A ground jump (or coyote jump) takes the press first.

@@ -84,6 +84,8 @@ signal dashed()
 ## Emitted when a wall run starts or ends. Not during a replay, like [signal slide_changed].
 ## See [member DotFpsTunables.wall_run_enabled].
 signal wall_run_changed(running: bool)
+## Emitted with the degrees a jump-started wall-run turns the view; a controller with a sampler has already applied it, a game that samples its own look input applies it there. Not during a replay.
+signal view_turned(degrees: float)
 
 ## Emitted when a wall jump fires. Not during a replay. See
 ## [member DotFpsTunables.wall_jump_enabled].
@@ -864,6 +866,11 @@ func simulate_tick(tick: int, delta: float) -> void:
 
 		if state.is_wall_running() != before_wall_running:
 			wall_run_changed.emit(state.is_wall_running())
+
+		if motor.view_turn != 0.0:
+			view_turned.emit(motor.view_turn)
+			if sampler != null:
+				sampler.look_at_angles(sampler.yaw + motor.view_turn, sampler.pitch)
 
 	# Not during a replay: a replayed tick is one the statistics have already seen,
 	# and counting it again gives a client on a lossy link a jump count that climbs

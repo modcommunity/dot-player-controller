@@ -94,6 +94,8 @@ var slides: int = 0
 var launches: int = 0
 var dashes: int = 0
 var wall_runs: int = 0
+## Degrees the view should turn after the last [method simulate] (a jump-started run turning along its wall); 0 when none. An output: the owning client applies it to its look input.
+var view_turn: float = 0.0
 var wall_jumps: int = 0
 
 ## Ticks where the collide-and-slide ran out of iterations with motion left.
@@ -377,6 +379,7 @@ func simulate(
 ) -> void:
 	if delta <= 0.0:
 		return
+	view_turn = 0.0
 
 	ticks_simulated += 1
 	state.tick += 1
@@ -1414,6 +1417,10 @@ func _try_jump_run(state: DotFpsState, wall: DotFpsBody.Hit) -> bool:
 	state.time_since_jump_pressed = 1000.0
 	state.wall_run_time = 0.0
 	wall_runs += 1
+	if tunables.wall_run_turn_view:
+		var view := forward_for(state.yaw)
+		if view.dot(turned.normalized()) > 0.0:
+			view_turn = wrapf(rad_to_deg(atan2(-turned.x, -turned.z)) - state.yaw, -180.0, 180.0)
 	return true
 
 

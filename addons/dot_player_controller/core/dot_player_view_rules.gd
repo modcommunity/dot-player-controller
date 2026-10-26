@@ -183,6 +183,11 @@ func _on_replicated_cvar(cvar_name: String, value: String) -> void:
 	var _applied := set_cvar(cvar_name, value)
 
 
+## Whether the local player's own legs are drawn in first person: the server's [constant CVAR_LEGS], or the game's own setting [param game_wants]. Hand it to whatever draws the body (for example DotPlayerFirstPersonBody).
+func shows_own_legs(game_wants: bool = false) -> bool:
+	return first_person_legs or game_wants
+
+
 func describe() -> Dictionary:
 	return {"force_view": force_view, "may_toggle": may_toggle(), "first_person_legs": first_person_legs}
 
