@@ -11,7 +11,7 @@ The family's method is in [game-dev/docs/testing.md](../../../docs/testing.md); 
 | `surf_selftest` | surf and hop properties against `DotFpsFlatBody` |
 | `surf_physics_selftest` | the same properties against real `StaticBody3D` geometry and `DotFpsPhysicsBody`, plus ramp ends and reversed normals |
 | `fps_controller_selftest` | the node: drives, `render_state`, the collision mask, `extra_modes` surviving a style, the wall-run camera roll |
-| `classic_selftest` | the default (classic) profile against closed forms: run speed, stopping distance, jump apex and time, strafe gain, the cvar units, the legacy profile |
+| `classic_selftest` | the default (classic) profile against closed forms: run speed, stopping distance, jump apex and time, strafe gain, the cvar units, the legacy profile, ladder and swim speeds, attach and detach |
 | `tps_selftest` | the third-person motor and rig (no physics world) |
 
 All exit non-zero on failure. Run every one; then, for a motor change, the first-person games' own suites, which are where the motor meets real maps.

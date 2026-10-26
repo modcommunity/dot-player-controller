@@ -22,10 +22,10 @@ extends DotFpsMoveMode
 var volumes: Array[AABB] = []
 
 ## Climb speed, m/s.
-var climb_speed: float = 5.08
+var climb_speed: float = 3.81
 
 ## Speed a jump pushes a climber off the ladder, away from it.
-var jump_off_speed: float = 6.86
+var jump_off_speed: float = 5.14
 
 ## How far past the hull a ladder still counts as touched.
 var reach: float = 0.05

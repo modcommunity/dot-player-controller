@@ -27,10 +27,10 @@ extends DotFpsMoveMode
 var volumes: Array[AABB] = []
 
 ## Top swimming speed, m/s. Slower than running, as water is.
-var swim_speed: float = 4.0
+var swim_speed: float = 3.81
 
 ## How fast the velocity eases toward what the player asks for, per second.
-var accelerate: float = 3.5
+var accelerate: float = 10.0
 
 ## Height above the feet that counts as "in the water": the waist. A player wading in water
 ## shallower than this is walking, with the ground's own movement.
