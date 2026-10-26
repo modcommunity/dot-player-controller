@@ -71,7 +71,7 @@ Two deliberate costs. **The multipliers are a ladder** (`SPEED_STEPS`, `GRAVITY_
 
 - **Water is a list of axis-aligned boxes** (`volumes`) the game hands over from its map, never an `Area3D`: overlap signals arrive after the physics step, and a client replaying ticks cannot ask an area where it was. A box list answers any question any number of times, the same on both ends.
 - **Entering is the game's once-a-tick call** (`update(motor, state)`, from per-tick logic that also runs during a replay), when the waist (`waist`, 1 m above the feet) is in a volume. **Leaving is the mode's own**, the moment the waist is out: it hands the player to AIR.
-- In the water the wish follows the view (pitch included), jump swims up and crouch dives, with nothing pressed the player drifts to float with the head `float_depth` above the surface, and a jump with the waist within `exit_reach` of the surface sets the upward speed to `exit_speed`, enough to get over an edge. `_uses_crouch` is false, so the collider does not change size underwater.
+- In the water the wish follows the view (pitch included), jump swims up and crouch dives, with nothing pressed the player drifts to float with the head `float_depth` above the surface, and a jump with the waist within `exit_reach` of the surface sets the upward speed to `exit_speed`, enough to get over an edge. `_uses_crouch` is false, so the collider does not change size underwater. Water whose bed is above where a floating swimmer's feet would hang (`float_depth` under the surface) is not swum (`has_room_to_float`): a 1 m basin pressed swimmers into its bed, where they stuck; the game wades it instead.
 
 ## Slide, launch and dash
 

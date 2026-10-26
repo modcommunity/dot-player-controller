@@ -107,8 +107,21 @@ func is_in(feet: Vector3) -> bool:
 func update(motor: DotFpsMotor, state: DotFpsState) -> void:
 	if mode_id < 0 or state.mode == mode_id or state.mode == DotFpsState.Mode.NOCLIP:
 		return
-	if is_in(state.position):
+	if is_in(state.position) and has_room_to_float(motor, state):
 		motor.set_mode(state, mode_id)
+
+
+## Whether the water under [param state] is deep enough to float in: false when the bed
+## is above where a floating swimmer's feet would hang ([member float_depth] under the
+## surface). Water that shallow is waded; a swimmer held there is pressed into the bed.
+func has_room_to_float(motor: DotFpsMotor, state: DotFpsState) -> bool:
+	var surface := surface_at(state.position + Vector3.UP * waist)
+	if is_nan(surface):
+		return false
+	var drop := state.position.y - (surface - float_depth)
+	if drop <= 0.0:
+		return true
+	return not motor.probe(state, state.position, Vector3.DOWN * drop).hit
 
 
 func _simulate(
@@ -119,8 +132,8 @@ func _simulate(
 ) -> void:
 	var surface := surface_at(state.position + Vector3.UP * waist)
 
-	if is_nan(surface):
-		# Out: falling or standing, the motor's own modes decide which on the next tick.
+	if is_nan(surface) or not has_room_to_float(motor, state):
+		# Out, or standing in water too shallow to float: the motor's own modes decide next tick.
 		motor.set_mode(state, DotFpsState.Mode.AIR)
 		motor.move_and_slide(state, delta)
 		return

@@ -24,7 +24,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 338
+const CHECKS := 341
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -705,6 +705,23 @@ func _test_swimming() -> void:
 	dry.mode = DotFpsState.Mode.GROUND
 	swim.update(motor, dry)
 	_check(dry.mode == DotFpsState.Mode.GROUND, "a player outside every volume is left alone")
+
+	# Waist-deep water over a bed higher than a floating swimmer's feet: waded, never swum, or
+	# the float pressed them into the bed (a 1 m basin on a converted map).
+	var shallow_motor := _motor(t, DotFpsFlatBody.with_floor(-1.0))
+	var shallow := DotFpsSwimMode.new()
+	shallow.volumes = [AABB(Vector3(-20.0, -1.3, -20.0), Vector3(40.0, 1.5, 40.0))]
+	var sid := shallow_motor.register_mode(shallow)
+	var wader := DotFpsState.new()
+	wader.position = Vector3(0.0, -1.0, 0.0)
+	wader.mode = DotFpsState.Mode.GROUND
+	shallow.update(shallow_motor, wader)
+	_check(wader.mode == DotFpsState.Mode.GROUND, "waist-deep water too shallow to float in is waded")
+	_check(not shallow.has_room_to_float(shallow_motor, wader), "and says so")
+	shallow_motor.set_mode(wader, sid)
+	shallow_motor.simulate(wader, idle, STEP)
+	_check(wader.mode != sid and wader.position.y >= -1.01, "a swimmer there is handed back, not pressed into the bed",
+		"mode %d feet %.3f" % [wader.mode, wader.position.y])
 	_done()
 
 
