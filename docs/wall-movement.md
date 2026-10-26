@@ -22,6 +22,12 @@ Nothing about the wall is carried between ticks. "Is the wall still there" is a 
 - **It ends** on `wall_run_max_time`, on losing the wall, on slowing below `wall_run_end_speed`, on releasing forward, on landing, on any jump or launch, and on noclip or a custom mode taking over. An end other than a jump marks the run spent (`wall_run_spent`): no other run starts until the player lands or wall-jumps, or a run that timed out on a wall would start again on the next tick and the cap would mean nothing.
 - Landing is reset in `_advance_timers` as well as in the run's own update, because a jump off the ground has already put the player in AIR by the time the run is updated, and that tick still started on the ground.
 
+## The jump-started run
+
+`wall_run_on_jump` (off by default, needs `wall_run_enabled`): a jump press in the air beside a wall starts a run instead of a wall jump. `_try_jump_run` turns the horizontal velocity along the wall at the speed the player had (the one place a run writes it, on the press), needs `wall_run_jump_min_speed` and an approach within `wall_run_jump_max_angle` of the wall's plane (75 degrees; 90 accepts head-on), and spends the press. The next press is the wall jump (`wall_jump_*`), or ends the run when wall jumping is off. `wall_run_cooldown` (seconds, `DotFpsState.wall_run_cooldown_left`, carried in `net_timers`) holds off every start after a run ends. Every number here and in the run is also a cvar (`sv_wallrun*`, `sv_walljump*`, `sv_wallslide` in `DotFpsTunables._CVARS`).
+
+A remote player's wall is not replicated, so a game that draws a remote body finds it with `DotFpsWallProbe.find` (two rays beside the velocity) and writes `state.wall_normal` before `DotFpsViewMotion.advance`. Melee needs nothing here: the weapon layer never reads the movement mode, so a swing during a run works.
+
 ## The wall jump
 
 - **On the press**, buffered by `jump_buffer_time` like a ground jump, never on the hold: with `auto_hop` on, holding jump would otherwise wall-jump the instant a wall came within reach. A ground jump (or coyote jump) takes the press first.

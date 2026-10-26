@@ -370,7 +370,7 @@ static func pull(state: DotFpsState, target: Variant) -> void:
 ## codes per tick at 20 to 128 Hz. Code 0 is "longer than the field holds" (restored as 1000 s).
 const JUMP_TIMER_SCALE := 7680.0
 const JUMP_TIMER_BITS := 14
-const TIMERS_BITS := 3 * JUMP_TIMER_BITS
+const TIMERS_BITS := 4 * JUMP_TIMER_BITS
 
 
 ## The owner-only property a predicting client rewinds the jump timers from. Opt in by
@@ -384,13 +384,16 @@ static func rewind_specs() -> Array[Dictionary]:
 static func pack_timers(state: DotFpsState) -> int:
 	return (_timer_code(state.time_since_grounded)
 		| _timer_code(state.time_since_jump) << JUMP_TIMER_BITS
-		| _timer_code(state.time_since_jump_pressed) << (2 * JUMP_TIMER_BITS))
+		| _timer_code(state.time_since_jump_pressed) << (2 * JUMP_TIMER_BITS)
+		| _timer_code(state.wall_run_cooldown_left) << (3 * JUMP_TIMER_BITS))
 
 
 static func unpack_timers(state: DotFpsState, code: int) -> void:
 	state.time_since_grounded = _timer_value(code)
 	state.time_since_jump = _timer_value(code >> JUMP_TIMER_BITS)
 	state.time_since_jump_pressed = _timer_value(code >> (2 * JUMP_TIMER_BITS))
+	# 1000 s is the field's "longer than it holds"; a cooldown that long is never set.
+	state.wall_run_cooldown_left = minf(_timer_value(code >> (3 * JUMP_TIMER_BITS)), 10.0) if code >> (3 * JUMP_TIMER_BITS) != 0 else 0.0
 
 
 static func _timer_code(seconds: float) -> int:

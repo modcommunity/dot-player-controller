@@ -438,7 +438,7 @@ func simulate(
 	# it did before they existed.
 	var wall := _wall_contact(state, command)
 	var wall_jumped := false
-	if not jumped:
+	if not jumped and not _try_jump_run(state, wall):
 		wall_jumped = _try_wall_jump(state, command, wall)
 
 	var launched := _try_launch(state, command)
@@ -581,6 +581,7 @@ func _advance_timers(
 	state.slide_cooldown_left = maxf(state.slide_cooldown_left - delta, 0.0)
 	state.launch_cooldown_left = maxf(state.launch_cooldown_left - delta, 0.0)
 	state.dash_cooldown_left = maxf(state.dash_cooldown_left - delta, 0.0)
+	state.wall_run_cooldown_left = maxf(state.wall_run_cooldown_left - delta, 0.0)
 
 
 # --- Noclip ----------------------------------------------------------------
@@ -1195,7 +1196,7 @@ func _wall_contact(state: DotFpsState, command: DotFpsCommand) -> DotFpsBody.Hit
 		))
 	)
 	var wants_jump := (
-		tunables.wall_jump_enabled
+		(tunables.wall_jump_enabled or (tunables.wall_run_enabled and tunables.wall_run_on_jump))
 		and state.time_since_jump_pressed <= tunables.jump_buffer_time
 	)
 
@@ -1319,6 +1320,10 @@ func _update_wall_run(
 			or state.wall_run_time >= minf(tunables.wall_run_max_time, DotFpsTunables.WALL_RUN_TIME_LIMIT)
 			or _speed_along_wall(state, wall) < tunables.wall_run_end_speed
 			or (tunables.wall_run_requires_forward and command.move.y <= 0.0)
+			or (
+				not tunables.wall_jump_enabled and tunables.wall_run_on_jump
+				and state.time_since_jump_pressed <= tunables.jump_buffer_time
+			)
 		):
 			# A wall jump has already ended the run and un-spent it; nothing to do.
 			if state.is_wall_running():
@@ -1328,7 +1333,7 @@ func _update_wall_run(
 	if left_this_tick or wall == null or state.wall_run_spent or _effects.deny_move:
 		return
 
-	if state.mode != DotFpsState.Mode.AIR:
+	if state.mode != DotFpsState.Mode.AIR or state.wall_run_cooldown_left > 0.0:
 		return
 
 	if tunables.wall_run_requires_forward and command.move.y <= 0.0:
@@ -1368,6 +1373,48 @@ func _reset_walls(state: DotFpsState) -> void:
 func _end_wall_run(state: DotFpsState) -> void:
 	state.wall_run_time = -1.0
 	state.wall_run_spent = true
+	state.wall_run_cooldown_left = tunables.wall_run_cooldown
+
+
+## A jump press in the air beside a wall starts a run: the heading is turned along the wall at
+## the horizontal speed the player had, and the press is spent. Returns whether it started one.
+func _try_jump_run(state: DotFpsState, wall: DotFpsBody.Hit) -> bool:
+	if not (tunables.wall_run_enabled and tunables.wall_run_on_jump) or wall == null:
+		return false
+
+	if state.mode != DotFpsState.Mode.AIR or state.is_wall_running() or state.wall_run_spent:
+		return false
+
+	if state.wall_run_cooldown_left > 0.0 or _effects.deny_move or _effects.deny_jump:
+		return false
+
+	if state.time_since_jump_pressed > tunables.jump_buffer_time:
+		return false
+
+	var normal := _flat_normal(wall.normal)
+	var flat := Vector3(state.velocity.x, 0.0, state.velocity.z)
+	var speed := flat.length()
+	if normal == Vector3.ZERO or speed < tunables.wall_run_jump_min_speed:
+		return false
+
+	var into := -flat.dot(normal)
+	if into < -LEAVING_SPEED:
+		return false
+
+	var tangent := normal.cross(Vector3.UP)
+	if tangent.dot(flat) < 0.0:
+		tangent = -tangent
+	var approach := rad_to_deg(atan2(maxf(into, 0.0), absf(tangent.dot(flat))))
+	if approach > tunables.wall_run_jump_max_angle:
+		return false
+
+	var turned := tangent * speed
+	state.velocity.x = turned.x
+	state.velocity.z = turned.z
+	state.time_since_jump_pressed = 1000.0
+	state.wall_run_time = 0.0
+	wall_runs += 1
+	return true
 
 
 ## Horizontal speed along the wall's face.

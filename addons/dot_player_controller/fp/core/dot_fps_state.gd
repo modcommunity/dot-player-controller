@@ -138,6 +138,9 @@ var launch_cooldown_left: float = 0.0
 ## [DotFpsNetSync].
 var dash_cooldown_left: float = 0.0
 
+## Seconds before another wall run may start ([member DotFpsTunables.wall_run_cooldown]).
+var wall_run_cooldown_left: float = 0.0
+
 ## Seconds into the current wall run, or -1.0 when not running.
 ##
 ## [b]In the state and in the snapshot[/b], like [member slide_time]: a run holds gravity
@@ -237,6 +240,7 @@ func copy_from(other: DotFpsState) -> void:
 	slide_cooldown_left = other.slide_cooldown_left
 	launch_cooldown_left = other.launch_cooldown_left
 	dash_cooldown_left = other.dash_cooldown_left
+	wall_run_cooldown_left = other.wall_run_cooldown_left
 	wall_run_time = other.wall_run_time
 	wall_run_spent = other.wall_run_spent
 	wall_jump_count = other.wall_jump_count
@@ -282,6 +286,7 @@ func equals(other: DotFpsState, epsilon: float = 0.0001) -> bool:
 		and absf(slide_cooldown_left - other.slide_cooldown_left) <= epsilon
 		and absf(launch_cooldown_left - other.launch_cooldown_left) <= epsilon
 		and absf(dash_cooldown_left - other.dash_cooldown_left) <= epsilon
+		and absf(wall_run_cooldown_left - other.wall_run_cooldown_left) <= epsilon
 		and absf(wall_run_time - other.wall_run_time) <= epsilon
 		and wall_run_spent == other.wall_run_spent
 		and wall_jump_count == other.wall_jump_count

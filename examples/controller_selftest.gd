@@ -13,7 +13,7 @@ extends Node
 ## [/codeblock]
 
 const SECTIONS := 7
-const CHECKS := 128
+const CHECKS := 130
 
 var _passed := 0
 var _failed := 0
@@ -166,7 +166,9 @@ func _test_rules() -> void:
 		return cvar
 	var fresh := DotPlayerViewRules.new()
 	var _bound := fresh.bind_cvars(add)
-	_check(made == ["mp_forceview"], "bind_cvars registers mp_forceview")
+	_check(made == ["mp_forceview", "mp_firstperson_legs"], "bind_cvars registers mp_forceview and mp_firstperson_legs")
+	_check(fresh.first_person_legs, "mp_firstperson_legs reads back the operator's 1 (default 0 hides the legs)")
+	_check(not DotPlayerViewRules.new().first_person_legs and not fresh.set_cvar("mp_firstperson_legs", "2"), "legs are off by default and a value other than 0 or 1 is refused")
 	_check(fresh.force_view == DotPlayerViewRules.FIRST_ONLY, "and reads back a value the operator set first")
 	var heard := [0]
 	fresh.changed.connect(func() -> void: heard[0] += 1)

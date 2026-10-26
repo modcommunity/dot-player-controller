@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 341
+const CHECKS := 353
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 50
+const SECTIONS := 51
 
 var _passed := 0
 var _failed := 0
@@ -82,6 +82,7 @@ func _run() -> void:
 	_test_wall_run()
 	_test_wall_run_corridor()
 	_test_wall_jump()
+	_test_wall_run_on_jump()
 	_test_wall_replay()
 	_test_wall_hop_rewind()
 	_test_walls_off_identical()
@@ -2784,6 +2785,115 @@ func _test_wall_run_corridor() -> void:
 		turn_motor.simulate(turn, _command(1.0, 0.0, 80.0), STEP)
 	_check(not turn.is_wall_running(), "turning away from the wall ends the run",
 		"%s" % ", ".join(turn.describe_lines()))
+	_done()
+
+
+func _test_wall_run_on_jump() -> void:
+	_section("a jump press starts a wall run")
+
+	var jump := DotFpsCommand.BUTTON_JUMP
+	var t := _wall_tunables()
+
+	# Off by default: the press is a wall jump, not a run.
+	var off_motor := _motor(t, _wall_world())
+	var off := _beside_wall(2.0, -1.0)
+	off.velocity = Vector3(5.0, -1.0, -5.0)
+	off_motor.simulate(off, _command(1.0, 0.0, 0.0, jump), STEP)
+	_check(off_motor.wall_runs == 0, "wall_run_on_jump is off unless a game turns it on")
+
+	t.wall_run_on_jump = true
+	t.wall_run_min_speed = 20.0
+	t.wall_jump_max_per_air = 3
+	var motor := _motor(t, _wall_world())
+
+	# 45 degrees into the wall at 7 m/s: too slow for the automatic run, enough for the press.
+	var s := _beside_wall(2.0, -1.0)
+	s.velocity = Vector3(5.0, 0.0, -5.0)
+	var speed := s.horizontal_speed()
+	motor.simulate(s, _command(1.0, 0.0, 0.0, jump), STEP)
+	_check(s.is_wall_running() and motor.wall_runs == 1 and motor.wall_jumps == 0,
+		"a press beside the wall in the air starts a run, not a wall jump", ", ".join(s.describe_lines()))
+	_check(absf(s.velocity.x) < 0.5 and -s.velocity.z > speed * 0.9,
+		"the heading turns along the wall at the speed the player had",
+		"%s from %.2f" % [s.velocity, speed])
+
+	var held := 0
+	for _i in range(8):
+		motor.simulate(s, _command(1.0, 0.0, 0.0), STEP)
+		if s.is_wall_running():
+			held += 1
+	_check(held == 8, "and runs along it", "%d of 8 ticks" % held)
+
+	# End 1: a second press jumps off the wall.
+	motor.simulate(s, _command(1.0, 0.0, 0.0, jump), STEP)
+	_check(not s.is_wall_running() and motor.wall_jumps == 1 and s.velocity.x < -3.0,
+		"a second press launches off the wall", "%s" % s.velocity)
+
+	# End 2: the time cap.
+	var tc := _wall_tunables()
+	tc.wall_run_on_jump = true
+	tc.wall_run_max_time = 0.25
+	var cap_motor := _motor(tc, _wall_world())
+	var cap := _beside_wall(2.0, 0.5, 8.0)
+	cap.velocity = Vector3(3.0, 0.5, -9.0)
+	cap_motor.simulate(cap, _command(1.0, 0.0, 0.0, jump), STEP)
+	var started := cap.is_wall_running()
+	var ticks := 0
+	while cap.is_wall_running() and ticks < 100:
+		cap_motor.simulate(cap, _command(1.0, 0.0, 0.0), STEP)
+		ticks += 1
+	_check(started and ticks > 5 and ticks < 40, "a run ends at wall_run_max_time", "%d ticks" % ticks)
+
+	# End 3: losing the wall.
+	var lost := _beside_wall(2.0, 0.5, 8.0)
+	lost.velocity = Vector3(3.0, 0.5, -9.0)
+	var lost_motor := _motor(t, _wall_world())
+	lost_motor.simulate(lost, _command(1.0, 0.0, 0.0, jump), STEP)
+	lost.position.x = -1.0
+	lost_motor.simulate(lost, _command(1.0, 0.0, 0.0), STEP)
+	_check(not lost.is_wall_running(), "a run ends when the wall is gone")
+
+	# End 4: stopping.
+	var slow := _beside_wall(2.0, 0.5, 8.0)
+	slow.velocity = Vector3(3.0, 0.5, -9.0)
+	var slow_motor := _motor(t, _wall_world())
+	slow_motor.simulate(slow, _command(1.0, 0.0, 0.0, jump), STEP)
+	slow.velocity = Vector3(0.0, 0.0, -1.0)
+	slow_motor.simulate(slow, _command(1.0, 0.0, 0.0), STEP)
+	_check(not slow.is_wall_running(), "a run ends when the player stops")
+
+	# End 5: releasing forward.
+	var rel := _beside_wall(2.0, 0.5, 8.0)
+	rel.velocity = Vector3(3.0, 0.5, -9.0)
+	var rel_motor := _motor(t, _wall_world())
+	rel_motor.simulate(rel, _command(1.0, 0.0, 0.0, jump), STEP)
+	rel_motor.simulate(rel, _command(0.0, 0.0, 0.0), STEP)
+	_check(not rel.is_wall_running(), "a run ends when forward is released")
+
+	# Cooldown: after an end no run starts until it has run down.
+	var tcd := _wall_tunables()
+	tcd.wall_run_on_jump = true
+	tcd.wall_run_cooldown = 0.5
+	tcd.wall_jump_enabled = false
+	var cd_motor := _motor(tcd, _wall_world())
+	var cd := _beside_wall(2.0, 0.5, 8.0)
+	cd.velocity = Vector3(3.0, 0.5, -9.0)
+	cd_motor.simulate(cd, _command(1.0, 0.0, 0.0, jump), STEP)
+	cd_motor.simulate(cd, _command(0.0, 0.0, 0.0), STEP)
+	_check(not cd.is_wall_running() and cd.wall_run_cooldown_left > 0.4, "an ended run starts the cooldown",
+		"%.2f" % cd.wall_run_cooldown_left)
+	var packed := DotFpsNetSync.pack_timers(cd)
+	var restored := DotFpsState.new()
+	DotFpsNetSync.unpack_timers(restored, packed)
+	_check_near(restored.wall_run_cooldown_left, cd.wall_run_cooldown_left, 0.01,
+		"and the cooldown rides in the rewind timers")
+
+	# The cvars reach the tunables.
+	var cv := DotFpsTunables.new()
+	_check(cv.set_cvar("sv_wallrun_onjump", "1") and cv.wall_run_on_jump
+		and cv.set_cvar("sv_wallrun_cooldown", "0.7") and absf(cv.wall_run_cooldown - 0.7) < 0.001,
+		"sv_wallrun_onjump and sv_wallrun_cooldown set the tunables")
+
 	_done()
 
 

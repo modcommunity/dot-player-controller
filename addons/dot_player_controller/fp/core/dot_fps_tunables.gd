@@ -460,6 +460,23 @@ extends DotConfig
 ## the wall, which is the player's way off a run short of jumping.
 @export var wall_run_requires_forward: bool = true
 
+## Whether a jump press in the air beside a wall STARTS a run (the heading turns along the
+## wall, at the speed the player had), and a second press leaves it by the wall jump.
+## Needs [member wall_run_enabled]. Off by default.
+@export var wall_run_on_jump: bool = false
+
+## Horizontal speed, in m/s, a jump-started run needs. The speed is not measured along the
+## wall: the press turns the heading, so any approach angle up to
+## [member wall_run_jump_max_angle] qualifies.
+@export_range(0.0, 100.0, 0.1) var wall_run_jump_min_speed: float = 5.0
+
+## Widest angle, in degrees, between the velocity and the wall's plane at which a press
+## starts a run. 90 accepts a head-on approach.
+@export_range(0.0, 90.0, 0.5) var wall_run_jump_max_angle: float = 75.0
+
+## Seconds after a run ends before another may start, jump-started or not. 0 for none.
+@export_range(0.0, 10.0, 0.05) var wall_run_cooldown: float = 0.0
+
 ## How far beside the player, in metres, a wall still counts as touched: for a run, and
 ## for a wall jump off a wall the player is not running on.
 @export_range(0.01, 1.0, 0.01) var wall_reach: float = 0.25
@@ -558,6 +575,21 @@ const _CVARS := {
 	"sv_autohop": ["auto_hop", 1.0, "1 jumps again on landing while jump is held"],
 	"sv_bhopcap": ["bhop_speed_cap_scale", 1.0, "Landing speed cap as a multiple of run speed; 0 none"],
 	"sv_edgefriction": ["edge_friction", 1.0, "Friction multiplier near a ledge; 1 off"],
+	"sv_wallrun": ["wall_run_enabled", 1.0, "1 lets a fast airborne player run along a wall"],
+	"sv_wallrun_onjump": ["wall_run_on_jump", 1.0, "1 starts a wall run on a jump press beside a wall, turning the heading along it"],
+	"sv_wallrun_minspeed": ["wall_run_min_speed", 1.0, "Speed along the wall a run needs, m/s"],
+	"sv_wallrun_jumpminspeed": ["wall_run_jump_min_speed", 1.0, "Horizontal speed a jump-started run needs, m/s"],
+	"sv_wallrun_jumpangle": ["wall_run_jump_max_angle", 1.0, "Widest angle off the wall's plane a jump-started run accepts, degrees"],
+	"sv_wallrun_angle": ["wall_run_max_approach_angle", 1.0, "Widest angle off the wall's plane an automatic run starts at, degrees"],
+	"sv_wallrun_time": ["wall_run_max_time", 1.0, "Longest a wall run lasts, seconds (at most 1.9)"],
+	"sv_wallrun_gravity": ["wall_run_gravity_scale", 1.0, "Share of gravity felt while wall running, 0 to 1"],
+	"sv_wallrun_cooldown": ["wall_run_cooldown", 1.0, "Seconds after a run ends before another may start"],
+	"sv_wallrun_endspeed": ["wall_run_end_speed", 1.0, "A run ends below this speed along the wall, m/s"],
+	"sv_wallrun_angle_limit": ["wall_max_angle_from_vertical", 1.0, "Steepest lean from vertical a wall may have, degrees"],
+	"sv_walljump": ["wall_jump_enabled", 1.0, "1 lets a jump press beside a wall jump off it"],
+	"sv_walljump_push": ["wall_jump_push_speed", 1.0, "Speed a wall jump pushes off the wall, m/s"],
+	"sv_walljump_up": ["wall_jump_up_speed", 1.0, "Upward speed a wall jump sets, m/s"],
+	"sv_wallslide": ["wall_slide_speed", 1.0, "Fastest fall against a wall, m/s; 0 off"],
 }
 
 

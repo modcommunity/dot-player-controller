@@ -34,6 +34,9 @@ signal changed
 
 const CVAR_FORCE := "mp_forceview"
 
+## 1 draws a first-person player's own legs when they look down, 0 (the default) does not.
+const CVAR_LEGS := "mp_firstperson_legs"
+
 ## The player's choice.
 const ANY := 0
 ## First person only.
@@ -48,6 +51,16 @@ var force_view: int = ANY:
 		if clamped == force_view:
 			return
 		force_view = clamped
+		changed.emit()
+
+
+## Whether a first-person player sees their own legs when looking down: `mp_firstperson_legs`.
+## The game reads it where it draws the body; nothing here draws.
+var first_person_legs: bool = false:
+	set(value):
+		if value == first_person_legs:
+			return
+		first_person_legs = value
 		changed.emit()
 
 
@@ -99,6 +112,8 @@ func cvar_specs() -> Array[Dictionary]:
 	return [
 		{"name": CVAR_FORCE, "value": str(force_view), "min": float(ANY), "max": float(THIRD_ONLY),
 			"description": "Players' view: 0 their choice (the view key toggles), 1 first person only, 2 third person only"},
+		{"name": CVAR_LEGS, "value": "1" if first_person_legs else "0", "min": 0.0, "max": 1.0,
+			"description": "1 lets a first-person player see their own legs when they look down"},
 	]
 
 
@@ -134,9 +149,10 @@ func follow_cvars(source: Object) -> bool:
 		return false
 	if not source.has_method(&"replicated_cvar") or not source.has_signal(&"replicated_cvar_changed"):
 		return false
-	var held := String(source.call(&"replicated_cvar", CVAR_FORCE, ""))
-	if held != "":
-		var _applied := set_cvar(CVAR_FORCE, held)
+	for cv in [CVAR_FORCE, CVAR_LEGS]:
+		var held := String(source.call(&"replicated_cvar", cv, ""))
+		if held != "":
+			var _applied := set_cvar(cv, held)
 	if not source.is_connected(&"replicated_cvar_changed", _on_replicated_cvar):
 		source.connect(&"replicated_cvar_changed", _on_replicated_cvar)
 	return true
@@ -144,9 +160,14 @@ func follow_cvars(source: Object) -> bool:
 
 ## Applies one cvar by name. False for another name or a value that is not 0, 1 or 2.
 func set_cvar(cvar_name: String, value: String) -> bool:
+	var text := value.strip_edges()
+	if cvar_name == CVAR_LEGS:
+		if text != "0" and text != "1":
+			return false
+		first_person_legs = text == "1"
+		return true
 	if cvar_name != CVAR_FORCE:
 		return false
-	var text := value.strip_edges()
 	if not text.is_valid_int() or text.to_int() < ANY or text.to_int() > THIRD_ONLY:
 		DotLog.debug("player.view", "mp_forceview refused a value", {"value": value})
 		return false
@@ -163,7 +184,7 @@ func _on_replicated_cvar(cvar_name: String, value: String) -> void:
 
 
 func describe() -> Dictionary:
-	return {"force_view": force_view, "may_toggle": may_toggle()}
+	return {"force_view": force_view, "may_toggle": may_toggle(), "first_person_legs": first_person_legs}
 
 
 func describe_lines() -> PackedStringArray:
