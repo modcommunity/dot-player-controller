@@ -2191,10 +2191,11 @@ func _test_net_sync_round_trip() -> void:
 	# rewind replayed a launch as no launch and game-arena measured 3.2 m between the ends.
 	# Under four bytes per player per snapshot.
 	# 25 since the dash's cooldown (12 bits) joined them the same night; 26 since the wall
-	# run and wall jumps (13 bits) filled the word, 2026-10-10.
+	# run and wall jumps (13 bits) filled the word, 2026-10-10; 28 since the modifier
+	# mask grew from 32 to 48 bits (a cap raised, not a field added).
 	_check(
-		DotFpsNetSync.estimated_state_bits() <= 208,
-		"a full state update stays within 26 bytes",
+		DotFpsNetSync.estimated_state_bits() <= 224,
+		"a full state update stays within 28 bytes",
 		"%d bits" % DotFpsNetSync.estimated_state_bits()
 	)
 
