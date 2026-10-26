@@ -45,7 +45,7 @@ Surfaces, modifiers and custom modes all change the simulation, so all three are
 
 - `DotFpsState.modifiers` is **sorted by index**: the aggregate is a product, floating-point multiplication is not associative, and two machines applying the same set in different orders differ in the last bits, which is exactly the drift that keeps a reconciliation from settling.
 - Effects multiply so they compose in any order; denials (`deny_jump`, `deny_move`) are sticky so nothing multiplies a stun back off.
-- **What travels is a 32-bit mask of active indices, not the expiry tick.** The effect is predicted exactly; only its end can be late, by up to one snapshot interval. Revisit if a game ever has a modifier whose expiry frame matters.
+- **What travels is a 48-bit mask (`DotFpsNetSync.MODIFIER_BITS`, also the most modifiers a motor registers) of active indices, not the expiry tick.** The effect is predicted exactly; only its end can be late, by up to one snapshot interval. Revisit if a game ever has a modifier whose expiry frame matters.
 - **Registration order defines the indices, and the indices replicate.** `register_modifier` must be called in the same order on every machine; `_register_extensions` is the fixed place. Registering conditionally (only on the server, only in one mode) gives two peers different ids for the same modifier: a power-up that works for some players.
 
 ## Admin abilities

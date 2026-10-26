@@ -251,13 +251,13 @@ func register_modifier(modifier: DotFpsModifier) -> int:
 		modifier_defs[modifier.id] = modifier
 		return _modifier_order.find(modifier.id)
 
-	if _modifier_order.size() >= 32:
-		# The active set is replicated as a 32-bit mask. Silently dropping the 33rd
+	if _modifier_order.size() >= DotFpsNetSync.MODIFIER_BITS:
+		# The active set is replicated as a 48-bit mask, the 49th
 		# would make it apply on the server and not on the client, which is a
 		# divergence that only shows up for whoever picks up that one power-up.
 		DotLog.error(
 			CHANNEL,
-			"too many modifiers; the active set is a 32-bit mask",
+			"too many modifiers; the active set is a DotFpsNetSync.MODIFIER_BITS-bit mask",
 			{"id": String(modifier.id)}
 		)
 		return -1

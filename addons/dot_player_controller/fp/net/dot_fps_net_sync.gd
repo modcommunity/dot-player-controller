@@ -143,8 +143,8 @@ const WALL_HEADING_SHIFT := WALL_JUMP_COUNT_SHIFT + WALL_JUMP_COUNT_BITS
 ## after this one needs a second property, not a wider word.
 const FLAG_BITS := WALL_HEADING_SHIFT + WALL_HEADING_BITS
 
-## Most modifiers that can be active at once, and the width of the replicated mask.
-const MODIFIER_BITS := 32
+## Most modifiers a motor can register, and the width of the replicated mask (dot-net's UINT takes up to 64).
+const MODIFIER_BITS := 48
 
 
 ## What a networked player replicates.
