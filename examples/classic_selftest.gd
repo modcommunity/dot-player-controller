@@ -8,8 +8,8 @@ extends Node
 
 const STEP := 1.0 / 60.0
 const U := 0.01905
-const CHECKS := 87
-const SECTIONS := 12
+const CHECKS := 95
+const SECTIONS := 13
 
 var _passed := 0
 var _failed := 0
@@ -35,6 +35,7 @@ func _run() -> void:
 	_test_water_ladder()
 	_test_ladder_motion()
 	_test_water_motion()
+	_test_water_ladder_reference()
 	_test_cvar_binding()
 	print("%d passed, %d failed" % [_passed, _failed])
 	if _entered != SECTIONS or _completed != _entered:
@@ -453,6 +454,59 @@ func _test_water_motion() -> void:
 			out_tick = i
 	_check(out_tick > 0, "holding jump leaves the water", "tick %d" % out_tick)
 	_check(rise > -0.25, "and the feet come up to the surface, enough for a bank flush with the water", "peak %.2f" % rise)
+	_done()
+
+
+func _swim_speed_after(swim: DotFpsSwimMode, motor: DotFpsMotor, ticks: int) -> float:
+	var s := DotFpsState.new()
+	s.position = Vector3(0.0, -3.0, 0.0)
+	s.mode = swim.mode_id
+	var fwd := _cmd(1.0, 0.0)
+	for _i in range(ticks):
+		motor.simulate(s, fwd, STEP)
+	return Vector2(s.velocity.x, s.velocity.z).length()
+
+
+func _test_water_ladder_reference() -> void:
+	_section("water and ladder measured against the reference (accelerate 10, friction 1, dampen 0 / 0.5)")
+	var rig := _water_rig()
+	var motor: DotFpsMotor = rig[0]
+	var swim: DotFpsSwimMode = rig[1]
+	var top := swim.swim_speed
+	# accelerate 10 closes 10/60 of the gap to the wish each 60 Hz tick: 1 - (5/6)^6 after 0.1 s.
+	var rise := _swim_speed_after(swim, motor, 6) / top
+	_near(rise, 1.0 - pow(5.0 / 6.0, 6.0), 0.02, "water accelerate 10 reaches 66.5% of the swim speed in 0.1 s")
+	_check(swim.set_cvar("sv_wateraccelerate", "5"), "sv_wateraccelerate 5 accepted")
+	var slow := _swim_speed_after(swim, motor, 6) / top
+	_near(slow, 1.0 - pow(11.0 / 12.0, 6.0), 0.02, "water accelerate 5 reaches 40.6% in 0.1 s")
+	_check(slow < rise * 0.7, "half the water acceleration is clearly slower")
+	swim.set_cvar("sv_wateraccelerate", "10")
+	swim.set_cvar("sv_waterfriction", "1")
+	var steady := _swim_speed_after(swim, motor, 240) / top
+	var expect := (1.0 / 6.0) / (1.0 - (59.0 / 60.0) * (5.0 / 6.0))
+	_near(steady, expect, 0.01, "water friction 1 settles a held swim at 92.3% of the speed")
+	swim.set_cvar("sv_waterfriction", "0")
+	_near(_swim_speed_after(swim, motor, 240) / top, 1.0, 0.01, "water friction 0 (the default) reaches the full speed")
+
+	var ladder: DotFpsLadderMode = _ladder_rig()[1]
+	var lmotor: DotFpsMotor = _ladder_rig()[0]
+	var yaw: float = _ladder_rig()[2]
+	var side := _cmd(0.0, yaw)
+	side.move = Vector2(1.0, 0.0)
+	var lat := []
+	for damp in ["0", "0.5"]:
+		var r := _ladder_rig()
+		lmotor = r[0]
+		ladder = r[1]
+		ladder.set_cvar("sv_ladder_dampen", damp)
+		var d := DotFpsState.new()
+		d.position = Vector3(1.75, 3.0, 0.0)
+		d.mode = ladder.mode_id
+		for _i in range(10):
+			lmotor.simulate(d, side, STEP)
+		lat.append(absf(d.velocity.z))
+	_near(lat[0], 200.0 * U, 0.05, "ladder dampen 0 (the reference) keeps the full 200 units/s sideways")
+	_near(lat[1], lat[0] * 0.5, 0.05, "ladder dampen 0.5 halves the sideways move")
 	_done()
 
 
