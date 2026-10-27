@@ -1510,7 +1510,6 @@ func _turn_along(state: DotFpsState, turned: Vector3) -> void:
 		var view := forward_for(state.yaw)
 		if view.dot(turned.normalized()) > 0.0:
 			view_turn = wrapf(rad_to_deg(atan2(-turned.x, -turned.z)) - state.yaw, -180.0, 180.0)
-	return true
 
 
 ## Horizontal speed along the wall's face.
