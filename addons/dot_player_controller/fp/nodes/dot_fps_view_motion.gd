@@ -46,6 +46,10 @@ var wall_run_roll: float = 6.0
 ## a sixth of a second to settle at 6.
 var wall_run_roll_response: float = 6.0
 
+## Metres the eye moves away from a wall being run along, eased like the roll, so the wall
+## does not fill the view. Read through [method eye_shift]; the game applies it to its camera.
+var wall_run_eye_shift: float = 0.0
+
 ## Degrees a drawn body (third person, or anyone else's) rolls while wall running, feet toward
 ## the wall and head away, so it reads as running on the wall. Scaled like [member wall_run_roll].
 ## 0 for none. The body is the game's to rotate: it applies [method body_roll] and [method body_yaw].
@@ -107,6 +111,7 @@ var wall_run_fov_gain: float = 0.0
 var _roll_a: float = 0.0
 var _roll: float = 0.0
 var _wall_roll: float = 0.0
+var _eye_shift: Vector3 = Vector3.ZERO
 var _body_roll: float = 0.0
 var _body_yaw: float = 0.0
 var _dip: float = 0.0
@@ -139,6 +144,12 @@ func advance(state: DotFpsState, delta: float) -> void:
 	if wall_run_roll > 0.0 and state.is_wall_running() and state.wall_normal != Vector3.ZERO:
 		wall = -state.wall_normal.dot(right) * wall_run_roll
 	_wall_roll = lerpf(_wall_roll, wall, 1.0 - exp(-wall_run_roll_response * delta))
+
+	var shift := Vector3.ZERO
+	if wall_run_eye_shift > 0.0 and state.is_wall_running() and state.wall_normal != Vector3.ZERO:
+		var away := Vector3(state.wall_normal.x, 0.0, state.wall_normal.z)
+		shift = away.normalized() * wall_run_eye_shift if away.length_squared() > 1e-8 else shift
+	_eye_shift = _eye_shift.lerp(shift, 1.0 - exp(-wall_run_roll_response * delta))
 
 	# The drawn body's pose on the wall: the same side and squareness as the camera's lean.
 	var body_side := 0.0
@@ -215,6 +226,7 @@ func snap() -> void:
 	_roll_a = 0.0
 	_roll = 0.0
 	_wall_roll = 0.0
+	_eye_shift = Vector3.ZERO
 	_body_roll = 0.0
 	_body_yaw = 0.0
 	_dip = 0.0
@@ -244,6 +256,11 @@ func body_yaw() -> float:
 ## The strafe and slide part of [method roll], degrees.
 func strafe_roll_now() -> float:
 	return _roll
+
+
+## World-space offset for the eye this frame, metres, away from the wall being run along.
+func eye_shift() -> Vector3:
+	return _eye_shift
 
 
 ## The wall-run lean as drawn this frame, degrees.

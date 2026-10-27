@@ -465,6 +465,10 @@ extends DotConfig
 ## Needs [member wall_run_enabled]. Off by default.
 @export var wall_run_on_jump: bool = false
 
+## Airborne and moving into a wall within the jump-run limits starts a run with no press
+## (the heading turns along the wall); a press then wall-jumps. Replaces the on-jump press.
+@export var wall_run_auto: bool = false
+
 ## Horizontal speed, in m/s, a jump-started run needs. The speed is not measured along the
 ## wall: the press turns the heading, so any approach angle up to
 ## [member wall_run_jump_max_angle] qualifies.
@@ -580,6 +584,7 @@ const _CVARS := {
 	"sv_bhopcap": ["bhop_speed_cap_scale", 1.0, "Landing speed cap as a multiple of run speed; 0 none"],
 	"sv_edgefriction": ["edge_friction", 1.0, "Friction multiplier near a ledge; 1 off"],
 	"sv_wallrun": ["wall_run_enabled", 1.0, "1 lets a fast airborne player run along a wall"],
+	"sv_wallrun_auto": ["wall_run_auto", 1.0, "1 starts a wall run on touching a wall in the air, no press; a press wall-jumps"],
 	"sv_wallrun_onjump": ["wall_run_on_jump", 1.0, "1 starts a wall run on a jump press beside a wall, turning the heading along it"],
 	"sv_wallrun_minspeed": ["wall_run_min_speed", 1.0, "Speed along the wall a run needs, m/s"],
 	"sv_wallrun_jumpminspeed": ["wall_run_jump_min_speed", 1.0, "Horizontal speed a jump-started run needs, m/s"],

@@ -443,6 +443,8 @@ func simulate(
 	var wall_jumped := false
 	if not jumped and not _try_jump_run(state, wall):
 		wall_jumped = _try_wall_jump(state, command, wall)
+		if not wall_jumped and not jumped:
+			_try_auto_run(state, command, wall)
 
 	var launched := _try_launch(state, command)
 	launched = _try_dash(state, command) or launched
@@ -1195,7 +1197,10 @@ func _wall_contact(state: DotFpsState, command: DotFpsCommand) -> DotFpsBody.Hit
 		tunables.wall_run_enabled
 		and (state.is_wall_running() or (
 			not state.wall_run_spent
-			and state.horizontal_speed() >= tunables.wall_run_min_speed
+			and state.horizontal_speed() >= (
+				tunables.wall_run_jump_min_speed if tunables.wall_run_auto
+				else tunables.wall_run_min_speed
+			)
 		))
 	)
 	var wants_jump := (
@@ -1385,6 +1390,9 @@ func _try_jump_run(state: DotFpsState, wall: DotFpsBody.Hit) -> bool:
 	if not (tunables.wall_run_enabled and tunables.wall_run_on_jump) or wall == null:
 		return false
 
+	if tunables.wall_run_auto:
+		return false
+
 	if state.mode != DotFpsState.Mode.AIR or state.is_wall_running() or state.wall_run_spent:
 		return false
 
@@ -1411,10 +1419,53 @@ func _try_jump_run(state: DotFpsState, wall: DotFpsBody.Hit) -> bool:
 	if approach > tunables.wall_run_jump_max_angle:
 		return false
 
-	var turned := tangent * speed
+	_turn_along(state, tangent * speed)
+	state.time_since_jump_pressed = 1000.0
+	return true
+
+
+## Starts a run with no press: airborne, moving into a wall within the jump-run limits.
+## A press in the air takes the wall jump first, so a quick press during the run leaves it.
+func _try_auto_run(state: DotFpsState, command: DotFpsCommand, wall: DotFpsBody.Hit) -> void:
+	if not (tunables.wall_run_enabled and tunables.wall_run_auto) or wall == null:
+		return
+
+	if state.mode != DotFpsState.Mode.AIR or state.is_wall_running() or state.wall_run_spent:
+		return
+
+	if state.wall_run_cooldown_left > 0.0 or _effects.deny_move:
+		return
+
+	if tunables.wall_run_requires_forward and command.move.y <= 0.0:
+		return
+
+	if state.velocity.y < -tunables.wall_run_max_fall_speed:
+		return
+
+	var normal := _flat_normal(wall.normal)
+	var flat := Vector3(state.velocity.x, 0.0, state.velocity.z)
+	var speed := flat.length()
+	if normal == Vector3.ZERO or speed < tunables.wall_run_jump_min_speed:
+		return
+
+	var into := -flat.dot(normal)
+	if into < -LEAVING_SPEED:
+		return
+
+	var tangent := normal.cross(Vector3.UP)
+	if tangent.dot(flat) < 0.0:
+		tangent = -tangent
+	var approach := rad_to_deg(atan2(maxf(into, 0.0), absf(tangent.dot(flat))))
+	if approach > tunables.wall_run_jump_max_angle:
+		return
+
+	_turn_along(state, tangent * speed)
+
+
+## Begins a run with the horizontal velocity [param turned] (along the wall).
+func _turn_along(state: DotFpsState, turned: Vector3) -> void:
 	state.velocity.x = turned.x
 	state.velocity.z = turned.z
-	state.time_since_jump_pressed = 1000.0
 	state.wall_run_time = 0.0
 	wall_runs += 1
 	if tunables.wall_run_turn_view:

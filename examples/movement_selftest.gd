@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 357
+const CHECKS := 361
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 51
+const SECTIONS := 52
 
 var _passed := 0
 var _failed := 0
@@ -83,6 +83,7 @@ func _run() -> void:
 	_test_wall_run_corridor()
 	_test_wall_jump()
 	_test_wall_run_on_jump()
+	_test_wall_run_auto()
 	_test_wall_replay()
 	_test_wall_hop_rewind()
 	_test_walls_off_identical()
@@ -2786,6 +2787,39 @@ func _test_wall_run_corridor() -> void:
 		turn_motor.simulate(turn, _command(1.0, 0.0, 80.0), STEP)
 	_check(not turn.is_wall_running(), "turning away from the wall ends the run",
 		"%s" % ", ".join(turn.describe_lines()))
+	_done()
+
+
+func _test_wall_run_auto() -> void:
+	_section("an airborne touch of a wall starts a run with no press")
+
+	var jump := DotFpsCommand.BUTTON_JUMP
+	var t := _wall_tunables()
+	t.wall_run_min_speed = 20.0
+	t.wall_jump_max_per_air = 3
+
+	var off_motor := _motor(t, _wall_world())
+	var off := _beside_wall(2.0, -1.0)
+	off.velocity = Vector3(5.0, 0.0, -5.0)
+	off_motor.simulate(off, _command(1.0, 0.0, 0.0), STEP)
+	_check(off_motor.wall_runs == 0, "wall_run_auto is off unless a game turns it on")
+
+	t.wall_run_auto = true
+	var motor := _motor(t, _wall_world())
+	var s := _beside_wall(2.0, -1.0)
+	s.velocity = Vector3(5.0, 0.0, -5.0)
+	motor.simulate(s, _command(1.0, 0.0, 0.0), STEP)
+	_check(s.is_wall_running() and motor.wall_runs == 1 and motor.wall_jumps == 0,
+		"moving into a wall in the air starts a run with no press", ", ".join(s.describe_lines()))
+	motor.simulate(s, _command(1.0, 0.0, 0.0, jump), STEP)
+	_check(motor.wall_jumps == 1 and not s.is_wall_running(),
+		"a press during the run jumps off the wall", ", ".join(s.describe_lines()))
+
+	var idle := _beside_wall(2.0, -1.0)
+	idle.velocity = Vector3(5.0, 0.0, -5.0)
+	motor = _motor(t, _wall_world())
+	motor.simulate(idle, _command(0.0, 0.0, 0.0), STEP)
+	_check(motor.wall_runs == 0, "no forward held, no automatic run")
 	_done()
 
 

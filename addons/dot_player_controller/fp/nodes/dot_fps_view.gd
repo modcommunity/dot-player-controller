@@ -119,6 +119,10 @@ const CHANNEL := "fps.view"
 ## and ends without a snap; about a sixth of a second to settle at the default.
 @export_range(0.5, 40.0, 0.5) var wall_run_roll_response: float = 6.0
 
+## Metres a game's camera moves away from the wall while wall running (see
+## [method DotFpsViewMotion.eye_shift]); this node does not apply it itself.
+@export_range(0.0, 0.5, 0.01) var wall_run_eye_shift: float = 0.0
+
 ## Degrees a drawn body rolls while wall running (feet toward the wall). A game that draws a
 ## body applies [method DotFpsViewMotion.body_roll]; the view itself does not move a body.
 @export_range(0.0, 60.0, 0.5) var wall_run_body_roll: float = 25.0
@@ -327,6 +331,7 @@ func _sync_motion() -> void:
 	_motion.slide_roll = slide_roll
 	_motion.wall_run_roll = wall_run_roll
 	_motion.wall_run_roll_response = wall_run_roll_response
+	_motion.wall_run_eye_shift = wall_run_eye_shift
 	_motion.wall_run_body_roll = wall_run_body_roll
 	_motion.wall_run_body_yaw = wall_run_body_yaw
 	_motion.wall_run_body_response = wall_run_body_response

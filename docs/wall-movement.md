@@ -30,6 +30,10 @@ A remote player's wall is not replicated, so a game that draws a remote body fin
 
 `sv_wallrun_turnview` (`wall_run_turn_view`, off by default) also turns the owner's view along the wall when a jump starts the run: the motor reports the turn in `view_turn`, and `DotFpsController` rotates its sampler and emits `view_turned(degrees)` for a game that samples its own look input. A view looking more than 90 degrees away from the new heading is left alone. Remote players need nothing: the heading is in the replicated velocity, and the run's flag already replicates. The settings are server rules every client receives, and the cooldown is owner-only because only the owner predicts.
 
+## The automatic run
+
+`wall_run_auto` (`sv_wallrun_auto`, off by default, needs `wall_run_enabled`): an airborne player moving into a wall within the jump-run limits (`wall_run_jump_min_speed`, `wall_run_jump_max_angle`, forward held, not falling past `wall_run_max_fall_speed`) starts a run with no press, the heading turned along the wall as in the jump-started run. A press during the run, or beside the wall, is the wall jump. It replaces `wall_run_on_jump`, which `_try_jump_run` ignores while auto is on. `DotFpsViewMotion.wall_run_eye_shift` (metres, 0 by default) and `eye_shift()` move a game's camera away from the wall so brick does not fill the view; `DotFpsView` exports it but does not apply it.
+
 ## The wall jump
 
 - **On the press**, buffered by `jump_buffer_time` like a ground jump, never on the hold: with `auto_hop` on, holding jump would otherwise wall-jump the instant a wall came within reach. A ground jump (or coyote jump) takes the press first.
