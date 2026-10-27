@@ -24,7 +24,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 384
+const CHECKS := 386
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -743,6 +743,11 @@ func _test_surfaces() -> void:
 		"a surface read off dot-physics takes traction as friction and move_scale as acceleration")
 	_check(is_equal_approx(mud.max_speed_scale, 0.625) and is_equal_approx(mud.jump_scale, 0.8),
 		"its dampening lowers the top speed, and its jump carries over", "%.3f" % mud.max_speed_scale)
+	_check(mud.fall_damping == 0.0 and DotFpsSurface.make(&"snow").describe()["fall_damping"] == 0.0,
+		"a surface absorbs no fall by default, and describe() says so")
+	var hay := DotFpsSurface.make(&"hay")
+	hay.fall_damping = 0.7
+	_check(is_equal_approx(hay.describe()["fall_damping"], 0.7), "a surface can say it takes part of a fall")
 	var ice_physics := FakePhysicsSurface.new()
 	ice_physics.id = &"ice"
 	ice_physics.traction = 0.1

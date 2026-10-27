@@ -64,6 +64,10 @@ extends Resource
 ## [code]stop_speed[/code].
 @export var push: Vector3 = Vector3.ZERO
 
+## How much of a hard landing this surface takes away: 0 none, 1 all (snow, a mattress, a
+## hay bale). Read by dot-combat's DotFallDamage; the controller itself ignores it.
+@export_range(0.0, 1.0, 0.01) var fall_damping: float = 0.0
+
 @export_group("Presentation")
 
 ## Tag a game uses to pick footstep sounds, decals or particles.
@@ -115,6 +119,7 @@ func describe() -> Dictionary:
 		"max_speed": max_speed_scale,
 		"jump": jump_scale,
 		"standable": standable,
+		"fall_damping": fall_damping,
 	}
 
 
