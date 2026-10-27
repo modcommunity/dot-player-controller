@@ -320,6 +320,12 @@ extends DotConfig
 ## Whether a sprinting player may aim down sights or reload (read by weapon code through [member DotFpsState.sprinting]).
 @export var sprint_blocks_aim: bool = false
 
+## Whether taking damage drops the player out of the sights ([DotFpsAimBreak]).
+@export var unscope_on_hit: bool = true
+
+## Seconds the sights stay refused after a hit.
+@export_range(0.0, 3.0, 0.05) var unscope_hit_time: float = 0.4
+
 ## Whether the sprint button toggles instead of being held (read by [DotFpsSampler]; stopping clears it).
 @export var sprint_toggle: bool = false
 @export var can_walk: bool = true
@@ -616,6 +622,8 @@ const _CVARS := {
 	"sv_sprint_loadspeed": ["sprint_load_speed", 1.0, "How strongly carry load cuts the sprint bonus; 0 off"],
 	"sv_sprint_loaddrain": ["sprint_load_drain", 1.0, "How strongly carry load raises the stamina drain; 0 off"],
 	"sv_sprint_noaim": ["sprint_blocks_aim", 1.0, "1 stops aiming and reloading while sprinting"],
+	"sv_unscope_hit": ["unscope_on_hit", 1.0, "1 drops a player out of the sights when hit"],
+	"sv_unscope_hittime": ["unscope_hit_time", 1.0, "Seconds the sights stay refused after a hit"],
 	"sv_sprint_toggle": ["sprint_toggle", 1.0, "1 makes the sprint key a toggle (stopping ends it)"],
 	"sv_jumpheight": ["jump_height", SOURCE_UNIT, "Apex of a standing jump, units"],
 	"sv_ducktime": ["crouch_transition_time", 1.0, "Seconds to move between standing and crouching; 0 instant"],

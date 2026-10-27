@@ -19,7 +19,7 @@ signal changed
 const CVARS: PackedStringArray = [
 	"sv_sprint", "sv_sprintspeed", "sv_stamina", "sv_stamina_drain", "sv_stamina_recover",
 	"sv_stamina_resume", "sv_stamina_delay", "sv_sprint_loadspeed", "sv_sprint_loaddrain",
-	"sv_sprint_noaim", "sv_sprint_toggle",
+	"sv_sprint_noaim", "sv_sprint_toggle", "sv_unscope_hit", "sv_unscope_hittime",
 ]
 
 ## Holds the values; a [DotFpsTunables] already knows every unit and clamp.
