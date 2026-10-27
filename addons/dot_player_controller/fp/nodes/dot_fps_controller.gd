@@ -1289,5 +1289,6 @@ func motion() -> Dictionary:
 		# ceiling is no longer holding it and is still crouched, and an animation driver
 		# reading the flag would stand them up inside the ceiling.
 		"crouched": state.crouch_fraction > 0.5,
+		"sliding": state.is_sliding(),
 		"facing": deg_to_rad(state.yaw),
 	}
