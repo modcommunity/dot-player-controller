@@ -24,7 +24,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 380
+const CHECKS := 384
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -2870,6 +2870,25 @@ func _test_wall_run_on_jump() -> void:
 	away.velocity = Vector3(5.0, 0.0, -5.0)
 	turn_motor.simulate(away, _command(1.0, 0.0, 135.0, jump), STEP)
 	_check(away.is_wall_running() and turn_motor.view_turn == 0.0, "a view looking the other way is not turned")
+
+	# Whatever the approach angle, the view ends parallel to the wall (yaw 0 runs down -Z).
+	var at := _wall_tunables()
+	at.wall_run_auto = true
+	at.wall_run_turn_view = true
+	at.wall_run_jump_min_speed = 5.0
+	at.wall_run_jump_max_angle = 75.0
+	for deg: float in [10.0, 25.0, 45.0, 60.0]:
+		var align_motor := _motor(at, _wall_world())
+		var aligned := _beside_wall(2.0, 1.0)
+		var rad := deg_to_rad(deg)
+		aligned.velocity = Vector3(sin(rad), 0.0, -cos(rad)) * 10.0
+		var yaw: float = -deg
+		align_motor.simulate(aligned, _command(1.0, 0.0, yaw), STEP)
+		yaw += align_motor.view_turn
+		align_motor.simulate(aligned, _command(1.0, 0.0, yaw), STEP)
+		_check(aligned.is_wall_running() and absf(yaw) < 0.5 and absf(aligned.velocity.x) < 0.2,
+			"attaching %d degrees off the wall settles the view and velocity parallel to it" % int(deg),
+			"yaw %.2f vel %s" % [yaw, aligned.velocity])
 
 	var held := 0
 	for _i in range(8):
