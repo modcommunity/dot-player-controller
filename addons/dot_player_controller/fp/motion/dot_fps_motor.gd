@@ -841,7 +841,7 @@ func _categorise_ground_settled(state: DotFpsState) -> bool:
 	var centre := _capsule_centre(state.position, height)
 	var probe := Vector3.DOWN * (tunables.skin_width * 2.0 + 0.02)
 
-	var hit := _sweep(centre, probe, height)
+	var hit := _ground_probe(centre, probe, height)
 	var floor_normal := _standable_normal(state, hit)
 
 	# [b]A face too steep to stand on is asked again, in quarters[/b] (`[steep-climb-1]`).
@@ -1918,6 +1918,99 @@ func _clamp_velocity(state: DotFpsState) -> void:
 ## classic quarter-boxes do: a quarter that poked outside would start its sweep inside
 ## the very face that made it necessary, or find floor the player is not over.
 func _quadrant_floor(centre: Vector3, probe: Vector3, height: float) -> DotFpsBody.Hit:
+	if not static_world:
+		return _quadrant_floor_probe(centre, probe, height)
+	# The end-of-tick check and the next tick's first check ask this at one position, and in a
+	# world nothing moves in the answer is the same: 4 sweeps, up to 16 queries, saved.
+	var radius := tunables.radius
+	var mask := body.collision_mask
+	if (_qf_valid and centre == _qf_centre and probe == _qf_probe and height == _qf_height
+			and radius == _qf_radius and mask == _qf_mask):
+		return _copy_hit(_qf_hit) if _qf_hit != null else DotFpsBody.Hit.new()
+	var found := _quadrant_floor_probe(centre, probe, height)
+	_qf_valid = true
+	_qf_centre = centre
+	_qf_probe = probe
+	_qf_height = height
+	_qf_radius = radius
+	_qf_mask = mask
+	_qf_hit = _copy_hit(found) if found.hit else null
+	return found
+
+
+## The ground check's sweep, remembered across ticks under [member static_world] like
+## [method _quadrant_floor]: the last check of a tick and the first of the next are one question.
+func _ground_probe(centre: Vector3, probe: Vector3, height: float) -> DotFpsBody.Hit:
+	if not static_world:
+		return _sweep(centre, probe, height)
+	var radius := tunables.radius
+	var mask := body.collision_mask
+	if (_gp_valid and centre == _gp_centre and probe == _gp_probe and height == _gp_height
+			and radius == _gp_radius and mask == _gp_mask and tunables.skin_width == _gp_skin):
+		return _copy_hit(_gp_hit)
+	var found := _sweep(centre, probe, height)
+	_gp_valid = true
+	_gp_centre = centre
+	_gp_probe = probe
+	_gp_height = height
+	_gp_radius = radius
+	_gp_mask = mask
+	_gp_skin = tunables.skin_width
+	_gp_hit = _copy_hit(found)
+	return found
+
+
+var _gp_valid := false
+var _gp_centre := Vector3.ZERO
+var _gp_probe := Vector3.ZERO
+var _gp_height := 0.0
+var _gp_radius := 0.0
+var _gp_mask := 0
+var _gp_skin := 0.0
+var _gp_hit: DotFpsBody.Hit = null
+
+
+## True when nothing the body queries moves between ticks (no platforms, doors or hulls), so
+## the quarter probes may be reused across ticks. Off by default: a moving world makes a
+## remembered answer wrong. Call [method invalidate_probe_cache] when the level changes.
+var static_world := false:
+	set(value):
+		if value != static_world:
+			_qf_valid = false
+			_gp_valid = false
+			_en_valid = false
+		static_world = value
+
+
+## Forgets the remembered quarter probe; for a level change under a [member static_world] motor.
+func invalidate_probe_cache() -> void:
+	_qf_valid = false
+	_gp_valid = false
+	_en_valid = false
+
+
+func _copy_hit(from: DotFpsBody.Hit) -> DotFpsBody.Hit:
+	var out := DotFpsBody.Hit.new()
+	out.hit = from.hit
+	out.fraction = from.fraction
+	out.normal = from.normal
+	out.point = from.point
+	out.collider_id = from.collider_id
+	out.depth = from.depth
+	return out
+
+
+var _qf_valid := false
+var _qf_found := false
+var _qf_centre := Vector3.ZERO
+var _qf_probe := Vector3.ZERO
+var _qf_height := 0.0
+var _qf_radius := 0.0
+var _qf_mask := 0
+var _qf_hit: DotFpsBody.Hit = null
+
+
+func _quadrant_floor_probe(centre: Vector3, probe: Vector3, height: float) -> DotFpsBody.Hit:
 	var half := tunables.radius * 0.5
 	for quarter: Vector2 in QUADRANTS:
 		var offset := Vector3(quarter.x, 0.0, quarter.y).normalized() * half
@@ -2680,7 +2773,29 @@ func _standable_normal(state: DotFpsState, hit: DotFpsBody.Hit) -> Vector3:
 	if horizontal.dot(toward) <= 0.0:
 		return Vector3.ZERO
 
-	return _edge_floor_normal(hit, state.position, state.position.y)
+	if not static_world:
+		return _edge_floor_normal(hit, state.position, state.position.y)
+	# Remembered like [method _ground_probe]: the same landing point from the same feet.
+	var mask := body.collision_mask
+	if (_en_valid and hit.point == _en_point and state.position == _en_feet
+			and mask == _en_mask and tunables.radius == _en_radius):
+		return _en_normal
+	var found := _edge_floor_normal(hit, state.position, state.position.y)
+	_en_valid = true
+	_en_point = hit.point
+	_en_feet = state.position
+	_en_mask = mask
+	_en_radius = tunables.radius
+	_en_normal = found
+	return found
+
+
+var _en_valid := false
+var _en_point := Vector3.ZERO
+var _en_feet := Vector3.ZERO
+var _en_mask := 0
+var _en_radius := 0.0
+var _en_normal := Vector3.ZERO
 
 
 ## Pulls the player back down onto ground they have just walked off the edge of.

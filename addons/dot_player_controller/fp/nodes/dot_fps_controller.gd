@@ -120,6 +120,9 @@ enum Drive {
 ## different rates reach different answers from the same commands.
 @export_range(1, 240, 1) var tick_rate: int = 60
 
+## [member DotFpsMotor.static_world]: nothing the body queries moves between ticks. Off by default.
+@export var static_world: bool = false
+
 ## Register in [DotRegistry] under [constant SERVICE] so other systems can find this.
 ##
 ## Off by default: registering is a global name, and a scene with several players
@@ -333,6 +336,7 @@ func setup() -> DotResult:
 	body = _make_body()
 	motor = DotFpsMotor.new(tunables, body)
 	motor.set_tick_rate(tick_rate)
+	motor.static_world = static_world
 	DotFpsNetSync.set_tick_rate(tick_rate)
 
 	if surfaces != null:

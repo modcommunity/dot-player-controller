@@ -27,13 +27,13 @@ extends Node3D
 ## are on can tell you so.
 
 const STEP := 1.0 / 128.0
-const CHECKS := 43
+const CHECKS := 46
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 10
+const SECTIONS := 11
 
 var _passed := 0
 var _failed := 0
@@ -166,6 +166,7 @@ func _run() -> void:
 	await _test_a_body_falls_out_of_an_acute_corner()
 	await _test_a_simulator_is_the_motor()
 	await _test_a_surfer_rides_the_crease_of_two_slabs()
+	await _test_static_world_changes_no_result()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -850,4 +851,49 @@ func _test_a_surfer_rides_the_crease_of_two_slabs() -> void:
 		"%d of %d: %s" % [frozen_rides.size(), rides, ", ".join(frozen_rides.slice(0, 4))])
 	_check(short_rides.is_empty(), "every start covers the crease at its speed (98%% of %.2f m in %d ticks)" % [free, ticks],
 		"shortest %.2f m; %s" % [shortest, ", ".join(short_rides.slice(0, 4))])
+	_done()
+
+
+## Replays one recorded input log (a fixed generator: walk, strafe, turn, jump, crouch) over a
+## steep ramp beside a floor, once as the motor always answers and once with
+## [member DotFpsMotor.static_world] reusing probes across ticks. The two must end on the same
+## bits at every tick, and the second must ask the physics server fewer questions.
+func _replay_log(static_world: bool) -> Array:
+	var body := DotFpsPhysicsBody.for_node(self)
+	var motor := DotFpsMotor.new(_tunables(), body)
+	motor.static_world = static_world
+	var s := _on_ramp(_normal_for(60.0), 6.0, 0.05)
+	s.velocity = Vector3(6.0, 0.0, 0.0)
+	var seed := 12345
+	var command := DotFpsCommand.new()
+	var digest := 0
+	for tick in range(1200):
+		seed = (seed * 1103515245 + 12345) & 0x7fffffff
+		if tick % 8 == 0:
+			command.move = Vector2(float((seed >> 3) % 3 - 1), float((seed >> 5) % 3 - 1))
+			command.yaw = float((seed >> 7) % 628) * 0.01 - 3.14
+		command.set_button(DotFpsCommand.BUTTON_JUMP, (seed >> 11) % 40 == 0)
+		motor.simulate(s, command, STEP)
+		digest = hash([digest, s.position, s.velocity, s.mode, s.ground_normal])
+	return [s.position, s.velocity, s.mode, digest, body.query_count]
+
+
+func _test_static_world_changes_no_result() -> void:
+	_section("a static world's reused probes change no result, and ask less")
+
+	await _clear()
+	_add_ramp(60.0)
+	_add_floor(-2.0)
+	await _settle()
+
+	var plain := _replay_log(false)
+	var reused := _replay_log(true)
+
+	_check(plain[0] == reused[0] and plain[1] == reused[1] and plain[2] == reused[2],
+		"the replayed log ends on the same position, velocity and mode, bit for bit",
+		"%s vs %s" % [plain[0], reused[0]])
+	_check(plain[3] == reused[3], "and every tick on the way is the same",
+		"%d vs %d" % [plain[3], reused[3]])
+	_check(reused[4] < plain[4], "with fewer physics queries",
+		"%d vs %d" % [reused[4], plain[4]])
 	_done()

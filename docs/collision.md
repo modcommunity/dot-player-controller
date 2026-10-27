@@ -31,6 +31,8 @@ A grounded walker's tick asks the ground question three times: at the start, ins
 
 **Nothing is reused across ticks**: the world moves between them (game-g2gfast sinks blocks per player), so a ground answer from the last tick is a different question. And no query is skipped because it "looks like" it cannot matter: the quarter probes cannot be ruled out without asking the world, because the floor they find is exactly the one the whole capsule's probe cannot reach.
 
+**Unless the game says the world is static.** `DotFpsController.static_world` (`DotFpsMotor.static_world`, off by default) lets the motor reuse the ground probe, the quarter probes and the edge-floor probe across ticks, keyed on position, size, mask and skin: the last ground check of a tick and the first of the next are one question. It is exact only while nothing the body queries moves (no platforms, doors, props or hulls), so the game owns the flag and calls `invalidate_probe_cache()` on a level change. game-g2gfast sets it per tick from `G2GGame.world_is_static()`. surf_physics_selftest replays one recorded input log both ways and compares every tick's bits; load_probe `LOAD_HASH=1` does the same for 32 players. surf_mesa 32 at 128 Hz: game half 5.9 to 4.75 ms/tick.
+
 ## Embedded in a floor
 
 A swept probe that starts in solid answers "no collision", which reads as "nothing below me", so a player embedded by a fraction of a millimetre looks airborne, falls, embeds further, and leaves the level. `_categorise_ground` asks the question a sweep cannot (`body.overlaps`) and keeps a player who was grounded last tick grounded.
