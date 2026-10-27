@@ -63,7 +63,9 @@ func bind_cvars(add: Callable, flags: int = 0) -> Array:
 			continue
 		var cv := made_cvar as Object
 		if cv.has_signal(&"changed"):
-			cv.connect(&"changed", _on_cvar_changed.bind(cvar_name))
+			var on_change := _on_cvar_changed.bind(cvar_name)
+			if not cv.is_connected(&"changed", on_change):
+				cv.connect(&"changed", on_change)
 		if cv.has_method(&"get_string"):
 			var held := String(cv.call(&"get_string"))
 			if held != default_text and not _same_number(held, default_text):

@@ -134,7 +134,9 @@ func bind_cvars(add: Callable, flags: int = 0) -> Array:
 		if cv.has_method(&"with_range"):
 			cv.call(&"with_range", float(spec["min"]), float(spec["max"]))
 		if cv.has_signal(&"changed"):
-			cv.connect(&"changed", _on_cvar_changed.bind(cvar_name))
+			var on_change := _on_cvar_changed.bind(cvar_name)
+			if not cv.is_connected(&"changed", on_change):
+				cv.connect(&"changed", on_change)
 		if cv.has_method(&"get_string"):
 			var _applied := set_cvar(cvar_name, String(cv.call(&"get_string")))
 		made.append(cv)
