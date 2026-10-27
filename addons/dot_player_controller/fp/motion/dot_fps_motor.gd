@@ -54,6 +54,10 @@ const LEAVING_SPEED := 0.1
 var tunables: DotFpsTunables
 var body: DotFpsBody
 
+## Carried load, 0 empty to 1 at capacity. The game sets it on both machines (the server from its
+## carry rules, the client from the same replicated figure); it scales the sprint bonus and drain.
+var load_fraction: float = 0.0
+
 ## Surfaces this motor knows about. Null means every surface behaves the same.
 var surfaces: DotFpsSurfaceSet = null
 
@@ -587,6 +591,40 @@ func _advance_timers(
 	state.launch_cooldown_left = maxf(state.launch_cooldown_left - delta, 0.0)
 	state.dash_cooldown_left = maxf(state.dash_cooldown_left - delta, 0.0)
 	state.wall_run_cooldown_left = maxf(state.wall_run_cooldown_left - delta, 0.0)
+	_tick_stamina(state, command, delta)
+
+
+## Decides whether this tick sprints and moves stamina. Crouch and walk win over sprint, as in speed_for.
+func _tick_stamina(state: DotFpsState, command: DotFpsCommand, delta: float) -> void:
+	var t := tunables
+	var wants: bool = (
+		t.can_sprint and (command.buttons & DotFpsCommand.BUTTON_SPRINT) != 0
+		and command.move.length_squared() > 0.0001 and not _effects.deny_move
+		and not (t.can_crouch and (command.buttons & DotFpsCommand.BUTTON_CROUCH))
+		and not (t.can_walk and (command.buttons & DotFpsCommand.BUTTON_WALK))
+	)
+	if not t.stamina_enabled:
+		state.sprinting = wants
+		state.stamina = 1.0
+		state.stamina_exhausted = false
+		state.stamina_delay_left = 0.0
+		return
+
+	state.sprinting = wants and not state.stamina_exhausted and state.stamina > 0.0
+	if state.sprinting:
+		var load := clampf(load_fraction, 0.0, 1.0)
+		state.stamina -= t.stamina_drain * (1.0 + load * t.sprint_load_drain) * delta
+		if state.stamina <= 0.0:
+			state.stamina = 0.0
+			state.stamina_exhausted = true
+			state.stamina_delay_left = t.stamina_exhaust_delay
+		return
+
+	state.stamina_delay_left = maxf(state.stamina_delay_left - delta, 0.0)
+	if state.stamina_delay_left <= 0.0:
+		state.stamina = minf(state.stamina + t.stamina_recover * delta, 1.0)
+	if state.stamina_exhausted and state.stamina >= t.stamina_resume_at and state.stamina_delay_left <= 0.0:
+		state.stamina_exhausted = false
 
 
 # --- Noclip ----------------------------------------------------------------
@@ -1766,7 +1804,8 @@ func _apply_wish_move(
 	if magnitude <= 0.0:
 		return
 
-	var target := tunables.speed_for(command.buttons) * magnitude * _effects.max_speed
+	var buttons := command.buttons if state.sprinting else command.buttons & ~DotFpsCommand.BUTTON_SPRINT
+	var target := tunables.speed_for(buttons, load_fraction) * magnitude * _effects.max_speed
 
 	if command.move.y < 0.0:
 		target *= tunables.backward_speed_scale

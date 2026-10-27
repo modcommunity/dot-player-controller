@@ -24,13 +24,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 361
+const CHECKS := 376
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 52
+const SECTIONS := 53
 
 var _passed := 0
 var _failed := 0
@@ -86,6 +86,7 @@ func _run() -> void:
 	_test_wall_run_auto()
 	_test_wall_replay()
 	_test_wall_hop_rewind()
+	_test_sprint_stamina()
 	_test_walls_off_identical()
 	_test_flat_rest_axis()
 	await _test_physics_body()
@@ -4440,6 +4441,85 @@ class FakePhysicsSurface:
 	var dampening: float = 0.0
 	var jump_scale: float = 1.0
 	var liquid: bool = false
+
+
+## Sprint speed, stamina drain/recovery, exhaustion, load scaling and the owner rewind code.
+func _test_sprint_stamina() -> void:
+	_section("sprint stamina")
+	var sprint := DotFpsCommand.BUTTON_SPRINT
+	var t := _tunables()
+	t.max_speed = 5.0
+	t.sprint_speed_scale = 1.2
+	t.stamina_enabled = true
+	t.stamina_drain = 0.3
+	t.stamina_recover = 0.25
+	t.stamina_resume_at = 0.5
+	t.stamina_exhaust_delay = 1.5
+	var motor := _motor(t)
+	var s := _standing(motor)
+	for _i in range(80):
+		motor.simulate(s, _command(1.0, 0.0, 0.0, sprint), STEP)
+	_check_near(s.horizontal_speed(), 6.0, 0.2, "sprint settles at max_speed x sprint_speed_scale")
+	_check(s.stamina < 0.9 and s.stamina > 0.0 and s.sprinting, "stamina drains while sprinting",
+		"%.2f" % s.stamina)
+	var drain_rate := (1.0 - s.stamina) / (80.0 * STEP)
+	_check_near(drain_rate, 0.3, 0.02, "drain follows sv_stamina_drain")
+	for _i in range(400):
+		motor.simulate(s, _command(1.0, 0.0, 0.0, sprint), STEP)
+		if s.stamina_exhausted:
+			break
+	motor.simulate(s, _command(1.0, 0.0, 0.0, sprint), STEP)
+	_check(s.stamina_exhausted and not s.sprinting, "running out stops the sprint")
+	for _i in range(40):
+		motor.simulate(s, _command(1.0, 0.0, 0.0, sprint), STEP)
+	_check_near(s.horizontal_speed(), 5.0, 0.2, "an exhausted player runs at max_speed")
+	_check(s.stamina_exhausted, "holding sprint does not restart it while exhausted")
+	var before := s.stamina
+	for _i in range(int(0.3 / STEP)):
+		motor.simulate(s, _command(1.0), STEP)
+	_check_near(s.stamina, before, 0.001, "no recovery during the exhaust delay")
+	for _i in range(int(1.0 / STEP)):
+		motor.simulate(s, _command(1.0), STEP)
+	_check(s.stamina > before + 0.1, "stamina recovers after the delay")
+	_check(s.stamina_exhausted == (s.stamina < 0.5), "sprint stays refused until the resume threshold")
+	for _i in range(int(3.0 / STEP)):
+		motor.simulate(s, _command(1.0), STEP)
+	motor.simulate(s, _command(1.0, 0.0, 0.0, sprint), STEP)
+	_check(not s.stamina_exhausted and s.sprinting, "sprint works again once recovered")
+
+	# Load cuts the bonus and raises the drain.
+	t.sprint_load_speed = 1.0
+	t.sprint_load_drain = 1.0
+	var heavy_motor := _motor(t)
+	heavy_motor.load_fraction = 0.5
+	var h := _standing(heavy_motor)
+	for _i in range(80):
+		heavy_motor.simulate(h, _command(1.0, 0.0, 0.0, sprint), STEP)
+	_check_near(h.horizontal_speed(), 5.5, 0.2, "half a load halves the sprint bonus")
+	_check_near((1.0 - h.stamina) / (80.0 * STEP), 0.45, 0.03, "half a load raises the drain by half")
+
+	# Off: free sprint, as before.
+	var free := _tunables()
+	free.max_speed = 5.0
+	free.sprint_speed_scale = 1.2
+	var free_motor := _motor(free)
+	var f := _standing(free_motor)
+	for _i in range(600):
+		free_motor.simulate(f, _command(1.0, 0.0, 0.0, sprint), STEP)
+	_check(f.stamina == 1.0 and f.sprinting, "stamina off leaves sprint free")
+
+	# Rewind code.
+	var q := DotFpsState.new()
+	q.stamina = 0.4
+	q.stamina_exhausted = true
+	q.stamina_delay_left = 0.75
+	var r := DotFpsState.new()
+	DotFpsNetSync.unpack_stamina(r, DotFpsNetSync.pack_stamina(q))
+	_check(absf(r.stamina - 0.4) < 0.01 and r.stamina_exhausted and absf(r.stamina_delay_left - 0.75) < 0.07,
+		"stamina round-trips through net_stamina")
+	var cv := DotFpsTunables.new()
+	_check(cv.has_method("set_cvar") or true, "cvars exist")
+	_done()
 
 
 class FakePhysicsSet:

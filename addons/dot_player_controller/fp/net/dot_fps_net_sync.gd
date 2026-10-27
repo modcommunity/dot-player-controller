@@ -364,6 +364,8 @@ static func pull(state: DotFpsState, target: Variant) -> void:
 	target.set(&"net_modifiers", pack_modifiers(state))
 	if &"net_timers" in target:
 		target.set(&"net_timers", pack_timers(state))
+	if &"net_stamina" in target:
+		target.set(&"net_stamina", pack_stamina(state))
 
 
 ## The jump timers (coyote, jump buffer, cooldown) in 1/7680 s, which is a whole number of
@@ -379,6 +381,28 @@ const TIMERS_BITS := 4 * JUMP_TIMER_BITS
 static func rewind_specs() -> Array[Dictionary]:
 	return [{"property": &"net_timers", "type": "UINT", "bits": TIMERS_BITS,
 		"interpolated": false, "owner_only": true, "source": "jump timers"}]
+
+
+## Owner-only stamina for a predicting client's rewind: opt in with [code]var net_stamina: int[/code]
+## and replicate [method stamina_specs]. 7 bits of stamina, 1 exhausted, 6 of the refill delay (1/16 s).
+const STAMINA_BITS := 14
+
+
+static func stamina_specs() -> Array[Dictionary]:
+	return [{"property": &"net_stamina", "type": "UINT", "bits": STAMINA_BITS,
+		"interpolated": false, "owner_only": true, "source": "stamina"}]
+
+
+static func pack_stamina(state: DotFpsState) -> int:
+	return (roundi(clampf(state.stamina, 0.0, 1.0) * 127.0)
+		| (1 if state.stamina_exhausted else 0) << 7
+		| clampi(roundi(state.stamina_delay_left * 16.0), 0, 63) << 8)
+
+
+static func unpack_stamina(state: DotFpsState, code: int) -> void:
+	state.stamina = float(code & 127) / 127.0
+	state.stamina_exhausted = (code >> 7) & 1 == 1
+	state.stamina_delay_left = float((code >> 8) & 63) / 16.0
 
 
 static func pack_timers(state: DotFpsState) -> int:
@@ -425,6 +449,9 @@ static func push(source: Variant, state: DotFpsState) -> void:
 	var timers: Variant = source.get(&"net_timers")
 	if timers != null:
 		unpack_timers(state, int(timers))
+	var stamina: Variant = source.get(&"net_stamina")
+	if stamina != null:
+		unpack_stamina(state, int(stamina))
 
 
 # --- Configuration agreement ----------------------------------------------

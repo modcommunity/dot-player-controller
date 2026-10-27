@@ -293,6 +293,32 @@ extends DotConfig
 ## Whether the crouch button does anything.
 @export var can_crouch: bool = true
 @export var can_sprint: bool = true
+
+@export_group("Sprint stamina")
+
+## Whether sprinting drains [member DotFpsState.stamina] and stops when it is empty. Off keeps sprint free.
+@export var stamina_enabled: bool = false
+
+## Stamina (a 0 to 1 fraction) lost per second of sprinting while moving.
+@export_range(0.0, 10.0, 0.01) var stamina_drain: float = 0.2
+
+## Stamina regained per second when not sprinting.
+@export_range(0.0, 10.0, 0.01) var stamina_recover: float = 0.15
+
+## After running out, sprint refuses until stamina is back to this fraction.
+@export_range(0.0, 1.0, 0.01) var stamina_resume_at: float = 0.3
+
+## Seconds after running out before stamina starts to refill.
+@export_range(0.0, 3.5, 0.05) var stamina_exhaust_delay: float = 1.0
+
+## How strongly the carried load (0 empty to 1 at capacity, set on the motor) cuts the sprint bonus; 0 off.
+@export_range(0.0, 2.0, 0.01) var sprint_load_speed: float = 0.0
+
+## How strongly the carried load raises the stamina drain; 0 off.
+@export_range(0.0, 4.0, 0.01) var sprint_load_drain: float = 0.0
+
+## Whether a sprinting player may aim down sights or reload (read by weapon code through [member DotFpsState.sprinting]).
+@export var sprint_blocks_aim: bool = false
 @export var can_walk: bool = true
 @export var can_jump: bool = true
 
@@ -577,6 +603,16 @@ const _CVARS := {
 	"sv_runspeed": ["max_speed", SOURCE_UNIT, "Running speed, units/s"],
 	"sv_crouchspeed": ["crouch_speed_scale", 1.0, "Crouch speed, fraction of run"],
 	"sv_walkspeed": ["walk_speed_scale", 1.0, "Walk speed, fraction of run"],
+	"sv_sprint": ["can_sprint", 1.0, "1 lets the sprint button work"],
+	"sv_sprintspeed": ["sprint_speed_scale", 1.0, "Sprint speed, fraction of run"],
+	"sv_stamina": ["stamina_enabled", 1.0, "1 makes sprinting drain stamina and stop when it is empty"],
+	"sv_stamina_drain": ["stamina_drain", 1.0, "Stamina fraction lost per second of sprinting"],
+	"sv_stamina_recover": ["stamina_recover", 1.0, "Stamina fraction regained per second"],
+	"sv_stamina_resume": ["stamina_resume_at", 1.0, "Stamina fraction an exhausted player needs before sprinting again"],
+	"sv_stamina_delay": ["stamina_exhaust_delay", 1.0, "Seconds after running out before stamina refills"],
+	"sv_sprint_loadspeed": ["sprint_load_speed", 1.0, "How strongly carry load cuts the sprint bonus; 0 off"],
+	"sv_sprint_loaddrain": ["sprint_load_drain", 1.0, "How strongly carry load raises the stamina drain; 0 off"],
+	"sv_sprint_noaim": ["sprint_blocks_aim", 1.0, "1 stops aiming and reloading while sprinting"],
 	"sv_jumpheight": ["jump_height", SOURCE_UNIT, "Apex of a standing jump, units"],
 	"sv_ducktime": ["crouch_transition_time", 1.0, "Seconds to move between standing and crouching; 0 instant"],
 	"sv_airduck": ["instant_air_crouch", 1.0, "1 lets a crouch in the air pull the feet up at once (crouch-jump)"],
@@ -759,7 +795,7 @@ func height_at(crouch_fraction: float) -> float:
 ##
 ## Most restrictive wins. See [member crouch_speed_scale] for why this is derived
 ## rather than stored.
-func speed_for(buttons: int) -> float:
+func speed_for(buttons: int, load_fraction: float = 0.0) -> float:
 	var scale := 1.0
 
 	if can_crouch and (buttons & DotFpsCommand.BUTTON_CROUCH):
@@ -767,7 +803,7 @@ func speed_for(buttons: int) -> float:
 	elif can_walk and (buttons & DotFpsCommand.BUTTON_WALK):
 		scale = walk_speed_scale
 	elif can_sprint and (buttons & DotFpsCommand.BUTTON_SPRINT):
-		scale = sprint_speed_scale
+		scale = 1.0 + (sprint_speed_scale - 1.0) * (1.0 - clampf(load_fraction * sprint_load_speed, 0.0, 1.0))
 
 	var wish := max_speed * scale
 	return minf(wish, max_wish_speed) if max_wish_speed > 0.0 else wish

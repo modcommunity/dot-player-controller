@@ -141,6 +141,18 @@ var dash_cooldown_left: float = 0.0
 ## Seconds before another wall run may start ([member DotFpsTunables.wall_run_cooldown]).
 var wall_run_cooldown_left: float = 0.0
 
+## Sprint stamina, 0 empty to 1 full. Held in the state so a rewind restores it (see [DotFpsNetSync.pack_stamina]).
+var stamina: float = 1.0
+
+## Set when stamina ran out; sprint refuses until it recovers to [member DotFpsTunables.stamina_resume_at].
+var stamina_exhausted: bool = false
+
+## Seconds before stamina starts to refill after running out.
+var stamina_delay_left: float = 0.0
+
+## Whether the last tick moved at sprint speed. Read by HUDs, spread and the aim/reload rules.
+var sprinting: bool = false
+
 ## Seconds into the current wall run, or -1.0 when not running.
 ##
 ## [b]In the state and in the snapshot[/b], like [member slide_time]: a run holds gravity
@@ -241,6 +253,10 @@ func copy_from(other: DotFpsState) -> void:
 	launch_cooldown_left = other.launch_cooldown_left
 	dash_cooldown_left = other.dash_cooldown_left
 	wall_run_cooldown_left = other.wall_run_cooldown_left
+	stamina = other.stamina
+	stamina_exhausted = other.stamina_exhausted
+	stamina_delay_left = other.stamina_delay_left
+	sprinting = other.sprinting
 	wall_run_time = other.wall_run_time
 	wall_run_spent = other.wall_run_spent
 	wall_jump_count = other.wall_jump_count
@@ -287,6 +303,9 @@ func equals(other: DotFpsState, epsilon: float = 0.0001) -> bool:
 		and absf(launch_cooldown_left - other.launch_cooldown_left) <= epsilon
 		and absf(dash_cooldown_left - other.dash_cooldown_left) <= epsilon
 		and absf(wall_run_cooldown_left - other.wall_run_cooldown_left) <= epsilon
+		and absf(stamina - other.stamina) <= 0.01
+		and stamina_exhausted == other.stamina_exhausted
+		and sprinting == other.sprinting
 		and absf(wall_run_time - other.wall_run_time) <= epsilon
 		and wall_run_spent == other.wall_run_spent
 		and wall_jump_count == other.wall_jump_count
