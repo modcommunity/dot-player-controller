@@ -88,6 +88,9 @@ var landing_recovery: float = 0.28
 ## Degrees the view nods down at the deepest of a full dip, following the dip's own curve.
 var landing_pitch: float = 1.5
 
+## Multiplies the whole landing kick (dip and nod): 0 is none, 1 the tuned feel. A client setting (`cl_landing_kick`).
+var landing_strength: float = 1.0
+
 
 ## Extra degrees of field of view at [member fov_speed_reference]. 0 disables the speed part.
 var fov_speed_gain: float = 15.0
@@ -208,7 +211,7 @@ func _advance_dip(delta: float) -> void:
 ## A kick to the eye's velocity, sized so the dip peaks at [member landing_dip] times the
 ## impact's weight. A softer landing during the recovery of a harder one never lessens it.
 func note_landing(impact: float) -> void:
-	if landing_dip <= 0.0 or landing_recovery <= 0.0:
+	if landing_dip <= 0.0 or landing_recovery <= 0.0 or landing_strength <= 0.0:
 		return
 	var span := landing_reference_speed - landing_min_speed
 	if span <= 0.0:
@@ -217,7 +220,7 @@ func note_landing(impact: float) -> void:
 	if weight <= 0.0:
 		return
 	# Peak of x(t) = v0 t e^(-w t) is v0 / (w e), at t = 1 / w.
-	var kick := -landing_dip * weight * _omega() * exp(1.0)
+	var kick := -landing_dip * weight * maxf(landing_strength, 0.0) * _omega() * exp(1.0)
 	_dip_velocity = minf(_dip_velocity, kick)
 
 

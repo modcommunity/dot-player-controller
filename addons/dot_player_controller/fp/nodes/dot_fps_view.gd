@@ -92,6 +92,9 @@ const CHANNEL := "fps.view"
 ## Degrees the view nods down at the deepest of a full landing dip. 0 for none.
 @export_range(0.0, 10.0, 0.1) var landing_pitch: float = 1.5
 
+## Multiplies the whole landing kick: 0 for none, 1 the tuned feel (`cl_landing_kick`).
+@export_range(0.0, 2.0, 0.05) var landing_strength: float = 1.0
+
 ## Vertical camera travel of the walk cycle, in metres. 0 disables the bob.
 ##
 ## Off by default. Head bob is divisive and a competitive game usually wants none;
@@ -345,6 +348,7 @@ func _sync_motion() -> void:
 	_motion.wall_run_fov_gain = wall_run_fov_gain
 	_motion.landing_min_speed = landing_min_speed
 	_motion.landing_pitch = landing_pitch
+	_motion.landing_strength = landing_strength
 	_motion.fov_speed_floor = fov_speed_floor
 	_motion.roll_limit = roll_limit
 

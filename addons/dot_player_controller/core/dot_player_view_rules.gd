@@ -37,6 +37,9 @@ const CVAR_FORCE := "mp_forceview"
 ## 1 draws a first-person player's own legs when they look down, 0 (the default) does not.
 const CVAR_LEGS := "mp_firstperson_legs"
 
+## Strength of the camera kick on a landing, 0 off to 2 double (client-side, default 1).
+const CVAR_LANDING_KICK := "cl_landing_kick"
+
 ## The player's choice.
 const ANY := 0
 ## First person only.
@@ -61,6 +64,16 @@ var first_person_legs: bool = false:
 		if value == first_person_legs:
 			return
 		first_person_legs = value
+		changed.emit()
+
+
+## Multiplier for the camera's landing kick (`cl_landing_kick`); the game hands it to `DotFpsView.landing_strength`.
+var landing_kick: float = 1.0:
+	set(value):
+		value = clampf(value, 0.0, 2.0)
+		if is_equal_approx(value, landing_kick):
+			return
+		landing_kick = value
 		changed.emit()
 
 
@@ -114,6 +127,8 @@ func cvar_specs() -> Array[Dictionary]:
 			"description": "Players' view: 0 their choice (the view key toggles), 1 first person only, 2 third person only"},
 		{"name": CVAR_LEGS, "value": "1" if first_person_legs else "0", "min": 0.0, "max": 1.0,
 			"description": "1 lets a first-person player see their own legs when they look down"},
+		{"name": CVAR_LANDING_KICK, "value": str(landing_kick), "min": 0.0, "max": 2.0,
+			"description": "Camera kick on a landing: 0 none, 1 normal, 2 double"},
 	]
 
 
@@ -168,6 +183,11 @@ func set_cvar(cvar_name: String, value: String) -> bool:
 			return false
 		first_person_legs = text == "1"
 		return true
+	if cvar_name == CVAR_LANDING_KICK:
+		if not text.is_valid_float():
+			return false
+		landing_kick = text.to_float()
+		return true
 	if cvar_name != CVAR_FORCE:
 		return false
 	if not text.is_valid_int() or text.to_int() < ANY or text.to_int() > THIRD_ONLY:
@@ -191,7 +211,7 @@ func shows_own_legs(game_wants: bool = false) -> bool:
 
 
 func describe() -> Dictionary:
-	return {"force_view": force_view, "may_toggle": may_toggle(), "first_person_legs": first_person_legs}
+	return {"force_view": force_view, "may_toggle": may_toggle(), "first_person_legs": first_person_legs, "landing_kick": landing_kick}
 
 
 func describe_lines() -> PackedStringArray:

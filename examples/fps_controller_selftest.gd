@@ -18,13 +18,13 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 102
+const CHECKS := 113
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 17
+const SECTIONS := 18
 
 var _passed := 0
 var _failed := 0
@@ -58,6 +58,7 @@ func _run() -> void:
 	_test_view_motion()
 	await _test_wheel_jump()
 	await _test_pair_exceptions()
+	await _test_landing_kick_and_legs()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -1454,4 +1455,70 @@ func _test_pair_exceptions() -> void:
 
 	world.queue_free()
 	await get_tree().process_frame
+	_done()
+
+
+class LegSource extends Node:
+	signal legs_broken(seconds: float, speed_scale: float)
+
+
+func _test_landing_kick_and_legs() -> void:
+	_section("landing kick strength (cl_landing_kick) and the leg slowdown modifier")
+	var frame := 1.0 / 144.0
+	var deepest: Array[float] = []
+	for strength in [0.0, 1.0, 2.0]:
+		var body := Node3D.new()
+		add_child(body)
+		var head := Node3D.new()
+		body.add_child(head)
+		var camera := Camera3D.new()
+		head.add_child(camera)
+		var view := DotFpsView.new()
+		view.strafe_roll = 0.0
+		view.slide_roll = 0.0
+		view.fov_speed_gain = 0.0
+		view.landing_strength = strength
+		body.add_child(view)
+		var motor := DotFpsMotor.new(DotFpsTunables.with_profile("legacy"), DotFpsFlatBody.with_floor(0.0))
+		var state := DotFpsState.new()
+		state.mode = DotFpsState.Mode.GROUND
+		for _i in range(30):
+			view.apply(state, motor, frame)
+		var rest := head.position.y
+		view.note_landing(10.0)
+		var low := 0.0
+		for _i in range(100):
+			view.apply(state, motor, frame)
+			low = minf(low, head.position.y - rest)
+		deepest.append(-low)
+		body.queue_free()
+	_check(deepest[0] < 1e-5, "strength 0 dips nothing", str(deepest))
+	_check(deepest[1] > 0.01, "strength 1 is the tuned dip", str(deepest))
+	_check_near(deepest[2], deepest[1] * 2.0, deepest[1] * 0.1, "strength 2 doubles it")
+
+	var rules := DotPlayerViewRules.new()
+	_check(rules.landing_kick == 1.0, "cl_landing_kick defaults to 1")
+	_check(rules.set_cvar("cl_landing_kick", "0.5") and rules.landing_kick == 0.5, "the cvar applies")
+	_check(not rules.set_cvar("cl_landing_kick", "lots") and rules.landing_kick == 0.5, "a non-number is refused")
+	var _r := rules.set_cvar("cl_landing_kick", "9")
+	_check(rules.landing_kick == 2.0, "and is clamped to 2")
+
+	var world := _make_world()
+	var controller := _make_player(world, DotFpsController.Drive.EXTERNAL)
+	await get_tree().physics_frame
+	var src := LegSource.new()
+	world.add_child(src)
+	var legs := DotFpsLegSlow.new()
+	legs.controller = DotNodeRef.of_path(controller.get_path())
+	legs.source = DotNodeRef.of_path(src.get_path())
+	legs.controller.mode = DotNodeRef.Mode.ABSOLUTE
+	legs.source.mode = DotNodeRef.Mode.ABSOLUTE
+	world.add_child(legs)
+	_check(legs.attach() and not controller.has_modifier(&"legs_broken"), "attached, and nothing is slowed until the legs break")
+	src.legs_broken.emit(3.0, 0.5)
+	_check(controller.has_modifier(&"legs_broken") and legs.breaks == 1, "the signal adds the modifier")
+	var def: DotFpsModifier = controller.motor.modifier_defs[&"legs_broken"]
+	_check(def.duration_sec == 3.0 and is_equal_approx(def.max_speed_scale, 0.5), "with the signal's seconds and scale")
+	_check(not legs.on_legs_broken(0.0, 0.5), "zero seconds does nothing")
+	world.queue_free()
 	_done()
