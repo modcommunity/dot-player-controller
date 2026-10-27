@@ -1290,5 +1290,7 @@ func motion() -> Dictionary:
 		# reading the flag would stand them up inside the ceiling.
 		"crouched": state.crouch_fraction > 0.5,
 		"sliding": state.is_sliding(),
+		"sprinting": state.sprinting,
+		"sprint_blocks_aim": tunables != null and tunables.sprint_blocks_aim,
 		"facing": deg_to_rad(state.yaw),
 	}

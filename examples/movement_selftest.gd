@@ -24,7 +24,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 376
+const CHECKS := 380
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -4519,6 +4519,42 @@ func _test_sprint_stamina() -> void:
 		"stamina round-trips through net_stamina")
 	var cv := DotFpsTunables.new()
 	_check(cv.has_method("set_cvar") or true, "cvars exist")
+
+	# DotFpsSprintRules: the group owns only sprint cvars, applies them, and reports a change once.
+	var rules := DotFpsSprintRules.new()
+	var fired := [0]
+	rules.changed.connect(func() -> void: fired[0] += 1)
+	_check(rules.set_cvar("sv_stamina_drain", "0.5") and fired[0] == 1, "sprint rules take a stamina cvar and signal")
+	var _same := rules.set_cvar("sv_stamina_drain", "0.5")
+	_check(fired[0] == 1 and not rules.set_cvar("sv_gravity", "800") and not rules.set_cvar("sv_sprint", "x"),
+		"sprint rules ignore an unchanged value, a foreign cvar and a non-number")
+	var target := DotFpsTunables.new()
+	var _noaim := rules.set_cvar("sv_sprint_noaim", "1")
+	rules.apply_to(target)
+	_check(is_equal_approx(target.stamina_drain, 0.5) and target.sprint_blocks_aim and target.gravity == DotFpsTunables.new().gravity,
+		"sprint rules apply their members and leave the rest")
+
+	# Sprint toggle: a press latches, a second press releases, standing still clears.
+	var toggled := DotFpsTunables.new()
+	toggled.sprint_toggle = true
+	var sampler := DotFpsSampler.new(toggled)
+	var press := _command(1.0, 0.0, 0.0, sprint)
+	var release := _command(1.0, 0.0, 0.0, 0)
+	var fwd := Vector2(0.0, 1.0)
+	sampler._apply_sprint_toggle(press, fwd)
+	var on_after_press := press.is_pressed(DotFpsCommand.BUTTON_SPRINT)
+	sampler._apply_sprint_toggle(release, fwd)
+	var on_after_release := release.is_pressed(DotFpsCommand.BUTTON_SPRINT)
+	var again := _command(1.0, 0.0, 0.0, sprint)
+	sampler._apply_sprint_toggle(again, fwd)
+	var off_after_second := not again.is_pressed(DotFpsCommand.BUTTON_SPRINT)
+	sampler._apply_sprint_toggle(_command(1.0, 0.0, 0.0, 0), fwd)
+	var third := _command(1.0, 0.0, 0.0, sprint)
+	sampler._apply_sprint_toggle(third, fwd)
+	var still := _command(0.0, 0.0, 0.0, 0)
+	sampler._apply_sprint_toggle(still, Vector2.ZERO)
+	_check(on_after_press and on_after_release and off_after_second and third.is_pressed(DotFpsCommand.BUTTON_SPRINT)
+		and not still.is_pressed(DotFpsCommand.BUTTON_SPRINT), "sprint toggle latches, releases and clears on stopping")
 	_done()
 
 

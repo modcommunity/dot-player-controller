@@ -81,6 +81,10 @@ var _latched: int = 0
 ## several ticks gives a press to the first of them only.
 var _polled_frame: int = -1
 
+## Sprint toggle state: the latch, and whether the key was down at the last sample.
+var _sprint_on: bool = false
+var _sprint_raw: bool = false
+
 ## Roles whose presses are latched, and their command bits.
 const _BUTTON_ROLES := {
 	"jump": DotFpsCommand.BUTTON_JUMP,
@@ -158,9 +162,25 @@ func sample(delta: float = 0.0) -> DotFpsCommand:
 		var bit := int(_BUTTON_ROLES[role])
 		command.set_button(bit, _pressed(role) or (_latched & bit) != 0 or (poll and _just_pressed(role)))
 	_latched = 0
+	_apply_sprint_toggle(command, move)
 
 	_previous_buttons = command.buttons
 	return command
+
+
+## With [member DotFpsTunables.sprint_toggle], turns the sprint key's presses into a latch that standing still clears.
+func _apply_sprint_toggle(command: DotFpsCommand, move: Vector2) -> void:
+	if not tunables.sprint_toggle:
+		_sprint_on = false
+		_sprint_raw = false
+		return
+	var raw := command.is_pressed(DotFpsCommand.BUTTON_SPRINT)
+	if raw and not _sprint_raw:
+		_sprint_on = not _sprint_on
+	_sprint_raw = raw
+	if move == Vector2.ZERO:
+		_sprint_on = false
+	command.set_button(DotFpsCommand.BUTTON_SPRINT, _sprint_on)
 
 
 ## Turns the view from the analogue look actions, if a project binds them.

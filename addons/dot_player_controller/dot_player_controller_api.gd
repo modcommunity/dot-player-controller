@@ -26,5 +26,7 @@ extends RefCounted
 # 9: DotPlayerBodyRules.pair_fn/blocks()/refresh()/apply_exceptions() and
 #    DotFpsController.set_extra_excludes(): per-pair pass-through (dot-team's mp_teamblock).
 # 10: DotFpsNetSync.rewind_specs()/pack_timers()/unpack_timers(): the jump timers in net_timers.
-const LEVEL := 10
+# 11: DotFpsSprintRules (sprint and stamina cvars as one live group), DotFpsTunables.sprint_toggle
+#    (sv_sprint_toggle, applied by DotFpsSampler), and `sprinting`/`sprint_blocks_aim` in motion().
+const LEVEL := 11
 const OLDEST := 1
