@@ -56,6 +56,9 @@ var pitch: float = 0.0
 ## the key was down when the overlay opened.
 var suspended: bool = false
 
+## Multiplies mouse look: a game sets it to the lens's field-of-view scale while zoomed, so a scope turns the view as far per mouse count as the hip does per pixel. 1 at the hip.
+var look_scale: float = 1.0
+
 ## Mouse motion accumulated since the last [method sample], in pixels.
 ##
 ## Accumulated rather than applied immediately because mouse events arrive at the
@@ -210,7 +213,7 @@ func _apply_mouse() -> void:
 	if _mouse_delta == Vector2.ZERO:
 		return
 
-	var sensitivity := tunables.mouse_sensitivity
+	var sensitivity := tunables.mouse_sensitivity * (clampf(look_scale, 0.01, 1.0) if is_finite(look_scale) else 1.0)
 
 	yaw -= _mouse_delta.x * sensitivity * tunables.mouse_sensitivity_x
 

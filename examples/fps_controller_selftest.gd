@@ -1027,6 +1027,16 @@ func _test_local_drive_accumulator() -> void:
 		"and the next command carries that view, turned once and not twice"
 	)
 
+	# Zoomed, a mouse count turns the view by the lens's scale: a x0.3 scope turns 0.3 as far.
+	var zoomed := DotFpsSampler.new(DotFpsTunables.with_profile("legacy"))
+	zoomed.tunables.mouse_sensitivity = 0.1
+	zoomed.look_scale = 0.3
+	zoomed.handle_event(motion)
+	_check(
+		absf(zoomed.look_now().x - 5.0 * 0.3 * zoomed.tunables.mouse_sensitivity_x) < 0.001,
+		"look_scale narrows mouse look by the zoom (x0.3 turns 1.5 degrees for 5)"
+	)
+
 	world.queue_free()
 	await get_tree().process_frame
 	_done()
