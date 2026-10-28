@@ -320,6 +320,12 @@ extends DotConfig
 ## Whether a sprinting player may aim down sights or reload (read by weapon code through [member DotFpsState.sprinting]).
 @export var sprint_blocks_aim: bool = false
 
+## Whether a sprinting player may fire (read by weapon code through `motion()`); false blocks the trigger while sprinting.
+@export var sprint_can_shoot: bool = true
+
+## Whether a shot fired while sprinting leaves along the lowered barrel instead of the crosshair.
+@export var sprint_shot_follows_barrel: bool = true
+
 ## Whether taking damage drops the player out of the sights ([DotFpsAimBreak]).
 @export var unscope_on_hit: bool = true
 
@@ -622,6 +628,8 @@ const _CVARS := {
 	"sv_sprint_loadspeed": ["sprint_load_speed", 1.0, "How strongly carry load cuts the sprint bonus; 0 off"],
 	"sv_sprint_loaddrain": ["sprint_load_drain", 1.0, "How strongly carry load raises the stamina drain; 0 off"],
 	"sv_sprint_noaim": ["sprint_blocks_aim", 1.0, "1 stops aiming and reloading while sprinting"],
+	"sv_sprint_shoot": ["sprint_can_shoot", 1.0, "0 blocks firing while sprinting"],
+	"sv_sprint_barrel": ["sprint_shot_follows_barrel", 1.0, "1 sends a sprinting shot along the lowered barrel, not the crosshair"],
 	"sv_unscope_hit": ["unscope_on_hit", 1.0, "1 drops a player out of the sights when hit"],
 	"sv_unscope_hittime": ["unscope_hit_time", 1.0, "Seconds the sights stay refused after a hit"],
 	"sv_sprint_toggle": ["sprint_toggle", 1.0, "1 makes the sprint key a toggle (stopping ends it)"],

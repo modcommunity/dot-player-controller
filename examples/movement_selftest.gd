@@ -24,7 +24,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 386
+const CHECKS := 388
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -4557,6 +4557,12 @@ func _test_sprint_stamina() -> void:
 	rules.apply_to(target)
 	_check(is_equal_approx(target.stamina_drain, 0.5) and target.sprint_blocks_aim and target.gravity == DotFpsTunables.new().gravity,
 		"sprint rules apply their members and leave the rest")
+	var shoot_target := DotFpsTunables.new()
+	_check(shoot_target.sprint_can_shoot and shoot_target.sprint_shot_follows_barrel, "sprinting may shoot, along the barrel, by default")
+	var _s1 := rules.set_cvar("sv_sprint_shoot", "0")
+	var _s2 := rules.set_cvar("sv_sprint_barrel", "0")
+	rules.apply_to(shoot_target)
+	_check(not shoot_target.sprint_can_shoot and not shoot_target.sprint_shot_follows_barrel, "sv_sprint_shoot and sv_sprint_barrel reach the tunables")
 
 	# Sprint toggle: a press latches, a second press releases, standing still clears.
 	var toggled := DotFpsTunables.new()

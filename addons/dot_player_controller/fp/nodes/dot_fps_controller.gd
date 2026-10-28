@@ -1296,5 +1296,7 @@ func motion() -> Dictionary:
 		"sliding": state.is_sliding(),
 		"sprinting": state.sprinting,
 		"sprint_blocks_aim": tunables != null and tunables.sprint_blocks_aim,
+		"sprint_blocks_fire": tunables != null and not tunables.sprint_can_shoot,
+		"sprint_shot_follows_barrel": tunables != null and tunables.sprint_shot_follows_barrel,
 		"facing": deg_to_rad(state.yaw),
 	}
