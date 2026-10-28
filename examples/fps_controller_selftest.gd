@@ -18,7 +18,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 
-const CHECKS := 113
+const CHECKS := 114
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
