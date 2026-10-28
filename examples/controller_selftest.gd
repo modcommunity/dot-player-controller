@@ -339,6 +339,10 @@ func _test_look() -> void:
 	)
 	look.invert_pitch = false
 
+	_check_look_vectors(look)
+
+
+func _check_look_vectors(look: DotPlayerLook) -> void:
 	look.set_angles(0.0, 0.0)
 	_check(
 		look.forward().is_equal_approx(Vector3(0, 0, -1)),
@@ -546,6 +550,10 @@ func _test_switch() -> void:
 	_check(sw.available().size() == 2, "and they can all be listed")
 	_check(sw.describe_lines().size() >= 3, "and the switch describes itself")
 
+	await _check_lone_controller(player)
+
+
+func _check_lone_controller(player: Node) -> void:
 	var lone := _player()
 	var only := _stub(&"only", lone)
 	var sw2 := DotPlayerControllerSwitch.new()

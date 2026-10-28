@@ -599,7 +599,14 @@ func _test_controller() -> void:
 		+ "point somewhere they are not looking"
 	)
 
-	# The camera rig's own behaviour.
+	_check_camera_rig(controller)
+	_check_sampler()
+
+	player.queue_free()
+	roster.queue_free()
+
+
+func _check_camera_rig(controller: DotTpsController) -> void:
 	var rig := controller.rig
 	var before_shoulder := rig.pivot.position.x
 	rig.swap_shoulder(controller.state)
@@ -636,6 +643,8 @@ func _test_controller() -> void:
 	controller.deactivate()
 	_check(not controller.is_active(), "and it hands back")
 
+
+func _check_sampler() -> void:
 	# A sampler, which reads no input in a headless run and must still be safe.
 	var sampler := DotTpsSampler.new()
 	add_child(sampler)
@@ -650,8 +659,6 @@ func _test_controller() -> void:
 	)
 	_check(sampler.describe_lines().size() == 1, "and describes itself")
 
-	player.queue_free()
-	roster.queue_free()
 	sampler.queue_free()
 
 
