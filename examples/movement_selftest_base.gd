@@ -110,9 +110,7 @@ func _build_motor(
 
 
 ## Applies the modifier on a fixed tick index, so every run applies it identically.
-##
-## Keyed on the loop index rather than on anything the simulation produces: the point
-## is to prove the replay reproduces a modifier, not to test what triggers one.
+## Keyed on the loop index: the point is to prove the replay reproduces a modifier, not what triggers one.
 static func _apply_scripted_modifier(
 	motor: DotFpsMotor,
 	state: DotFpsState,
@@ -143,7 +141,6 @@ func _run_ticks(
 		motor.simulate(state, command, STEP)
 
 
-# --- Assertions ------------------------------------------------------------
 
 
 func _section(title: String) -> void:
@@ -181,7 +178,6 @@ func _check_near(
 	)
 
 
-# --- Tests -----------------------------------------------------------------
 
 
 static func _touch(index: int, at: Vector2, pressed: bool) -> InputEventScreenTouch:
@@ -199,13 +195,9 @@ static func _drag(index: int, to: Vector2) -> InputEventScreenDrag:
 	return event
 
 
-## A stand-in for [code]DotNetWriter[/code] / [code]DotNetReader[/code].
-##
-## dot-net is not installed in this project and must not be — the whole point is that
-## the controller works without it. But the duck-typed calls in
-## [method DotFpsCommand.write] have to line up with the real thing, and a typo in a
-## method name is a runtime failure only the host game would ever see. This records
-## the calls so the test can check the contract without the dependency.
+## A stand-in for [code]DotNetWriter[/code] / [code]DotNetReader[/code]; dot-net must not be installed here.
+## It records the duck-typed calls of [method DotFpsCommand.write] so the contract is checked
+## without the dependency (a method-name typo would otherwise only fail in the host game).
 class FakeWire extends RefCounted:
 	var values: Array = []
 	var _read_index := 0

@@ -36,7 +36,6 @@ class FrozenController extends DotFpsController:
 		return not frozen
 
 
-# --- Assertions ------------------------------------------------------------
 
 
 func _section(title: String) -> void:
@@ -68,7 +67,6 @@ func _check_near(v: float, expected: float, tol: float, what: String) -> bool:
 	)
 
 
-# --- Fixtures --------------------------------------------------------------
 
 
 ## Builds a world with a floor and returns its root.
@@ -88,16 +86,9 @@ func _make_world() -> Node3D:
 	return world
 
 
-## The conventional player layout, with nothing wired by hand.
-##
-## Player (CharacterBody3D) / Collision, Head / Camera, View, Controller.
-## [param configure] runs before the controller enters the tree.
-##
-## [b]It has to.[/b] A Node's _ready() fires on add_child, and DotFpsController does
-## all of its wiring there — so a test that assigns tunables or register_service
-## afterwards is configuring an object that has already finished setting itself up,
-## and silently tests the defaults instead. Caught here, but it is exactly the
-## mistake a host game makes when it builds a player from code.
+## The conventional player layout, with nothing wired by hand: Player / Collision, Head / Camera, View, Controller.
+## [param configure] runs before the controller enters the tree, because DotFpsController wires itself in _ready;
+## configuring afterwards silently tests the defaults.
 func _make_player(
 	world: Node3D,
 	drive: DotFpsController.Drive,
@@ -150,7 +141,6 @@ func _command(
 	return c
 
 
-# --- Tests -----------------------------------------------------------------
 
 
 ## Stands in for dot-net's DotNetClock: all `render_state` asks of a clock is `render_alpha`.

@@ -3,10 +3,8 @@ extends "res://examples/movement_selftest_base.gd"
 ## The physics-server sections of the movement self-test.
 
 ## The real [DotFpsBody], against the real physics server.
-##
-## The walkable slope again, against real collision and a real capsule, with the crest a
-## ramp has in a level: a wedge up to a plateau. The capsule's rounded bottom and Godot's
-## sweep are what a game walks on; the flat body is a box and answers analytically.
+## The walkable slope again with a ramp's crest (a wedge up to a plateau): the capsule's rounded
+## bottom and Godot's sweep are what a game walks on; the flat body is a box and answers analytically.
 func _test_physics_slope() -> void:
 	_section("walkable slope, physics body")
 
@@ -150,13 +148,8 @@ func _test_crest_launch() -> void:
 
 
 ## Kerbs of [param heights], [param width] wide, on a 40 m floor, one lane each at x = 3 * index.
-## `[kerb-lift-1]`: a kerb just under step_height is climbed whatever the walking pace,
-## and a walker held against one just over it stays on the ground.
-##
-## [b]Both were found by pace, not by height.[/b] 0.40, 0.44 and 0.45 m kerbs were refused
-## at exactly 3 m/s while 2.7 and 5 climbed. And a walker pressed against a wall-height
-## kerb was lifted out of the ground by `_lift_clear` every six ticks or so, bouncing in
-## AIR at the face. That was enough, at 2.7 m/s, to carry them over a 0.46 m kerb.
+## `[kerb-lift-1]`: a kerb just under step_height is climbed at any pace, and a walker held against one
+## just over it stays grounded (`_lift_clear` once bounced it in AIR at the face and carried it over).
 func _test_physics_kerb_press() -> void:
 	_section("kerb climb does not depend on pace, and a wall is leaned on, physics body")
 
@@ -223,16 +216,9 @@ func _test_physics_kerb_press() -> void:
 	_done()
 
 
-## `[bank-hang-1]`: a sweep that grazes a surf bank reports the bank, not the motion's
-## own reverse.
-##
-## [b]Replayed exactly from game-g2gfast[/b], where a bot riding `surf_g2g_intro` bonus
-## 1's bank at 254 u/s stopped dead in mid-air and hung there for good. cast_motion
-## found a contact at `unsafe`, `get_rest_info` there found none, and the body's
-## fallback normal was `-motion`. The motor clips the velocity against it, and a
-## velocity parallel to the motion clipped against its reverse is zero. One millimetre
-## deeper, the same query reports the bank. The slab, capsule and sweep are that game's
-## numbers (a 768 x 32 x 2048 u box banked 60 degrees, 0.01905 m per unit).
+## `[bank-hang-1]`: a sweep that grazes a surf bank reports the bank, not the motion's own reverse.
+## A bot on a bank stopped dead: the fallback normal was `-motion`, and a velocity parallel to the motion
+## clipped against its reverse is zero. Slab, capsule and sweep are that game's numbers (768 x 32 x 2048 u, 60 degrees).
 func _test_physics_graze_normal() -> void:
 	_section("a sweep grazing a bank reports the bank, physics body")
 	var world := Node3D.new()
@@ -266,14 +252,8 @@ func _test_physics_graze_normal() -> void:
 
 
 ## `[jumping-into-crate-1]`: a downward probe grazing the side of a box is not a floor.
-##
-## [b]The geometry is mg-buses-from-hell's, to nine digits.[/b] A column of three 1 m
-## crates that had settled about 4 degrees off square, and a runner at the top of a jump
-## beside it, 2 cm clear of the top crate's corner. cast_motion reports a contact to the
-## ground probe that no rest query along the motion can name, and the sweep's guess for
-## that -- the motion's reverse -- is straight UP for a probe going down. The motor
-## grounded the runner on the crate's SIDE, they jumped again from there, and went up the
-## stack a crate at a time, to 2.98 m of a 3 m face with a 1.15 m jump.
+## The sweep's guess for a contact no rest query names is the motion's reverse, straight UP for a downward
+## probe, so the runner grounded on a crate's SIDE and climbed the stack. Geometry: a 4-degree-off-square crate column.
 func _test_physics_crate_side() -> void:
 	_section("a downward sweep grazing a crate's side is not a floor, physics body")
 	var world := Node3D.new()
@@ -310,13 +290,8 @@ func _test_physics_crate_side() -> void:
 
 
 ## `[sweep-1]`: a capsule swept sideways into a large wall never ends up inside it.
-##
-## [b]The floor's problem, turned on its side.[/b] Seeded sweeps of 1 to 12 cm from 0
-## to 6 mm off the face of a 4, 40 and 164 m wall. Measured on 4.7.2 against the body
-## before this check: cast_motion reported the contact up to 5 cm late on the 40 m
-## wall, and on the 164 m wall 33 of 3,000 sweeps saw no wall at all and ended 11 cm
-## inside it. Either one is a player walking into a wall and, a few ticks later,
-## through it.
+## Seeded 1 to 12 cm sweeps from 0 to 6 mm off 4, 40 and 164 m walls: cast_motion reported contact up to
+## 5 cm late, and on the 164 m wall 33 of 3,000 sweeps saw no wall and ended 11 cm inside.
 func _test_physics_wall_sweep() -> void:
 	_section("a sideways sweep never ends inside a large wall, physics body")
 	var embedded: Array[String] = []
@@ -365,15 +340,9 @@ func _test_physics_wall_sweep() -> void:
 	_done()
 
 
-## `[steep-climb-1]`: walking into a face too steep to stand on that leans back does not
-## climb it.
-##
-## Measured on 4.7.2 with these tunables, holding forward into a 3 m block from 1.65 m
-## away: at 70 degrees a walker went to AIR at the foot of the face and crawled 2.5 m up
-## it, and at 60 went over the top. Two causes, both needed: the capsule's rounded
-## bottom touching the face made the ground probe and the snap see the face instead of
-## the floor (the quarter probes), and the slide's lift up the face read as leaving
-## the ground (dropped on a grounded tick). A sheer face must stay a wall for a jump.
+## `[steep-climb-1]`: walking into a face too steep to stand on that leans back does not climb it.
+## Two causes, both needed: the rounded capsule bottom made the ground probe and snap see the face
+## instead of the floor (the quarter probes), and the slide's lift read as leaving the ground.
 func _test_physics_steep_face_walk() -> void:
 	_section("walking into a steep face does not climb it, physics body")
 	var climbed: Array[String] = []
@@ -447,10 +416,9 @@ func _kerb_world(heights: Array[float], width: float = 2.5) -> Node3D:
 	return world
 
 
-## Walks a standing player at [param speed] from [param z] toward -z along x = [param x],
-## step_height 0.45. [code]on_top[/code] is the highest y while over the kerb's footprint
-## (-1.0 if never there), [code]peak[/code] the highest y anywhere, [code]end_z[/code]
-## where they got to.
+## Walks a standing player at [param speed] from [param z] toward -z along x = [param x], step_height 0.45.
+## [code]on_top[/code] is the highest y over the kerb's footprint (-1.0 if never there), [code]peak[/code]
+## the highest y anywhere, [code]end_z[/code] where they got to.
 func _walk_kerb(body: DotFpsBody, x: float, speed: float, z: float = 1.0) -> Dictionary:
 	var t := _tunables()
 	t.step_height = 0.45
@@ -475,17 +443,9 @@ func _walk_kerb(body: DotFpsBody, x: float, speed: float, z: float = 1.0) -> Dic
 	return {"on_top": on_top, "peak": peak, "end_z": s.position.z}
 
 
-## `[arrive-3]`: a rider crossing a displacement's triangles, a fraction of a degree
-## apart, does not hang there with its speed intact.
-##
-## The seven triangles, the two states and the tunables are game-g2gfast's surf_summit
-## stage 3 (`tools/stage_ride.tscn -- surf_summit 3`), where the bot froze at
-## (1773, -812, -300) u at 75 u/s for the rest of the ride. A grazing leg ends with the
-## capsule exactly touching the face; every sweep from there, even one lifted a skin off
-## it, is blocked at the first step of cast_motion's bisection, and the rest query names
-## the face underneath, so the plane list sees a duplicate and nothing moves. The mesh is
-## copied to nine digits because it is that sensitive: rounded to five, the same states
-## ride straight across. Before the fix: 127 of 128 ticks frozen, 0 m covered.
+## `[arrive-3]`: a rider crossing a displacement's triangles, a fraction of a degree apart, does not hang.
+## A grazing leg ends exactly touching the face, so every sweep is blocked at cast_motion's first bisection
+## and the plane list sees a duplicate. The mesh is copied to nine digits: rounded to five it rides across.
 func _test_physics_displacement_crease() -> void:
 	_section("crossing a displacement crease, physics body")
 

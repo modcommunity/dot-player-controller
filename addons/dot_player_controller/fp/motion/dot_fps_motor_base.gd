@@ -5,19 +5,8 @@ extends RefCounted
 const CHANNEL := "fps.motor"
 
 ## Fraction of a sweep's length treated as untrustworthy at its far end.
-##
-## [b]A swept query's precision is relative to how far it swept.[/b] Godot's
-## [method PhysicsDirectSpaceState3D.cast_motion] binary-searches for the contact
-## point and stops at a tolerance proportional to the motion, so the "safe" fraction
-## it returns can still overlap by around a percent of the sweep length. On a 12 cm
-## slide step that is a tenth of a millimetre and invisible. On the 35 cm ground-snap
-## probe it is three and a half millimetres — enough to place the player [i]below[/i]
-## the floor they were snapping onto, after which every subsequent query starts inside
-## geometry and reports nothing, and they sink through the world at a constant rate.
-##
-## So the margin scales with the sweep rather than being a fixed skin width. Costs a
-## sub-centimetre gap on the longest probe, which nothing can see and the ground check
-## comfortably spans.
+## cast_motion's tolerance is relative to the sweep: on the 35 cm snap probe it can place the player
+## below the floor and they sink. Scaling with the sweep, not a fixed skin, costs an invisible sub-centimetre gap.
 const SWEEP_TOLERANCE := 0.02
 
 
@@ -43,13 +32,8 @@ var surfaces: DotFpsSurfaceSet = null
 
 
 ## Maps the collider a ground probe hit to a surface id.
-##
-## [b]Must be pure and must agree across machines.[/b] It runs inside the simulation,
-## so a client and a server that resolve different surfaces for the same floor
-## disagree about friction and the prediction never settles.
-## [DotFpsController] installs one that reads scene metadata, which both machines
-## load from the same file. Resolving from the collider's instance id would not work:
-## those differ between processes.
+## Must be pure and agree across machines, or friction and prediction diverge. The default reads scene
+## metadata; an instance id would not work, as those differ between processes.
 var surface_resolver: Callable = Callable()
 
 
@@ -66,9 +50,7 @@ var _modes: Dictionary = {}
 
 
 ## The combined effect of the active modifiers, recomputed once per tick.
-##
-## Reused rather than allocated: this is read several times per tick per player, and
-## on a server simulating thirty of them the allocations are measurable.
+## Reused rather than allocated: read several times per tick per player.
 var _effects := DotFpsModifier.Aggregate.new()
 
 
@@ -102,40 +84,24 @@ var wall_jumps: int = 0
 
 
 ## Ticks where the collide-and-slide ran out of iterations with motion left.
-##
-## Non-zero means the player is in geometry tight enough that the slide could not
-## resolve it — a wedge, a corner of three surfaces. A few are normal; a rising count
-## is a level-geometry problem that will read to players as getting stuck.
+## A few are normal; a rising count is geometry (a wedge, a three-surface corner) that reads as stuck.
 var stuck_ticks: int = 0
 
 
-## Ticks on which a player was found INSIDE geometry with no floor under them.
-##
-## [b]This is "I went through the floor", counted.[/b] It is the one number that says so:
-## an overlap test from outside the simulation cannot, because a capsule resting a
-## millimetre above a floor overlaps it too — shapes have margins — so "is the player in
-## solid" answers yes for everybody standing anywhere. The distinction that matters is
-## the one [method _categorise_ground] already makes and had no way to report: the ground
-## probe found nothing AND the player is in something.
+## Ticks on which a player was found INSIDE geometry with no floor under them: "I went through the floor", counted.
+## An outside overlap test cannot say so, since a capsule resting a millimetre above a floor overlaps it too.
+## The distinction is that the ground probe found nothing AND the player is in something.
 var embedded_ticks: int = 0
 
 
 ## How many of those were lifted back out. See [method _lift_clear].
-##
-## The two together are the whole measurement: `embedded_ticks` is how often it happens,
-## and the gap between them is how often a player is left under the floor to walk around
-## in the dark until they respawn — which before there was a lift was all of them.
+## The gap between the two is how often a player is left under the floor until respawn.
 var lifted_ticks: int = 0
 
 
 ## Ticks whose move stopped early on a plane it had already resolved against.
-##
-## The intended path rather than a fault, but a tick that ends this way spends only part
-## of its motion — so a high count on a surface a player should be flowing across is
-## worth looking at even though nothing is wrong on any single tick. Close to zero on
-## hand-built geometry; 10% to 14% of ticks on a map imported as one convex hull per
-## brush, where a curved ramp is a fan of faces a degree apart and every one of them is
-## a near-copy of the last.
+## The intended path, but a high count where a player should flow is worth a look: near zero on
+## hand-built geometry, 10% to 14% on a map imported as one convex hull per brush.
 var duplicate_plane_ticks: int = 0
 
 
@@ -152,31 +118,19 @@ var crease_leg_ticks: int = 0
 
 
 ## Ticks that began with the capsule inside geometry and pushed it back out.
-##
-## [b]Not the same measurement as [member embedded_ticks], and the difference is the
-## bug it was added for.[/b] That one counts a player who is embedded AND was grounded
-## last tick, which is the only case [method _categorise_ground] could recover; a
-## surfer is never grounded, so a player sinking through a ramp incremented nothing at
-## all. Every counter on this motor read zero through a measured 83 cm of penetration.
-##
-## Expect a small non-zero number on any real map — resting contact and overlap are
-## the same thing to within a margin, so a tick or two of a few microns is ordinary.
-## A count that tracks the tick rate on one surface is that surface eating players.
+## Unlike [member embedded_ticks] this counts a never-grounded surfer sinking through a ramp.
+## A few microns' contact on any real map is ordinary; a count tracking the tick rate on one surface is that surface eating players.
 var depenetrated_ticks: int = 0
 
 
-## Ticks whose end-of-tick ground check was not re-run because the ground snap's check in
-## [method _move], or for a walker who did not move the tick's first check, had already
-## settled the same question on the same state. Diagnostic;
-## see [method _categorise_ground_settled].
+## Ticks whose end-of-tick ground check was skipped because an earlier check this tick had settled
+## the same question on the same state. Diagnostic; see [method _categorise_ground_settled].
 var settled_ground_ticks: int = 0
 
 
 ## Registers a custom movement mode and returns its id.
-##
-## Ids must be handed out in the same order on every machine, because the id is what
-## travels on the wire. Register them at startup, in a fixed order, from code both
-## sides run — not from anything conditional on being a client or a server.
+## Ids travel on the wire, so register in the same fixed order on every machine, not conditionally
+## on being a client or server.
 func register_mode(mode: DotFpsMoveMode) -> int:
 	if mode == null:
 		return -1
@@ -263,9 +217,7 @@ func modifier_at(index: int) -> DotFpsModifier:
 
 
 ## Applies a modifier to a state. Returns whether anything changed.
-##
-## Server-side in a networked game: the active set is replicated to the owner, which
-## is what lets the client predict the effect instead of feeling it a round trip late.
+## Server-side in a networked game; the replicated set lets the owner predict the effect.
 func add_modifier(state: DotFpsState, id: StringName) -> bool:
 	var index := modifier_index(id)
 	var definition: DotFpsModifier = modifier_defs.get(id)
@@ -335,10 +287,7 @@ func has_modifier(state: DotFpsState, id: StringName) -> bool:
 
 
 ## Ticks per second, used only to turn a modifier's duration into an expiry tick.
-##
-## Set by whatever drives the motor. It does not have to be exact for the simulation
-## to be correct — it only decides which tick a modifier ends on — but it does have to
-## be the same on both machines, or a boost lasts longer on one of them.
+## It need not be exact but must match on both machines, or a boost outlasts on one.
 var _tick_rate_hint: float = 60.0
 
 
@@ -347,9 +296,7 @@ func set_tick_rate(rate: int) -> void:
 
 
 ## Drops modifiers whose expiry tick has passed.
-##
-## Compared against the simulated tick, not a clock, so a replay expires them on
-## exactly the tick the original run did.
+## Compared against the simulated tick, not a clock, so a replay expires them on the original tick.
 func _expire_modifiers(state: DotFpsState) -> void:
 	if state.modifiers.is_empty():
 		return
@@ -373,9 +320,7 @@ func _rebuild_effects(state: DotFpsState) -> void:
 
 
 ## The combined modifier effect for the tick in progress.
-##
-## Public so a [DotFpsMoveMode] scales by the same numbers the built-in modes do —
-## a ladder that ignored a slow field would be a way to escape one.
+## Public so a [DotFpsMoveMode] scales by the same numbers; a ladder ignoring a slow field would escape it.
 func effects() -> DotFpsModifier.Aggregate:
 	return _effects
 

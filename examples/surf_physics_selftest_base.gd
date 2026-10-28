@@ -57,7 +57,6 @@ func _check(ok: bool, what: String, detail: String = "") -> void:
 		print("  FAIL  %s" % line)
 
 
-# --- Geometry --------------------------------------------------------------
 
 
 func _normal_for(angle: float) -> Vector3:
@@ -66,9 +65,7 @@ func _normal_for(angle: float) -> Vector3:
 
 
 ## A solid whose TOP face is the plane through the origin tilted [param angle].
-##
-## A real box rather than a plane, because the whole point of this file is to use the
-## collision the games use, and Godot has no half-space collider.
+## A real box, because this file uses the collision the games use and Godot has no half-space collider.
 func _add_ramp(angle: float, size: float = 200.0) -> StaticBody3D:
 	var sb := StaticBody3D.new()
 	var cs := CollisionShape3D.new()
@@ -267,10 +264,9 @@ func _ride_crease(start: DotFpsState, ticks: int) -> Array:
 	return [start.position.z - s.position.z, longest, motor.crease_leg_ticks]
 
 
-## Replays one recorded input log (a fixed generator: walk, strafe, turn, jump, crouch) over a
-## steep ramp beside a floor, once as the motor always answers and once with
-## [member DotFpsMotor.static_world] reusing probes across ticks. The two must end on the same
-## bits at every tick, and the second must ask the physics server fewer questions.
+## Replays one recorded input log (walk, strafe, turn, jump, crouch) over a steep ramp beside a floor,
+## once as the motor always answers and once with [member DotFpsMotor.static_world] reusing probes.
+## The two must end on the same bits every tick, and the second must ask the physics server fewer questions.
 func _replay_log(static_world: bool) -> Array:
 	var body := DotFpsPhysicsBody.for_node(self)
 	var motor := DotFpsMotor.new(_tunables(), body)

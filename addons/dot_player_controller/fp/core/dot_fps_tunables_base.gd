@@ -7,9 +7,7 @@ extends DotConfig
 @export_group("Look")
 
 ## Degrees of view rotation per unit of mouse motion.
-##
-## Only [DotFpsSampler] reads these — the motor is given absolute angles. A game with
-## a sensitivity slider changes them here and nothing else has to know.
+## Only [DotFpsSampler] reads these; the motor is given absolute angles.
 @export_range(0.01, 5.0, 0.01) var mouse_sensitivity: float = 0.25
 
 ## Per-axis multipliers on top of [member mouse_sensitivity].
@@ -19,9 +17,7 @@ extends DotConfig
 @export var invert_look_y: bool = false
 
 ## How far the player can look up and down, in degrees.
-##
-## Stopping short of ±90 is deliberate: exactly vertical makes the forward vector
-## degenerate, and every frame spent there is a frame where yaw has no visible effect.
+## Short of ±90 on purpose: exactly vertical makes the forward vector degenerate.
 @export_range(-90.0, 0.0, 0.5) var pitch_min: float = -89.0
 @export_range(0.0, 90.0, 0.5) var pitch_max: float = 89.0
 
@@ -37,13 +33,8 @@ extends DotConfig
 @export_range(0.1, 100.0, 0.1) var max_speed: float = 4.7625
 
 ## Multipliers applied to [member max_speed]. They do not stack; the most restrictive
-## one held wins, in the order crouch, walk, sprint.
-##
-## [b]This ordering is the fix for a real bug.[/b] The previous controller stored one
-## [code]speed_multiplier[/code] and each of crouch/walk/sprint reset it to 1 on
-## release, so releasing sprint while still crouched restored full speed and the
-## player crouch-ran at sprint speed. Deriving the scale from the held buttons every
-## tick makes that unrepresentable.
+## one held wins (crouch, walk, sprint). Derived from the held buttons every tick, because
+## a stored multiplier reset on release let a crouched player sprint-run after releasing sprint.
 @export_range(0.0, 5.0, 0.01) var crouch_speed_scale: float = 0.34
 @export_range(0.0, 5.0, 0.01) var walk_speed_scale: float = 0.52
 @export_range(0.0, 5.0, 0.01) var sprint_speed_scale: float = 1.0
@@ -54,16 +45,11 @@ extends DotConfig
 @export_range(0.1, 1.0, 0.01) var backward_speed_scale: float = 1.0
 
 ## Hard ceiling on speed in any direction, in m/s.
-##
-## A backstop against a bug or an exploit compounding into an unbounded velocity, not
-## a gameplay number. Keep it well above anything the game can legitimately reach —
-## clamping a launcher or a conveyor is a worse failure than the runaway it prevents.
+## A backstop against runaway velocity, not a gameplay number: keep it well above anything legitimate.
 @export_range(1.0, 10000.0, 1.0) var max_velocity: float = 66.675
 
 ## Ceiling on the wish speed a held key asks for, before modifiers, in m/s. 0 disables it.
-##
-## The familiar [code]sv_maxspeed[/code]. A scale above 1 (or a raised [member max_speed]) cannot
-## ask for more than this, as on the shooter servers; a modifier still multiplies past it.
+## The familiar [code]sv_maxspeed[/code]; a modifier still multiplies past it.
 @export_range(0.0, 1000.0, 0.01) var max_wish_speed: float = 6.096
 
 @export_group("Ground movement")
@@ -76,36 +62,24 @@ extends DotConfig
 @export_range(0.0, 20.0, 0.1) var friction: float = 4.0
 
 ## Speed below which friction is applied as if the player were moving this fast.
-##
-## Without it friction is proportional to speed and asymptotes toward zero, so a
-## player drifts for a long time at walking pace after releasing the keys. The
-## familiar
-## [code]sv_stopspeed[/code].
+## Without it friction asymptotes toward zero and the player drifts after releasing the keys.
+## The familiar [code]sv_stopspeed[/code].
 @export_range(0.0, 50.0, 0.1) var stop_speed: float = 1.42875
 
 @export_group("Air movement")
 
 ## Acceleration while airborne. The familiar [code]sv_airaccelerate[/code].
-##
-## Large — 100 is not a typo. It is bounded by [member max_air_wish_speed], not by
-## this, which is exactly the mechanism that makes air-strafing work: see
-## [method DotFpsMotor.accelerate].
+## Large on purpose: it is bounded by [member max_air_wish_speed], which is what makes
+## air-strafing work (see [method DotFpsMotor.accelerate]).
 @export_range(0.0, 1000.0, 1.0) var air_accelerate: float = 10.0
 
-## The cap that makes air-strafing possible, in m/s.
-##
-## [b]The whole of air control is this one number.[/b] Airborne acceleration is
-## clamped to the projection of current velocity onto the wish direction, so holding
-## strafe and turning adds speed perpendicular to motion — which barely reduces the
-## projection, so it can be added again next tick. Raise it and air control becomes
-## a jetpack; set it to zero and there is none at all.
+## The cap that makes air-strafing possible, in m/s: the whole of air control.
+## Airborne acceleration is clamped to the velocity's projection on the wish direction;
+## raise it and air control becomes a jetpack, set it to zero and there is none.
 @export_range(0.0, 100.0, 0.1) var max_air_wish_speed: float = 0.5715
 
 ## Downward acceleration, in m/s².
-##
-## Not read from the project's physics settings: those are a rendering-side default
-## that a host project may change for its rigid bodies, and a value the client and
-## server could disagree about is a value the simulation cannot use.
+## Not read from project physics settings, which a host may change and a client and server could disagree about.
 @export_range(0.0, 200.0, 0.1) var gravity: float = 15.24
 
 ## Air friction. Zero in this movement model, and changing it breaks strafe-jumping.
@@ -114,34 +88,23 @@ extends DotConfig
 @export_group("Jumping")
 
 ## Peak height of a standing jump on flat ground, in metres.
-##
-## Converted to a launch speed with [code]sqrt(2 * gravity * height)[/code], so it
-## stays honest when gravity is changed.
+## Converted with [code]sqrt(2 * gravity * height)[/code], so it stays honest when gravity changes.
 @export_range(0.0, 20.0, 0.01) var jump_height: float = 1.08585
 
 ## Jump by holding the button rather than tapping it.
-##
-## The difference between bunny-hopping being a skill and being a keybind. Off by
-## default; a movement game usually wants it on.
+## What makes bunny-hopping a skill rather than a keybind. Off by default.
 @export var auto_hop: bool = false
 
 ## Add the launch speed to upward velocity instead of replacing it.
-##
-## Off is the classic behaviour and is what most games want. On lets jumps stack on
-## anything already moving the player upward — ramps, pads, another jump — which is
-## fun and is also how a physics bug becomes an infinite climb.
+## Off is the classic behaviour; on lets jumps stack on ramps and pads, and a physics bug become an infinite climb.
 @export var jump_adds_to_velocity: bool = false
 
 ## Seconds after walking off a ledge during which a jump still works.
-##
-## Players press jump slightly late and read the failure as the game missing the
-## input. Costs nothing when the player is on the ground.
+## Players press jump slightly late and read the failure as a missed input.
 @export_range(0.0, 0.5, 0.005) var coyote_time: float = 0.0
 
 ## Seconds before landing during which a jump press is remembered.
-##
-## The other half of the same forgiveness: pressing jump just before touching down
-## should jump on touchdown, not be swallowed.
+## The other half of the same forgiveness: a press just before touchdown jumps on touchdown.
 @export_range(0.0, 0.5, 0.005) var jump_buffer_time: float = 0.0
 
 ## Minimum seconds between jumps. 0 allows one per tick.
@@ -150,25 +113,13 @@ extends DotConfig
 @export_group("Surf and bunny-hopping")
 
 ## Speed a jump is clamped to, as a multiple of [member max_speed]. 0 disables it.
-##
-## The landing cap those shooters ship at 1.104:
-## a player leaving the ground faster than that has their horizontal velocity scaled
-## back down, so hopping cannot compound speed. A bhop or surf server turns it off,
-## which is the whole reason [code]sv_enablebunnyhopping[/code] exists.
-##
-## [b]It is off here and on in those shooters[/b] because this addon's defaults are
-## a movement shooter's, and a movement shooter that caps hop speed has no
-## bunny-hopping. Set it to 1.104 to reproduce the retail behaviour of the round-based
-## competitive shooters this genre came from.
+## The landing cap of retail shooters (1.104); [code]sv_enablebunnyhopping[/code] exists to turn it off.
+## Off here because a movement shooter that caps hop speed has no bunny-hopping.
 @export_range(0.0, 10.0, 0.001) var bhop_speed_cap_scale: float = 0.0
 
 ## Extra friction while standing near a ledge, as a multiplier. 1 disables it.
-##
-## The familiar [code]sv_edgefriction[/code], which ships at 2. Standing with your toes
-## over a drop makes you stop faster, so a player who walks to the edge of a block
-## does not slide off it. Costs one extra query per grounded tick, which is why it
-## is off by default and why a KZ or bhop server — where the effect is part of the
-## movement people have trained on — turns it on.
+## The familiar [code]sv_edgefriction[/code] (ships at 2). Costs one extra query per grounded tick,
+## so it is off by default; a KZ or bhop server turns it on.
 @export_range(1.0, 10.0, 0.05) var edge_friction: float = 1.0
 
 ## How far past the player's own radius to look for the ledge, in metres.
@@ -178,36 +129,18 @@ extends DotConfig
 @export_range(0.05, 5.0, 0.01) var edge_friction_drop: float = 0.6
 
 ## Resolve a two-plane wedge by moving along the crease instead of stopping.
-##
-## [b]This is the difference between a surf ramp being playable and not.[/b] A surf
-## map is built from long ramps that meet each other, and a player sliding down one
-## reaches the seam at 20 m/s. Clipping velocity against the first plane and then the
-## second — which is what a naive collide-and-slide does — leaves a vector pointing
-## back into the first, so the next iteration clips it again and the player stops
-## dead in the corner. The classic slide pass keeps every plane it has
-## touched this move, notices when a clipped direction re-enters an earlier one, and
-## slides along the intersection of the two instead. That is what carries a surfer
-## through a seam with their speed intact.
-##
-## Off, the motor is the plain sequential slide it was before. Nothing else changes.
+## A naive slide clips against plane one then plane two and stops a surfer dead at a ramp seam;
+## this remembers every plane touched and slides along their intersection. Off, plain sequential slide.
 @export var crease_slide: bool = true
 
 ## Planes remembered per move for [member crease_slide].
-##
-## The classic implementations use five. More is not better: a player genuinely
-## inside a five-plane wedge has nowhere to go, and continuing to search finds a
-## direction that leaves them inside the geometry rather than outside it.
+## The classic implementations use five. More is not better: a player inside a five-plane wedge
+## has nowhere to go, and searching on finds a way into the geometry.
 @export_range(2, 8, 1) var max_slide_planes: int = 5
 
-## Speed, as a multiple of [member max_speed], above which the crest of a walkable ramp
-## launches the player instead of holding them to the floor past it. 0 never launches.
-##
-## A bhop or surf player taking a ramp at speed expects to leave its top, and one running up
-## it expects to walk onto the plateau: the threshold is what tells the two apart. Since the
-## walkable-slope fix every crest held everybody to the floor, which is the second half and
-## not the first. At 1.25 a player at their running speed stays grounded and one carrying
-## hop speed over the crest is thrown, with their speed. A server that wants the old
-## behaviour back sets 0.
+## Speed, as a multiple of [member max_speed], above which a walkable ramp's crest launches the
+## player instead of holding them to the floor. 0 never launches. At 1.25 running speed stays
+## grounded and hop speed is thrown; a server that wants always-grounded sets 0.
 @export_range(0.0, 10.0, 0.01) var crest_launch_speed_scale: float = 1.25
 
 @export_group("Crouching")
@@ -222,15 +155,11 @@ extends DotConfig
 @export_range(0.05, 2.0, 0.01) var radius: float = 0.35
 
 ## Seconds to move fully between standing and crouching.
-##
-## Part of the simulation, not a visual: the collider changes size over it, so a
-## client and server that used different values would disagree about what fits.
+## Part of the simulation, not a visual: the collider changes size over it, so peers must agree.
 @export_range(0.0, 2.0, 0.005) var crouch_transition_time: float = 0.12
 
 ## Crouch instantly while airborne.
-##
-## The classic "crouch-jump": snapping the collider up mid-air clears ledges a
-## standing jump cannot. Free to allow and players expect it.
+## The classic crouch-jump: snapping the collider up mid-air clears ledges. Players expect it.
 @export var instant_air_crouch: bool = true
 
 @export_group("Collision")
@@ -239,16 +168,12 @@ extends DotConfig
 @export_range(0.0, 89.0, 0.5) var max_slope_angle: float = 46.0
 
 ## Tallest step the player walks up without jumping, in metres.
-##
-## The familiar [code]sv_stepsize[/code]. Without it every kerb and stair tread stops the
-## player dead, which is the single most common thing wrong with a hand-written
-## character controller — the previous version of this one included.
+## The familiar [code]sv_stepsize[/code]. Without it every kerb stops the player dead,
+## the commonest flaw of a hand-written character controller.
 @export_range(0.0, 2.0, 0.01) var step_height: float = 0.3429
 
 ## Keep the player attached to the ground when walking down slopes and steps.
-##
-## Off, a player walking down a ramp leaves the ground every tick and gets air
-## physics — no friction, no ground acceleration — which feels like ice.
+## Off, a ramp descent is a string of airborne ticks: no friction, no ground acceleration.
 @export var ground_snap: bool = true
 
 ## How far below the feet to look for ground when snapping, in metres.
@@ -258,10 +183,8 @@ extends DotConfig
 @export_range(1, 16, 1) var max_slide_iterations: int = 5
 
 ## Gap kept between the collider and surfaces, in metres.
-##
-## Resting exactly on a surface leaves the next query's result at the mercy of
-## floating-point rounding, which reads as the player intermittently falling through
-## a floor they are standing on.
+## Resting exactly on a surface leaves the next query at the mercy of rounding, which
+## reads as intermittently falling through the floor.
 @export_range(0.0, 0.1, 0.0001) var skin_width: float = 0.001
 
 ## Physics collision layers the player collides with.
@@ -317,9 +240,8 @@ extends DotConfig
 @export var can_jump: bool = true
 
 ## Whether the noclip button does anything.
-##
-## Off by default and separately gated on the server, because a client can set this
-## bit in a command whenever it likes. See [DotFpsController.allow_noclip].
+## Off by default and gated separately on the server, because a client can set this bit
+## in a command at will. See [DotFpsController.allow_noclip].
 @export var can_noclip: bool = false
 
 ## Noclip flight speed, in m/s.
@@ -331,11 +253,8 @@ extends DotConfig
 @export_group("Sliding")
 
 ## Whether pressing crouch while running starts a slide.
-##
-## [b]Off by default, and that is the whole compatibility story.[/b] Every number below
-## is read only while this is on, so a game that never sets it simulates exactly what it
-## did before sliding existed. It is still in [method fingerprint] like everything else,
-## because two peers that disagree about it disagree about where a crouching runner goes.
+## Off by default: every number below is read only while this is on, so a game that never
+## sets it simulates what it did before sliding. In [method fingerprint], as peers must agree.
 @export var slide_enabled: bool = false
 
 ## Horizontal speed, in m/s, a grounded player needs for a crouch press to start a slide
@@ -346,20 +265,16 @@ extends DotConfig
 @export_range(0.0, 50.0, 0.1) var slide_boost: float = 3.0
 
 ## The boost never takes horizontal speed past this, in m/s.
-##
-## [b]A cap on the boost, not on the slide.[/b] A player already faster than this (off a
-## ramp, out of a bunny-hop) keeps that speed and gets no burst; a cap that clamped them
-## down to it would make sliding a way to lose speed, which nobody presses a key for.
+## A cap on the boost, not on the slide: a faster player keeps their speed and gets no burst,
+## since clamping them down would make sliding a way to lose speed.
 @export_range(0.0, 100.0, 0.1) var slide_max_speed: float = 13.0
 
 ## Ground friction while sliding, in place of [member friction]. Low, so a slide carries.
 @export_range(0.0, 20.0, 0.05) var slide_friction: float = 0.8
 
 ## Acceleration toward the wish direction while sliding, in place of [member accelerate].
-##
-## It steers rather than speeds up: the wish speed while sliding is the crouched one,
-## which a sliding player is already well past, so [method DotFpsMotor.accelerate] adds
-## nothing along the run and only bends it. 0 locks the direction.
+## It steers rather than speeds up (the crouched wish speed is below a slider's speed), so it
+## only bends the run. 0 locks the direction.
 @export_range(0.0, 100.0, 0.1) var slide_accelerate: float = 2.0
 
 ## The longest a slide lasts, in seconds, before it settles into an ordinary crouch.
@@ -376,17 +291,14 @@ extends DotConfig
 
 @export_group("Launch")
 
-## Whether [member launch_button] throws the player into the air.
-##
-## Off by default for the same reason as [member slide_enabled]. An ability rather than a
-## [DotFpsModifier] because it is an impulse, and a modifier is a multiplier.
+## Whether [member launch_button] throws the player into the air. Off by default, like
+## [member slide_enabled]. An ability, not a [DotFpsModifier]: it is an impulse and a modifier
+## is a multiplier.
 @export var launch_enabled: bool = false
 
 ## The command button that launches, as a [DotFpsCommand] button bit
 ## ([code]BUTTON_USER_0[/code] is 32). 0 means no button does.
-##
-## [b]A setting rather than a new bit[/b], because every bit on the wire is already
-## spoken for: the user bits are each game's own, and a game picks the one it has free.
+## A setting rather than a new bit, because every wire bit is already spoken for.
 @export_range(0, 255, 1) var launch_button: int = 0
 
 ## Upward speed a launch sets, in m/s. It replaces a lower vertical speed rather than
@@ -429,11 +341,8 @@ extends DotConfig
 @export_group("Wall running")
 
 ## Whether an airborne player moving fast along a near-vertical wall runs along it.
-##
-## Off by default, like the slide and for the same reason: every [code]wall_run_*[/code]
-## number is read only behind this, and the wall probe is not even made, so a game that
-## never sets it simulates exactly what it did before wall running existed. The reasoning
-## is in docs/wall-movement.md.
+## Off by default, like the slide: every [code]wall_run_*[/code] number is read only behind this and
+## no wall probe is made. Reasoning in docs/wall-movement.md.
 @export var wall_run_enabled: bool = false
 
 ## Horizontal speed ALONG the wall, in m/s, an airborne player needs to start a run.
@@ -451,13 +360,9 @@ extends DotConfig
 ## an ordinary fall (with [member wall_run_vertical_damping] still slowing it).
 @export_range(0.0, 1.0, 0.01) var wall_run_gravity_scale: float = 0.25
 
-## How fast the vertical speed a player arrives with is eased away while running, per
-## second (exponential, like the view's smoothing).
-##
-## [b]Eased rather than zeroed[/b]: zeroing it on the first tick is a one-tick velocity
-## spike, the jolt this whole feature is meant not to have. Against
-## [member wall_run_gravity_scale] it also sets the slow sink a long run settles into
-## ([code]gravity * scale / damping[/code], about 0.6 m/s with the defaults).
+## How fast the vertical speed a player arrives with is eased away while running, per second.
+## Eased rather than zeroed: zeroing is a one-tick velocity spike. With [member wall_run_gravity_scale]
+## it sets the slow sink a long run settles into ([code]gravity * scale / damping[/code]).
 @export_range(0.0, 60.0, 0.1) var wall_run_vertical_damping: float = 8.0
 
 ## A player falling faster than this, in m/s, does not catch a wall. Brushing a wall must
@@ -469,11 +374,8 @@ extends DotConfig
 @export_range(0.0, 45.0, 0.5) var wall_max_angle_from_vertical: float = 15.0
 
 ## The largest angle, in degrees, between the player's horizontal velocity and the wall's
-## plane at which a run starts.
-##
-## Said from the other side, the velocity must be at least [code]90 - this[/code] degrees
-## away from pointing straight into the wall: running at a wall head-on is not a wall run.
-## 0 needs a velocity exactly along the wall; 90 accepts any.
+## plane at which a run starts. The velocity must be at least [code]90 - this[/code] degrees
+## from straight into the wall. 0 needs a velocity exactly along it; 90 accepts any.
 @export_range(0.0, 90.0, 0.5) var wall_run_max_approach_angle: float = 60.0
 
 ## Whether forward has to be held to start and to keep running. Releasing it drops off
@@ -507,13 +409,9 @@ extends DotConfig
 ## for a wall jump off a wall the player is not running on.
 @export_range(0.01, 1.0, 0.01) var wall_reach: float = 0.25
 
-## Fastest fall, in m/s, of an airborne player against a wall who is pushing into it or
-## whose run has ended on it: the wall slide that lets a player ride a wall down under
-## control, and what a timed-out run decays into rather than a sudden fall. 0 turns the
-## slide off, and is the default.
-##
-## A faster fall is eased down to it at [member wall_run_vertical_damping], never cut in
-## one tick. Independent of [member wall_run_enabled].
+## Fastest fall, in m/s, of an airborne player against a wall they push into or whose run ended
+## on it: the wall slide, and what a timed-out run decays into. 0 turns it off (default).
+## A faster fall is eased down at [member wall_run_vertical_damping], never cut in one tick.
 @export_range(0.0, 50.0, 0.1) var wall_slide_speed: float = 0.0
 
 @export_group("Wall jumping")
@@ -531,22 +429,16 @@ extends DotConfig
 @export_range(0.0, 50.0, 0.1) var wall_jump_up_speed: float = 6.5
 
 ## How far the push leans from the wall's normal toward where the player looks, 0..1.
-##
-## 0 pushes straight out from the wall; a little (0.3) sends the jump where the player
-## expects it to go. The part of the look that points into the wall is ignored, so the
-## push always leaves the wall.
+## 0 pushes straight out; the part of the look into the wall is ignored, so the push
+## always leaves the wall.
 @export_range(0.0, 1.0, 0.01) var wall_jump_look_blend: float = 0.3
 
 ## Wall jumps off the same wall before the player touches the ground again. 0 for no
-## limit; at most 3, the replicated counter's width.
-##
-## [b]The same wall is the same normal[/b] (to within one eighth of a turn), so two
-## facing walls of a corridor are two walls and a player can climb between them, while
-## one wall cannot be climbed alone by jumping off it again and again.
+## limit; at most 3, the replicated counter's width. The same wall is the same normal (within
+## an eighth of a turn), so facing corridor walls can be climbed between but one alone cannot.
 @export_range(0, 3, 1) var wall_jump_max_per_wall: int = 1
 
 ## Wall jumps in all, off any walls, before the player touches the ground again. 0 for no
-## limit; at most 3, the replicated counter's width. Applies on top of
-## [member wall_jump_max_per_wall]: the budget the fast movement shooters give a single
-## airborne stretch, refilled only by landing.
+## limit; at most 3, the replicated counter's width. On top of [member wall_jump_max_per_wall]:
+## the budget a single airborne stretch gets, refilled only by landing.
 @export_range(0, 3, 1) var wall_jump_max_per_air: int = 3
