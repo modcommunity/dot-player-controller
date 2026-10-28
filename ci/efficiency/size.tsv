@@ -10,7 +10,7 @@ examples/fps_controller_selftest.gd::_test_change_signals	95
 examples/fps_controller_selftest.gd::_test_local_drive_accumulator	125
 examples/fps_controller_selftest.gd::_test_view_motion	139
 examples/fps_controller_selftest.gd::_test_wall_run_roll	96
-examples/movement_selftest.gd	3542
+examples/movement_selftest.gd	3455
 examples/movement_selftest.gd::_test_admin_modifiers	150
 examples/movement_selftest.gd::_test_dash	82
 examples/movement_selftest.gd::_test_launch	121
@@ -19,8 +19,7 @@ examples/movement_selftest.gd::_test_net_sync_round_trip	93
 examples/movement_selftest.gd::_test_physics_kerb	86
 examples/movement_selftest.gd::_test_physics_slope_landing	119
 examples/movement_selftest.gd::_test_replay_determinism	104
-examples/movement_selftest.gd::_test_slide	164
-examples/movement_selftest.gd::_test_surfaces	161
+examples/movement_selftest.gd::_test_surfaces	130
 examples/movement_selftest.gd::_test_touch_sampler	105
 examples/movement_selftest.gd::_test_wall_jump	86
 examples/movement_selftest.gd::_test_wall_run	128

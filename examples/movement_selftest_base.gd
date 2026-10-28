@@ -454,3 +454,107 @@ func _check_modifier_mask() -> void:
 	var empty := DotFpsState.new()
 	DotFpsNetSync.unpack_modifiers(empty, 0)
 	_check(empty.modifiers.is_empty(), "and an empty mask clears the set")
+
+
+## The slide edge cases: held, too slow, crouch already held, no boost, past the cap.
+func _slide_edges(t: DotFpsTunables, motor: DotFpsMotor) -> void:
+	var crouch := DotFpsCommand.BUTTON_CROUCH
+
+	# Held, it ends at slide_duration and carries on as a crouch.
+	var held := _running(motor)
+
+	for _i in range(int(t.slide_duration / STEP) + 2):
+		motor.simulate(held, _command(1.0, 0.0, 0.0, crouch), STEP)
+
+	_check(
+		not held.is_sliding() and held.is_crouched(),
+		"a held slide ends at slide_duration and stays crouched",
+		"sliding %s, crouch %.2f" % [held.is_sliding(), held.crouch_fraction]
+	)
+
+	# Too slow to slide: a walker's crouch press is a crouch.
+	var walker := _standing(motor)
+
+	for _i in range(60):
+		motor.simulate(walker, _command(0.4), STEP)
+
+	motor.simulate(walker, _command(0.4, 0.0, 0.0, crouch), STEP)
+	_check(not walker.is_sliding(), "a crouch press below slide_min_speed does not slide",
+		"%.2f m/s" % walker.horizontal_speed())
+
+	# Crouch already held when the speed arrives (a push, a ramp) is not a press: no slide.
+	var crouch_runner := _standing(motor)
+
+	for _i in range(20):
+		motor.simulate(crouch_runner, _command(1.0, 0.0, 0.0, crouch), STEP)
+
+	crouch_runner.velocity = Vector3(0.0, 0.0, -10.0)
+	motor.simulate(crouch_runner, _command(1.0, 0.0, 0.0, crouch), STEP)
+	_check(not crouch_runner.is_sliding(), "crouch held before the speed arrives never slides",
+		"%.2f m/s" % crouch_runner.horizontal_speed())
+
+	# slide_boost 0: no burst at all.
+	var no_boost := _slide_tunables()
+	no_boost.slide_boost = 0.0
+	var no_boost_motor := _motor(no_boost)
+	var flat := _running(no_boost_motor)
+	var flat_before := flat.horizontal_speed()
+	no_boost_motor.simulate(flat, _command(1.0, 0.0, 0.0, crouch), STEP)
+	_check(
+		flat.is_sliding() and flat.horizontal_speed() <= flat_before + 0.001,
+		"slide_boost 0 slides with no burst",
+		"%.3f -> %.3f m/s" % [flat_before, flat.horizontal_speed()]
+	)
+
+	# Already past slide_max_speed: no burst, and no speed taken away either.
+	var fast := _running(motor)
+	fast.velocity = Vector3(0.0, 0.0, -18.0)
+	motor.simulate(fast, _command(1.0, 0.0, 0.0, crouch), STEP)
+	_check(
+		fast.is_sliding() and fast.horizontal_speed() <= 18.0 and fast.horizontal_speed() > 17.5,
+		"a slide past slide_max_speed gets no burst and loses only friction",
+		"%.3f m/s" % fast.horizontal_speed()
+	)
+
+
+## A replay from a snapshot mid-slide reproduces it; one that forgets the slide diverges.
+func _slide_replay(t: DotFpsTunables) -> void:
+	var crouch := DotFpsCommand.BUTTON_CROUCH
+
+	# Determinism: a replay from a snapshot in the middle of a slide reproduces it. The
+	# negative control drops the slide from the snapshot, which is what a slide kept
+	# anywhere but the state would do on a rewind, and must diverge.
+	var commands: Array[DotFpsCommand] = []
+
+	for i in range(200):
+		var buttons := DotFpsCommand.BUTTON_SPRINT
+		if (i % 70) >= 40 and (i % 70) < 62:
+			buttons = crouch
+		commands.append(_command(1.0, sin(float(i) * 0.07) * 0.3, float(i) * 0.4, buttons))
+
+	var full := _standing(_motor(t))
+	var full_motor := _motor(t)
+	var snapshot: DotFpsState = null
+
+	for i in range(commands.size()):
+		full_motor.simulate(full, commands[i], STEP)
+		if i == 45:
+			snapshot = full.duplicate_state()
+
+	var slid_at_split := snapshot.is_sliding()
+	var replay := snapshot.duplicate_state()
+	_run_window(_motor(t), replay, commands, 46, commands.size())
+	_check(
+		slid_at_split and replay.equals(full, 0.0001),
+		"replaying from a snapshot mid-slide reproduces the run",
+		"sliding at the split %s, diverged %.6f m" % [slid_at_split, replay.divergence(full)]
+	)
+
+	var amnesiac := snapshot.duplicate_state()
+	amnesiac.slide_time = -1.0
+	_run_window(_motor(t), amnesiac, commands, 46, commands.size())
+	_check(
+		not amnesiac.equals(full, 0.0001),
+		"negative control: a replay that forgets the slide diverges",
+		"diverged %.6f m" % amnesiac.divergence(full)
+	)

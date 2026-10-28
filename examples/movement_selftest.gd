@@ -566,38 +566,7 @@ func _test_swimming() -> void:
 func _test_surfaces() -> void:
 	_section("surfaces")
 
-	# Read off a dot-physics surface, duck-typed: the fields DotPhysicsSurface has.
-	var mud_physics := FakePhysicsSurface.new()
-	mud_physics.id = &"mud"
-	mud_physics.traction = 1.2
-	mud_physics.move_scale = 0.6
-	mud_physics.dampening = 2.5
-	mud_physics.jump_scale = 0.8
-	var mud := DotFpsSurface.from_physics(mud_physics)
-	_check(mud.id == &"mud" and is_equal_approx(mud.friction_scale, 1.2) and is_equal_approx(mud.accelerate_scale, 0.6),
-		"a surface read off dot-physics takes traction as friction and move_scale as acceleration")
-	_check(is_equal_approx(mud.max_speed_scale, 0.625) and is_equal_approx(mud.jump_scale, 0.8),
-		"its dampening lowers the top speed, and its jump carries over", "%.3f" % mud.max_speed_scale)
-	_check(mud.fall_damping == 0.0 and DotFpsSurface.make(&"snow").describe()["fall_damping"] == 0.0,
-		"a surface absorbs no fall by default, and describe() says so")
-	var hay := DotFpsSurface.make(&"hay")
-	hay.fall_damping = 0.7
-	_check(is_equal_approx(hay.describe()["fall_damping"], 0.7), "a surface can say it takes part of a fall")
-	var ice_physics := FakePhysicsSurface.new()
-	ice_physics.id = &"ice"
-	ice_physics.traction = 0.1
-	_check(is_equal_approx(DotFpsSurface.from_physics(ice_physics).max_speed_scale, 1.0),
-		"ice, with no dampening, keeps its top speed")
-	var water_physics := FakePhysicsSurface.new()
-	water_physics.id = &"water"
-	water_physics.liquid = true
-	_check(not DotFpsSurface.from_physics(water_physics).standable, "a liquid is not stood on")
-	var whole := FakePhysicsSet.new()
-	whole.surfaces = [mud_physics, ice_physics, water_physics]
-	var converted := DotFpsSurfaceSet.from_physics(whole)
-	_check(converted.has_surface(&"mud") and converted.has_surface(&"water")
-		and converted.get_surface(&"unknown").friction_scale == 1.0,
-		"and a whole set converts, falling back to plain ground")
+	_surfaces_from_physics()
 
 	var ice := DotFpsSurface.make(&"ice")
 	ice.friction_scale = 0.02
@@ -721,6 +690,41 @@ func _test_surfaces() -> void:
 
 	_surface_resolver_checks()
 	_done()
+
+
+## Surfaces read off dot-physics, duck-typed: the fields DotPhysicsSurface has.
+func _surfaces_from_physics() -> void:
+	var mud_physics := FakePhysicsSurface.new()
+	mud_physics.id = &"mud"
+	mud_physics.traction = 1.2
+	mud_physics.move_scale = 0.6
+	mud_physics.dampening = 2.5
+	mud_physics.jump_scale = 0.8
+	var mud := DotFpsSurface.from_physics(mud_physics)
+	_check(mud.id == &"mud" and is_equal_approx(mud.friction_scale, 1.2) and is_equal_approx(mud.accelerate_scale, 0.6),
+		"a surface read off dot-physics takes traction as friction and move_scale as acceleration")
+	_check(is_equal_approx(mud.max_speed_scale, 0.625) and is_equal_approx(mud.jump_scale, 0.8),
+		"its dampening lowers the top speed, and its jump carries over", "%.3f" % mud.max_speed_scale)
+	_check(mud.fall_damping == 0.0 and DotFpsSurface.make(&"snow").describe()["fall_damping"] == 0.0,
+		"a surface absorbs no fall by default, and describe() says so")
+	var hay := DotFpsSurface.make(&"hay")
+	hay.fall_damping = 0.7
+	_check(is_equal_approx(hay.describe()["fall_damping"], 0.7), "a surface can say it takes part of a fall")
+	var ice_physics := FakePhysicsSurface.new()
+	ice_physics.id = &"ice"
+	ice_physics.traction = 0.1
+	_check(is_equal_approx(DotFpsSurface.from_physics(ice_physics).max_speed_scale, 1.0),
+		"ice, with no dampening, keeps its top speed")
+	var water_physics := FakePhysicsSurface.new()
+	water_physics.id = &"water"
+	water_physics.liquid = true
+	_check(not DotFpsSurface.from_physics(water_physics).standable, "a liquid is not stood on")
+	var whole := FakePhysicsSet.new()
+	whole.surfaces = [mud_physics, ice_physics, water_physics]
+	var converted := DotFpsSurfaceSet.from_physics(whole)
+	_check(converted.has_surface(&"mud") and converted.has_surface(&"water")
+		and converted.get_surface(&"unknown").friction_scale == 1.0,
+		"and a whole set converts, falling back to plain ground")
 
 
 ## A surface id must come from something both machines see: node metadata or a group.
@@ -1993,99 +1997,8 @@ func _test_slide() -> void:
 	_check(released.is_sliding(), "a slide starts again once the cooldown is spent",
 		"%.2f m/s, cooldown %.2f" % [released.horizontal_speed(), released.slide_cooldown_left])
 
-	# Held, it ends at slide_duration and carries on as a crouch.
-	var held := _running(motor)
-
-	for _i in range(int(t.slide_duration / STEP) + 2):
-		motor.simulate(held, _command(1.0, 0.0, 0.0, crouch), STEP)
-
-	_check(
-		not held.is_sliding() and held.is_crouched(),
-		"a held slide ends at slide_duration and stays crouched",
-		"sliding %s, crouch %.2f" % [held.is_sliding(), held.crouch_fraction]
-	)
-
-	# Too slow to slide: a walker's crouch press is a crouch.
-	var walker := _standing(motor)
-
-	for _i in range(60):
-		motor.simulate(walker, _command(0.4), STEP)
-
-	motor.simulate(walker, _command(0.4, 0.0, 0.0, crouch), STEP)
-	_check(not walker.is_sliding(), "a crouch press below slide_min_speed does not slide",
-		"%.2f m/s" % walker.horizontal_speed())
-
-	# Crouch already held when the speed arrives (a push, a ramp) is not a press: no slide.
-	var crouch_runner := _standing(motor)
-
-	for _i in range(20):
-		motor.simulate(crouch_runner, _command(1.0, 0.0, 0.0, crouch), STEP)
-
-	crouch_runner.velocity = Vector3(0.0, 0.0, -10.0)
-	motor.simulate(crouch_runner, _command(1.0, 0.0, 0.0, crouch), STEP)
-	_check(not crouch_runner.is_sliding(), "crouch held before the speed arrives never slides",
-		"%.2f m/s" % crouch_runner.horizontal_speed())
-
-	# slide_boost 0: no burst at all.
-	var no_boost := _slide_tunables()
-	no_boost.slide_boost = 0.0
-	var no_boost_motor := _motor(no_boost)
-	var flat := _running(no_boost_motor)
-	var flat_before := flat.horizontal_speed()
-	no_boost_motor.simulate(flat, _command(1.0, 0.0, 0.0, crouch), STEP)
-	_check(
-		flat.is_sliding() and flat.horizontal_speed() <= flat_before + 0.001,
-		"slide_boost 0 slides with no burst",
-		"%.3f -> %.3f m/s" % [flat_before, flat.horizontal_speed()]
-	)
-
-	# Already past slide_max_speed: no burst, and no speed taken away either.
-	var fast := _running(motor)
-	fast.velocity = Vector3(0.0, 0.0, -18.0)
-	motor.simulate(fast, _command(1.0, 0.0, 0.0, crouch), STEP)
-	_check(
-		fast.is_sliding() and fast.horizontal_speed() <= 18.0 and fast.horizontal_speed() > 17.5,
-		"a slide past slide_max_speed gets no burst and loses only friction",
-		"%.3f m/s" % fast.horizontal_speed()
-	)
-
-	# Determinism: a replay from a snapshot in the middle of a slide reproduces it. The
-	# negative control drops the slide from the snapshot, which is what a slide kept
-	# anywhere but the state would do on a rewind, and must diverge.
-	var commands: Array[DotFpsCommand] = []
-
-	for i in range(200):
-		var buttons := DotFpsCommand.BUTTON_SPRINT
-		if (i % 70) >= 40 and (i % 70) < 62:
-			buttons = crouch
-		commands.append(_command(1.0, sin(float(i) * 0.07) * 0.3, float(i) * 0.4, buttons))
-
-	var full := _standing(_motor(t))
-	var full_motor := _motor(t)
-	var snapshot: DotFpsState = null
-
-	for i in range(commands.size()):
-		full_motor.simulate(full, commands[i], STEP)
-		if i == 45:
-			snapshot = full.duplicate_state()
-
-	var slid_at_split := snapshot.is_sliding()
-	var replay := snapshot.duplicate_state()
-	_run_window(_motor(t), replay, commands, 46, commands.size())
-	_check(
-		slid_at_split and replay.equals(full, 0.0001),
-		"replaying from a snapshot mid-slide reproduces the run",
-		"sliding at the split %s, diverged %.6f m" % [slid_at_split, replay.divergence(full)]
-	)
-
-	var amnesiac := snapshot.duplicate_state()
-	amnesiac.slide_time = -1.0
-	_run_window(_motor(t), amnesiac, commands, 46, commands.size())
-	_check(
-		not amnesiac.equals(full, 0.0001),
-		"negative control: a replay that forgets the slide diverges",
-		"diverged %.6f m" % amnesiac.divergence(full)
-	)
+	_slide_edges(t, motor)
+	_slide_replay(t)
 	_done()
 
 
