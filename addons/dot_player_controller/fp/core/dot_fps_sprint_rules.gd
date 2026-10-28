@@ -1,16 +1,9 @@
 class_name DotFpsSprintRules
 extends RefCounted
 
-## The sprint and stamina cvars (`sv_sprint*`, `sv_stamina*`) as one live, replicated group for a game whose players each hold their own [DotFpsTunables].
-##
-## A server binds it ([method bind_cvars], REPLICATED), a client follows it ([method follow_cvars]), and either side calls [method apply_to] on every player's tunables when [signal changed] fires, so a prediction reads the numbers the server does.
-##
-## [codeblock]
-## rules.apply_from(config_tunables)          # defaults from the game's config
-## rules.bind_cvars(add_cvar, DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED)  # server
-## rules.follow_cvars(link)                   # client
-## rules.changed.connect(func(): for t in all_tunables: rules.apply_to(t))
-## [/codeblock]
+## The sprint and stamina cvars (`sv_sprint*`, `sv_stamina*`) as one replicated group for players that each hold their own tunables.
+## A server calls [method bind_cvars], a client [method follow_cvars], and either side calls [method apply_to] on every
+## player's tunables when [signal changed] fires, so a prediction reads the numbers the server does.
 
 ## A sprint or stamina value changed.
 signal changed

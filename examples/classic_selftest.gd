@@ -1,10 +1,8 @@
 extends Node
 
-## The classic competitive-shooter profile measured against closed forms of its reference
-## numbers (all in source units, 0.01905 m each): friction 4, stop speed 75, accelerate 5,
-## air accelerate 10, air wish cap 30, gravity 800, run 250, jump apex 57, ladder climb 200 and
-## ladder jump-off 270, swim at 0.8 of run (200), water accelerate 10, idle sink 60. A feel judgement is
-## not made here; the numbers a player's hands are trained on are.
+## The classic competitive-shooter profile measured against closed forms of its reference numbers
+## (source units, 0.01905 m each): friction 4, stop speed 75, accelerate 5, air accelerate 10, air wish cap 30,
+## gravity 800, run 250, jump apex 57, ladder 200 and 270, swim 200, idle sink 60. No feel judgement is made.
 
 const STEP := 1.0 / 60.0
 const U := 0.01905
@@ -352,6 +350,12 @@ func _test_ladder_motion() -> void:
 	_check(absf(d.velocity.z) < 0.01, "sv_ladder_dampen 1 removes the sideways part of the move")
 	ladder.set_cvar("sv_ladder_dampen", "0")
 
+	_ladder_exit_checks(motor, ladder, up, down, yaw)
+	_done()
+
+
+## Leaving a ladder: the foot, the top and a jump off.
+func _ladder_exit_checks(motor: DotFpsMotor, ladder: DotFpsLadderMode, up: DotFpsCommand, down: DotFpsCommand, yaw: float) -> void:
 	var low := DotFpsState.new()
 	low.position = Vector3(1.75, 0.6, 0.0)
 	low.mode = ladder.mode_id
@@ -379,7 +383,6 @@ func _test_ladder_motion() -> void:
 	_near(j.velocity.length(), 270.0 * U, 0.4, "at the classic 270 units/s (less one tick of gravity)")
 	ladder.update(motor, j)
 	_check(j.mode != ladder.mode_id, "and the ladder does not take the player straight back")
-	_done()
 
 
 func _water_rig() -> Array:

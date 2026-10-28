@@ -1,11 +1,9 @@
 class_name DotFpsWallProbe
 extends RefCounted
 
-## Finds the wall a remote player is running along, which is not replicated.
-##
-## A remote machine gets the run's bits but not [member DotFpsState.wall_normal], so a body
-## drawn from the wire alone would stay upright. Two rays to either side of the velocity at
-## chest height give the side without adding a field to the full state word.
+## Finds the wall a remote player is running along, which is not replicated: the wire has the run's bits but not
+## [member DotFpsState.wall_normal], so two rays to either side of the velocity at chest height give the side
+## without adding a field to the full state word.
 
 
 ## The nearest near-vertical wall's normal beside [param position] (the feet), or ZERO.

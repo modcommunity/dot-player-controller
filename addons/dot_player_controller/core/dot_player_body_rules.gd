@@ -48,10 +48,9 @@ var solid: bool = true:
 		changed.emit()
 
 
-## Whether two players stop at each other once players are solid: `(a, b) -> bool` over the
-## keys [method apply_exceptions] is given. Unset, every pair stops. dot-team's
-## `DotTeamBlockRules.blocks` is the family's answer (teammates pass, enemies stop); this file
-## names no team class. `mp_solidplayers` 0 overrules it: nobody blocks.
+## Whether two players stop at each other once players are solid: `(a, b) -> bool` over the keys
+## [method apply_exceptions] is given; unset, every pair stops. dot-team's `DotTeamBlockRules.blocks`
+## is the family's answer. `mp_solidplayers` 0 overrules it: nobody blocks.
 var pair_fn: Callable = Callable()
 
 
@@ -66,9 +65,8 @@ func refresh() -> void:
 
 
 ## Hands each controller the bodies it passes through. [param entries] maps a player key to a
-## [code]{"body": CollisionObject3D, "controller": Object}[/code]; a remote player on a client has
-## a body and no controller. Call on every machine, and again on [signal changed], with the
-## same keys on both, or the client predicts a wall the server walks through.
+## [code]{"body": CollisionObject3D, "controller": Object}[/code] (a remote has no controller).
+## Call on every machine with the same keys, and again on [signal changed], or prediction disagrees.
 func apply_exceptions(entries: Dictionary) -> void:
 	for key: Variant in entries:
 		var mine: Dictionary = entries[key]

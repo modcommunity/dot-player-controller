@@ -1,4 +1,4 @@
-extends Node
+extends "res://examples/fps_controller_selftest_base.gd"
 
 ## Exercises [DotFpsController] as a node in a real scene tree.
 ##
@@ -16,21 +16,11 @@ extends Node
 ## that a failure names a line rather than a resource, and so the test does not
 ## silently pass when someone edits a scene in the editor.
 
-const STEP := 1.0 / 60.0
-
 const CHECKS := 114
 
-## Sections entered against sections that ran to their last line, and against this. A
-## runtime error inside a section aborts that function and nothing says so; a section that
-## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
-## total is the other half — see docs/testing.md.
+## Sections entered against sections that ran to their last line, and against this: a
+## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
 const SECTIONS := 18
-
-var _passed := 0
-var _failed := 0
-var _failures := PackedStringArray()
-var _entered := 0
-var _completed := 0
 
 
 func _ready() -> void:
@@ -84,136 +74,6 @@ func _run() -> void:
 		return
 	get_tree().quit(1 if _failed > 0 else 0)
 
-
-## A controller that refuses input, of the kind a respawn freeze would use.
-class FrozenController extends DotFpsController:
-	var frozen := true
-	var registered := 0
-
-	func _register_extensions() -> void:
-		registered += 1
-
-		var slow := DotFpsModifier.make(&"slow")
-		slow.max_speed_scale = 0.25
-		motor.register_modifier(slow)
-
-	func _accept_command(_command: DotFpsCommand) -> bool:
-		return not frozen
-
-
-# --- Assertions ------------------------------------------------------------
-
-func _section(title: String) -> void:
-	_entered += 1
-	print(title)
-
-
-## A section reached its last line. See [constant SECTIONS].
-func _done() -> void:
-	_completed += 1
-
-
-func _check(condition: bool, what: String, detail: String = "") -> bool:
-	if condition:
-		_passed += 1
-		print("  ok    %s" % what)
-	else:
-		_failed += 1
-		_failures.append(what if detail == "" else "%s — %s" % [what, detail])
-		print("  FAIL  %s%s" % [what, "" if detail == "" else " — " + detail])
-	return condition
-
-
-func _check_near(v: float, expected: float, tol: float, what: String) -> bool:
-	return _check(
-		absf(v - expected) <= tol,
-		what,
-		"got %.4f, expected %.4f ±%.4f" % [v, expected, tol]
-	)
-
-
-# --- Fixtures --------------------------------------------------------------
-
-## Builds a world with a floor and returns its root.
-func _make_world() -> Node3D:
-	var world := Node3D.new()
-	add_child(world)
-
-	var ground := StaticBody3D.new()
-	var shape := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = Vector3(60.0, 1.0, 60.0)
-	shape.shape = box
-	ground.add_child(shape)
-	ground.position = Vector3(0.0, -0.5, 0.0)
-	world.add_child(ground)
-
-	return world
-
-
-## The conventional player layout, with nothing wired by hand.
-##
-## Player (CharacterBody3D) / Collision, Head / Camera, View, Controller.
-## [param configure] runs before the controller enters the tree.
-##
-## [b]It has to.[/b] A Node's _ready() fires on add_child, and DotFpsController does
-## all of its wiring there — so a test that assigns tunables or register_service
-## afterwards is configuring an object that has already finished setting itself up,
-## and silently tests the defaults instead. Caught here, but it is exactly the
-## mistake a host game makes when it builds a player from code.
-func _make_player(
-	world: Node3D,
-	drive: DotFpsController.Drive,
-	configure: Callable = Callable()
-) -> DotFpsController:
-	var player := CharacterBody3D.new()
-	player.name = "Player"
-	world.add_child(player)
-
-	var collision := CollisionShape3D.new()
-	collision.name = "Collision"
-	collision.shape = CapsuleShape3D.new()
-	player.add_child(collision)
-
-	var head := Node3D.new()
-	head.name = "Head"
-	player.add_child(head)
-
-	var camera := Camera3D.new()
-	camera.name = "Camera"
-	head.add_child(camera)
-
-	var view := DotFpsView.new()
-	view.name = "View"
-	player.add_child(view)
-
-	var controller := DotFpsController.new()
-	controller.name = "Controller"
-	controller.drive = drive
-	controller.register_default_actions = false
-
-	if configure.is_valid():
-		configure.call(controller)
-
-	player.add_child(controller)
-
-	return controller
-
-
-func _command(
-	forward: float = 0.0,
-	strafe: float = 0.0,
-	yaw: float = 0.0,
-	buttons: int = 0
-) -> DotFpsCommand:
-	var c := DotFpsCommand.new()
-	c.move = Vector2(strafe, forward)
-	c.yaw = yaw
-	c.buttons = buttons
-	return c
-
-
-# --- Tests -----------------------------------------------------------------
 
 func _test_surfaces_from_scene() -> void:
 	_section("surfaces from the scene")
@@ -1006,11 +866,16 @@ func _test_local_drive_accumulator() -> void:
 	)
 	controller.drive = DotFpsController.Drive.LOCAL
 
-	# [b]The view is drawn from the sampler once a frame, not from the last tick.[/b] A
-	# frame on which no tick ran used to draw the view where the last frame left it while
-	# the mouse moved, and the next one turned double: one frame in nine at 144 Hz against
-	# 128 ticks. `look_now` folds the pending motion in, and the command after it carries
-	# exactly the same view, so the simulation never sees a different yaw.
+	_look_now_checks()
+
+	world.queue_free()
+	await get_tree().process_frame
+	_done()
+
+
+## The view is drawn from the sampler once a frame, and a zoom narrows mouse look.
+func _look_now_checks() -> void:
+	# `look_now` folds the pending mouse motion in; the next command carries the same view.
 	var looker := DotFpsSampler.new(DotFpsTunables.with_profile("legacy"))
 	looker.tunables.mouse_sensitivity = 0.1
 	var motion := InputEventMouseMotion.new()
@@ -1036,10 +901,6 @@ func _test_local_drive_accumulator() -> void:
 		absf(zoomed.look_now().x - 5.0 * 0.3 * zoomed.tunables.mouse_sensitivity_x) < 0.001,
 		"look_scale narrows mouse look by the zoom (x0.3 turns 1.5 degrees for 5)"
 	)
-
-	world.queue_free()
-	await get_tree().process_frame
-	_done()
 
 
 ## The wall-run roll: toward the open side, eased in and out with no snap, and nothing at 0.
@@ -1145,42 +1006,9 @@ func _test_view_motion() -> void:
 	_section("camera motion: landing dip, strafe roll, widening")
 	var frame := 1.0 / 144.0
 
-	# A landing through the view, as DotFpsController wires it.
-	var body := Node3D.new()
-	add_child(body)
-	var head := Node3D.new()
-	body.add_child(head)
-	var camera := Camera3D.new()
-	head.add_child(camera)
-	var view := DotFpsView.new()
-	view.strafe_roll = 0.0
-	view.slide_roll = 0.0
-	view.fov_speed_gain = 0.0
-	body.add_child(view)
-	var motor := DotFpsMotor.new(DotFpsTunables.with_profile("legacy"), DotFpsFlatBody.with_floor(0.0))
-	var state := DotFpsState.new()
-	state.mode = DotFpsState.Mode.GROUND
-	for _i in range(30):
-		view.apply(state, motor, frame)
-	var rest := head.position.y
-	view.note_landing(view.landing_reference_speed)
-	var ys: Array[float] = []
-	for _i in range(144):
-		view.apply(state, motor, frame)
-		ys.append(head.position.y - rest)
-	var deepest := 0.0
-	var worst_step := absf(ys[0])
-	for i in range(ys.size()):
-		deepest = minf(deepest, ys[i])
-		if i > 0:
-			worst_step = maxf(worst_step, absf(ys[i] - ys[i - 1]))
-	_check(absf(ys[0]) < view.landing_dip * 0.4,
-		"a landing starts the dip, it does not set it: the first frame drops under 40% of it",
-		"%.1f mm of %.1f" % [-ys[0] * 1000.0, view.landing_dip * 1000.0])
-	_check_near(-deepest, view.landing_dip, view.landing_dip * 0.1,
-		"a landing at the reference speed dips landing_dip at the deepest")
-	_check(absf(ys[143]) < 0.002, "and the eye is back a second later", "%.2f mm" % (ys[143] * 1000.0))
-	body.queue_free()
+	var landed := _landing_dip_checks(frame)
+	var motor: DotFpsMotor = landed[0]
+	var state: DotFpsState = landed[1]
 
 	# The strafe roll, eased in and out.
 	var motion := DotFpsViewMotion.new()
@@ -1312,19 +1140,45 @@ func _test_view_motion() -> void:
 	_done()
 
 
-## Stands in for dot-net's DotNetClock: all `render_state` asks of a clock is `render_alpha`.
-class FakeClock extends RefCounted:
-	var alpha: float = 0.0
-
-	func render_alpha() -> float:
-		return alpha
-
-
-func _wheel_event(pressed: bool) -> InputEventMouseButton:
-	var e := InputEventMouseButton.new()
-	e.button_index = MOUSE_BUTTON_WHEEL_UP
-	e.pressed = pressed
-	return e
+## A landing through the view, as DotFpsController wires it.
+func _landing_dip_checks(frame: float) -> Array:
+	# A landing through the view, as DotFpsController wires it.
+	var body := Node3D.new()
+	add_child(body)
+	var head := Node3D.new()
+	body.add_child(head)
+	var camera := Camera3D.new()
+	head.add_child(camera)
+	var view := DotFpsView.new()
+	view.strafe_roll = 0.0
+	view.slide_roll = 0.0
+	view.fov_speed_gain = 0.0
+	body.add_child(view)
+	var motor := DotFpsMotor.new(DotFpsTunables.with_profile("legacy"), DotFpsFlatBody.with_floor(0.0))
+	var state := DotFpsState.new()
+	state.mode = DotFpsState.Mode.GROUND
+	for _i in range(30):
+		view.apply(state, motor, frame)
+	var rest := head.position.y
+	view.note_landing(view.landing_reference_speed)
+	var ys: Array[float] = []
+	for _i in range(144):
+		view.apply(state, motor, frame)
+		ys.append(head.position.y - rest)
+	var deepest := 0.0
+	var worst_step := absf(ys[0])
+	for i in range(ys.size()):
+		deepest = minf(deepest, ys[i])
+		if i > 0:
+			worst_step = maxf(worst_step, absf(ys[i] - ys[i - 1]))
+	_check(absf(ys[0]) < view.landing_dip * 0.4,
+		"a landing starts the dip, it does not set it: the first frame drops under 40% of it",
+		"%.1f mm of %.1f" % [-ys[0] * 1000.0, view.landing_dip * 1000.0])
+	_check_near(-deepest, view.landing_dip, view.landing_dip * 0.1,
+		"a landing at the reference speed dips landing_dip at the deepest")
+	_check(absf(ys[143]) < 0.002, "and the eye is back a second later", "%.2f mm" % (ys[143] * 1000.0))
+	body.queue_free()
+	return [motor, state]
 
 
 ## A wheel tick on jump is one press of jump in the sampled command. The wheel arrives as a
@@ -1466,10 +1320,6 @@ func _test_pair_exceptions() -> void:
 	world.queue_free()
 	await get_tree().process_frame
 	_done()
-
-
-class LegSource extends Node:
-	signal legs_broken(seconds: float, speed_scale: float)
 
 
 func _test_landing_kick_and_legs() -> void:

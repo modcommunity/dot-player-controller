@@ -1,16 +1,9 @@
 class_name DotFpsCvars
 extends RefCounted
 
-## Binds the movement cvars (`sv_gravity`, `sv_airaccelerate`, `sv_waterfriction`, `sv_ladder_dampen` and the rest) of any number of targets to a console, so a cvar change reaches them.
-##
-## A target is anything with `cvar_specs()` and `set_cvar(name, value)`: [DotFpsTunables], [DotFpsSwimMode], [DotFpsLadderMode]. Layered config comes for free: a cvar set by a cfg file or the command line before [method bind_cvars] is read back and applied, and a per-map override (dot-game's `DotGameMapConfig`, which sets and restores console cvars) reaches the targets by the same `changed` signal as an operator typing it.
-##
-## [codeblock]
-## var movement := DotFpsCvars.new().add_target(tunables).add_target(swim).add_target(ladder)
-## movement.bind_cvars(add_cvar, DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED)
-## movement.applied.connect(func(_name): rebuild_players())
-## map_config = DotGameMapConfig.for_console("my-game", console, movement.map_config_keys())
-## [/codeblock]
+## Binds the movement cvars (`sv_gravity`, `sv_waterfriction` and the rest) of any number of targets to a console.
+## A target is anything with `cvar_specs()` and `set_cvar(name, value)`: tunables, swim, ladder.
+## Use `DotFpsCvars.new().add_target(tunables)`, then `bind_cvars(add_cvar, flags)`; a per-map override arrives by `changed`.
 
 ## A cvar was applied to at least one target.
 signal applied(cvar_name: String, value: String)

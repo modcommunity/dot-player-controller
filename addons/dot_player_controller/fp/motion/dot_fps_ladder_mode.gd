@@ -1,22 +1,9 @@
 class_name DotFpsLadderMode
 extends DotFpsMoveMode
 
-## Climbing a ladder: a player whose hull touches a ladder box and pushes into it, or falls past
-## it, is on it. No gravity; forward climbs toward where they look (look up and press forward to
-## go up, down to go down), strafe moves along the wall, jump lets go and pushes off.
-##
-## [b]Ladders are data, not areas[/b], for [DotFpsSwimMode]'s reason: a box list gives a client
-## replaying prediction the same answer the server had. [method update] is the game's once-a-tick
-## call that puts a player on (after the move); [method _simulate] takes them off. A ladder is a
-## thin box against a wall: its short horizontal axis is its normal.
-##
-## [codeblock]
-## var ladder := DotFpsLadderMode.new()
-## ladder.volumes = map.ladder_boxes()
-## controller.extra_modes = [ladder]
-## # every tick, after the move:
-## ladder.update(controller.motor, controller.state)
-## [/codeblock]
+## Climbing a ladder: a player whose hull touches a ladder box and pushes into it, or falls past it, is on it.
+## Ladders are data, not areas, so a client replaying prediction gets the server's answer; the game calls [method update]
+## once a tick after the move to put a player on, [method _simulate] takes them off.
 
 ## The ladder boxes, world space, metres.
 var volumes: Array[AABB] = []
@@ -104,10 +91,8 @@ func _simulate(state: DotFpsState, command: DotFpsCommand, delta: float, motor: 
 		motor.move_and_slide(state, delta)
 		return
 
-	# The engine's own ladder move: the wish along the view, split into what goes INTO the
-	# ladder's face and what does not; the part into the face is turned into motion UP it
-	# (out of it, down), and the rest is kept. So forward while facing the ladder climbs,
-	# looking up climbs faster, looking down far enough descends, and strafe slides across.
+	# The wish along the view, split into what goes into the ladder's face (turned into motion up it)
+	# and the rest, which is kept: forward climbs, looking up climbs faster, strafe slides across.
 	var basis := DotFpsMotor._view_basis(state.yaw, state.pitch)
 	var wish := (basis.forward * clampf(command.move.y, -1.0, 1.0)
 		+ basis.right * clampf(command.move.x, -1.0, 1.0)) * climb_speed
@@ -119,11 +104,9 @@ func _simulate(state: DotFpsState, command: DotFpsCommand, delta: float, motor: 
 	state.velocity = v.limit_length(climb_speed * 1.5)
 	motor.move_and_slide(state, delta)
 
-	# Down onto the floor at the foot: back to walking. Asked only while going down, and
-	# the mode put back if there is no floor: the motor's ground check writes AIR for
-	# anybody rising who was not on the ground, which is every climber, and dropped
-	# them off the ladder on every tick of a climb (they bounced up it at a quarter of
-	# the climb speed instead).
+	# Down onto the floor at the foot: back to walking. Asked only while going down, and the mode
+	# put back if there is no floor: the ground check writes AIR for every riser, which dropped
+	# climbers off the ladder on every tick.
 	if v.y <= 0.0:
 		motor.categorise_ground(state)
 		if not state.is_grounded():
