@@ -166,7 +166,7 @@ func _test_rules() -> void:
 		return cvar
 	var fresh := DotPlayerViewRules.new()
 	var _bound := fresh.bind_cvars(add)
-	_check(made == ["mp_forceview", "mp_firstperson_legs", "cl_landing_kick"], "bind_cvars registers mp_forceview, mp_firstperson_legs and cl_landing_kick")
+	_check(made == ["mp_forceview", "mp_viewcycle", "mp_firstperson_legs", "cl_landing_kick"], "bind_cvars registers mp_forceview, mp_viewcycle, mp_firstperson_legs and cl_landing_kick")
 	_check(fresh.first_person_legs, "mp_firstperson_legs reads back the operator's 1 (default 0 hides the legs)")
 	_check(fresh.shows_own_legs() and not DotPlayerViewRules.new().shows_own_legs() and DotPlayerViewRules.new().shows_own_legs(true), "shows_own_legs is the cvar or the game's own wish")
 	_check(not DotPlayerViewRules.new().first_person_legs and not fresh.set_cvar("mp_firstperson_legs", "2"), "legs are off by default and a value other than 0 or 1 is refused")
