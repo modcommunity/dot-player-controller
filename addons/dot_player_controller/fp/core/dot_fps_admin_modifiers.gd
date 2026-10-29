@@ -1,38 +1,9 @@
 class_name DotFpsAdminModifiers
 extends RefCounted
 
-## What an administrator can do to how somebody moves: noclip, freeze, a speed and a
-## gravity multiplier — as ordinary [DotFpsModifier]s, so every one of them is predicted.
-##
-## [codeblock]
-## controller.admin_abilities = true           # on the server AND on the client
-## ...
-## DotFpsAdminModifiers.set_noclip(controller, true)     # server side
-## DotFpsAdminModifiers.set_speed(controller, 2.0)
-## [/codeblock]
-##
-## [b]Why modifiers, and not a flag or a tunable.[/b] Everything here is decided on the
-## server and has to be simulated on the owning client too, because the client predicts its
-## own movement. A server that changed a tunable, or set [member DotFpsState.mode] to NOCLIP,
-## would be simulating a player the client is not: the client's replay runs its own tunables
-## and its own noclip gate, disagrees on every tick, and is corrected on every snapshot —
-## which is rubber-banding, the one symptom an admin tool must not have. The active modifier
-## set is already in [DotFpsState], already replicated by [DotFpsNetSync] as a mask, and
-## already restored by a rewind, so a modifier is the one shape that reaches the client's
-## prediction with no new wire field at all.
-##
-## [b]The cost is that the values are a ladder, not a dial.[/b] A modifier's definition is
-## configuration both machines hold and only its membership travels, so a multiplier the
-## server made up at runtime is one the client has never heard of. [method set_speed] and
-## [method set_gravity] therefore pick the nearest registered step and say which one they
-## picked; an admin who typed 2.2 is told they got 2. Adding a step is adding a number to
-## [constant SPEED_STEPS], on every machine at once — which a shipped build does anyway.
-##
-## [b]Registration is part of the wire contract.[/b] [method register] must run on every
-## machine, in the same order relative to a game's own modifiers — which is why
-## [member DotFpsController.admin_abilities] does it straight after
-## [method DotFpsController._register_extensions], and why a game should turn it on for
-## every player rather than only for the ones an admin has touched.
+## What an administrator can do to how somebody moves (noclip, freeze, speed, gravity) as ordinary
+## [DotFpsModifier]s, so the owning client predicts them and nothing rubber-bands. Values are a ladder of
+## registered steps; [method register] must run in the same order on every machine. See docs/rationale.md.
 
 const NOCLIP := &"admin_noclip"
 const FREEZE := &"admin_freeze"
@@ -41,10 +12,7 @@ const FREEZE := &"admin_freeze"
 const NOCLIP_PERMIT := &"admin_noclip_permit"
 
 ## Speed multipliers an admin can put somebody on. 1.0 is "none" and is not a step.
-##
-## Each scales top speed and both accelerations together, so a player on 2× reaches their
-## new top speed in the same time they reached the old one — scaling only the top speed
-## makes a fast player feel like one who is sliding.
+## Each scales top speed and both accelerations together; scaling only top speed feels like sliding.
 const SPEED_STEPS := [0.25, 0.5, 0.75, 1.5, 2.0, 3.0]
 
 ## Gravity multipliers. Zero is deliberately absent: a player on no gravity who jumps
@@ -128,13 +96,11 @@ static func nearest(steps: Array, scale: float) -> float:
 	return best
 
 
-# --- Applying them ------------------------------------------------------------
+# Applying them
 
 ## Holds a player in noclip, or lets them go.
-##
-## Letting go also puts them in AIR. Removing the modifier alone would leave a player whose
-## tunables allow noclip still flying — see [member DotFpsModifier.forces_noclip] — and an
-## admin who typed "noclip off" means off.
+## Letting go also puts them in AIR: dropping the modifier alone leaves a player whose tunables allow
+## noclip still flying (see [member DotFpsModifier.forces_noclip]).
 static func set_noclip(controller: DotFpsController, on: bool) -> DotResult:
 	var usable := _ready_on(controller)
 
@@ -235,7 +201,7 @@ static func clear(controller: DotFpsController) -> void:
 		controller.remove_modifier(gravity_id(float(step)))
 
 
-# --- Internals -----------------------------------------------------------------
+# Internals
 
 static func _set_step(
 	controller: DotFpsController, steps: Array, scale: float, speed: bool

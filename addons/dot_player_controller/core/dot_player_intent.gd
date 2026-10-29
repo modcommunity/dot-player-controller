@@ -2,42 +2,22 @@ class_name DotPlayerIntent
 extends RefCounted
 
 ## One tick of what a player wants, in a form every controller understands.
-##
-## [b]Intent, not input, and not movement.[/b] It says "forward and right, holding
-## jump, looking here" — it does not say which key that was and it does not say what
-## happens. A sampler turns devices into one of these; a controller turns one of these
-## into motion; a replay hands the same ones back; a server receives them over the wire
-## and never sees a keyboard at all.
-##
-## Each controller in this family still has its own richer command — dot-player-
-## controller-fp's [code]DotFpsCommand[/code] carries the movement model's own fields —
-## and this is the part they agree about. That is what makes a switch between two
-## controllers possible at all: the intent survives the handover even though the state
-## does not.
+## Intent, not input and not movement: a sampler produces it, a controller turns it into motion,
+## a replay or the wire hands it back. It survives a controller switch though state does not.
 
 ## Ground-plane intent, each component in [code]-1..1[/code].
-##
-## [b]Deliberately not normalised on arrival.[/b] A controller normalises if its
-## movement model says diagonal movement should not be faster, and some models say it
-## should — air-strafing depends on the raw vector — so the decision belongs to the
-## controller rather than to the value.
+## Not normalised on arrival: whether diagonals are faster is the movement model's decision.
 var move: Vector2 = Vector2.ZERO
 
-## Look change this tick, in radians. Yaw in x, pitch in y.
-##
-## A delta rather than an absolute angle because a mouse produces deltas, and because a
-## client and a server that disagreed about an absolute angle would fight over it every
-## tick. The accumulated angles are in [member view_yaw] and [member view_pitch].
+## Look change this tick, in radians (yaw in x, pitch in y).
+## A delta because a mouse produces deltas; the absolute angles are [member view_yaw] and [member view_pitch].
 var look: Vector2 = Vector2.ZERO
 
 ## Everything held this tick, as [enum Button] bits.
 var buttons: int = 0
 
 ## Buttons that were not held last tick. Computed by [method diff_from].
-##
-## Needed because "pressed" and "held" are different intents — a jump is an edge and a
-## sprint is a level — and a controller computing edges itself would need to keep the
-## previous command, which a stateless replay does not have.
+## A jump is an edge and a sprint is a level; a stateless replay cannot compute edges itself.
 var pressed: int = 0
 
 ## Buttons released this tick.
@@ -55,14 +35,8 @@ var extra: Dictionary = {}
 
 
 ## Everything a controller might be told to do, as bits.
-##
-## One list rather than one per controller: a switch that hands over between a
-## first-person controller and a vehicle needs both ends to agree what "use" means, and
-## two enums with the same names and different values is the quietest possible bug.
-##
-## [b]Called [code]Btn[/code] rather than [code]Button[/code].[/b] [Button] is a native
-## class — the [Control] — and GDScript refuses the shadowing outright. Better here than
-## in a subclass, where the error would be reported against the file that used it.
+## One list so a switch between controllers agrees what "use" means.
+## Named [code]Btn[/code] because GDScript refuses to shadow the native [Button].
 enum Btn {
 	NONE = 0,
 	JUMP = 1 << 0,
@@ -128,10 +102,7 @@ func just_released(button: int) -> bool:
 
 
 ## Fills [member pressed] and [member released] from the previous tick's buttons.
-##
-## Takes the raw bits rather than a whole intent so that a controller keeping only an
-## [code]int[/code] of history — which is all it needs — does not have to keep a whole
-## object alive to compute an edge.
+## Takes the raw bits so a controller need only keep an [code]int[/code] of history.
 func diff_from(previous_buttons: int) -> void:
 	pressed = buttons & ~previous_buttons
 	released = previous_buttons & ~buttons
@@ -155,12 +126,8 @@ func copy_intent() -> DotPlayerIntent:
 	return i
 
 
-## The wire form. Angles are sent, deltas are not.
-##
-## [b]Deltas are not on the wire on purpose.[/b] A server that integrated a client's
-## look deltas would be reconstructing an angle the client already knows, one packet
-## loss away from disagreeing about it forever. The client sends where it is looking;
-## the server clamps and accepts.
+## The wire form. Angles are sent, deltas are not: the client says where it is looking and
+## the server clamps and accepts, so a lost packet cannot leave them disagreeing.
 func to_dict() -> Dictionary:
 	return {
 		"mx": move.x,

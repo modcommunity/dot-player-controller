@@ -14,11 +14,7 @@ extends DotConfig
 @export_range(0.1, 100.0, 0.1) var crouch_speed: float = 2.0
 
 ## How quickly the character reaches its target speed, in m/s².
-##
-## [b]Acceleration rather than a snap, and the number is a feel decision.[/b] A
-## third-person character that changes direction instantly reads as weightless, because
-## the model is visible and its feet are visibly not doing what the body is doing.
-## A first-person one gets away with it; this does not.
+## Acceleration, not a snap: a visible model changing direction instantly reads as weightless.
 @export_range(1.0, 500.0, 1.0) var acceleration: float = 45.0
 
 ## How quickly it stops.
@@ -32,17 +28,11 @@ extends DotConfig
 @export_range(0.0, 20.0, 0.01) var jump_height: float = 1.1
 
 ## Fraction of ground acceleration available in the air.
-##
-## [b]Not zero and not one.[/b] Zero makes a missed jump unrecoverable and reads as the
-## controls having stopped working; one makes the jump arc meaningless. A third of it is
-## the usual answer.
+## Zero makes a missed jump unrecoverable; one makes the arc meaningless.
 @export_range(0.0, 1.0, 0.01) var air_control: float = 0.33
 
 ## Seconds after walking off a ledge during which a jump still works.
-##
-## The single most valuable twelve lines in any character controller. Without it a
-## player who pressed jump one frame late simply falls, and reports the jump as
-## unreliable rather than as late.
+## Without it a jump pressed one frame late just falls and reads as unreliable.
 @export_range(0.0, 1.0, 0.01) var coyote_time: float = 0.12
 
 ## Seconds before landing during which a jump press is remembered.
@@ -55,18 +45,11 @@ extends DotConfig
 
 @export_group("Turning")
 
-## How the character's facing relates to the camera.
-##
-## [code]face_movement[/code] turns the body towards where it is going — the adventure
-## and platformer answer. [code]face_camera[/code] locks the body to the camera so
-## strafing is possible — the shooter answer. Games switch between them: aiming in a
-## third-person shooter is exactly a temporary [code]face_camera[/code].
+## How the character's facing relates to the camera: [code]face_movement[/code] turns towards travel,
+## [code]face_camera[/code] locks to the camera for strafing (aiming is a temporary face_camera).
 @export_enum("face_movement", "face_camera") var turn_mode: int = 0
 
-## Radians per second the body turns towards its target facing.
-##
-## Not instant, for the same reason acceleration is not: an instantly-turning model
-## looks like a sprite being flipped.
+## Radians per second the body turns towards its target facing (not instant, for the same reason as acceleration).
 @export_range(0.1, 100.0, 0.1) var turn_speed: float = 12.0
 
 @export_group("Camera")
@@ -81,10 +64,7 @@ extends DotConfig
 @export_range(0.0, 10.0, 0.01) var camera_height: float = 1.5
 
 ## Metres to the side. Positive is over the right shoulder.
-##
-## [b]The setting that makes a third-person shooter aimable at all.[/b] A camera on the
-## character's centre line puts the character between the player and what they are
-## shooting at; offsetting it is what lets the crosshair mean something.
+## Keeps the character off the line between the player and the target, so a crosshair means something.
 @export_range(-3.0, 3.0, 0.01) var shoulder_offset: float = 0.55
 
 ## Shoulder offset while aiming.
@@ -95,10 +75,8 @@ extends DotConfig
 
 @export_range(0.0, 89.0, 0.5) var pitch_max: float = 70.0
 
-## How quickly the camera catches up with the character, per second.
-##
-## Applied frame-rate-independently. Zero is rigid, which is correct for a competitive
-## shooter and looks cheap in anything else.
+## How quickly the camera catches up with the character, per second, frame-rate independent.
+## Zero is rigid (right for a competitive shooter).
 @export_range(0.0, 60.0, 0.1) var camera_lag: float = 18.0
 
 ## How quickly the distance and shoulder change when aiming starts.
@@ -165,11 +143,8 @@ func speed_for(running: bool, crouched: bool) -> float:
 
 
 ## A frame-rate-independent smoothing factor.
-##
-## [b]Not [code]lerp(a, b, rate * delta)[/code].[/b] That is the spelling everybody
-## writes and it makes the camera behave differently at 60 and 144 frames per second —
-## including, at a low enough frame rate, overshooting and oscillating. The exponential
-## form converges the same way at any rate.
+## Not [code]lerp(a, b, rate * delta)[/code], which differs at 60 and 144 fps and can oscillate when low.
+## The exponential form converges the same at any rate.
 static func smoothing(rate: float, delta: float) -> float:
 	if rate <= 0.0:
 		return 1.0
@@ -177,7 +152,7 @@ static func smoothing(rate: float, delta: float) -> float:
 	return 1.0 - exp(-rate * delta)
 
 
-# --- Presets ----------------------------------------------------------------
+# Presets
 
 ## Over-the-shoulder, camera-locked, tight. A third-person shooter.
 static func shooter() -> DotTpsTunables:

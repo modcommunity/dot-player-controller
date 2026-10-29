@@ -1,16 +1,9 @@
 class_name DotTpsSampler
 extends Node
 
-## Devices to [DotPlayerIntent]. The only node in this addon that reads input.
-##
-## [b]Separate from the controller for the reason dot-player-controller's sampler is
-## separate from its motor[/b]: a replay must not accidentally call
-## [method Input.is_action_pressed] and get what the player is holding [i]now[/i]. A
-## controller that sampled its own input could not be replayed at all, and the failure
-## would be invisible — the replay would simply produce the live answer.
-##
-## Action names are exported rather than fixed, because dot-ui owns rebinding and a game
-## that already has an input map should not have to rename half of it.
+## Devices to [DotPlayerIntent]. The only node in this addon that reads input, kept apart from the
+## controller so a replay cannot pick up what the player is holding now.
+## Action names are exported because dot-ui owns rebinding.
 
 const CHANNEL := "player.tps"
 
@@ -128,11 +121,8 @@ func sample(tick: int, delta: float) -> DotPlayerIntent:
 
 
 ## An action's strength, or zero for one this project has not defined.
-##
-## [b]Guarded, because [method Input.get_action_strength] pushes an error for an action
-## that does not exist[/b] — and a game that has bound eight of these eleven actions
-## would otherwise fill its log with three errors per tick per player. Warned once each,
-## which is enough to find a typo and not enough to bury anything.
+## Guarded because Input.get_action_strength errors on a missing action, three times per tick per player;
+## warned once each.
 func _strength(action: StringName) -> float:
 	if not InputMap.has_action(action):
 		_note_missing(action)
@@ -168,10 +158,7 @@ func missing_actions() -> PackedStringArray:
 	return out
 
 
-## Clears the accumulated mouse movement. Call when a menu opens.
-##
-## Without it, the movement made while the menu was open arrives in one lump on the tick
-## after it closes, and the view snaps.
+## Clears the accumulated mouse movement. Call when a menu opens, or it arrives in one lump on close.
 func discard_pending() -> void:
 	_mouse = Vector2.ZERO
 

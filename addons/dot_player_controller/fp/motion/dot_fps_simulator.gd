@@ -1,37 +1,9 @@
 class_name DotFpsSimulator
 extends RefCounted
 
-## A player's own movement, run ahead of time on a copy of their state: what a bot plans a
-## surf ride with and checks its next second against.
-##
-## [codeblock]
-## var sim := controller.simulator()            # or DotFpsSimulator.new().setup(...)
-## sim.oracle = func(state: DotFpsState) -> int: return my_course.event_at(state)
-## var s := controller.state.duplicate_state()
-## var event := sim.step(s, sim.command(yaw, Vector2(0, 1), false))
-## [/codeblock]
-##
-## [b]A second motor, not a model of the first.[/b] Surfing is [method DotFpsMotor.accelerate]
-## and the clip against a ramp meeting a map's collision, tick by tick; a re-implementation is
-## a second copy of that rule that drifts, and a ride planned on the copy falls off the
-## original. The motor is a pure function of (state, command, delta, tunables, body) and the
-## body only queries, so a second [DotFpsMotor] over a copy of the body, with copied tunables,
-## the same modifiers and the same modes in the same order, is the game itself. game-g2gfast's
-## surf suite checks the three properties this rests on: a simulated tick leaves the live
-## player, its motor and its controller untouched; the same start and inputs end bit-identical;
-## and the live player given the same commands ends where the simulation did (0.0000 m after a
-## 486-tick ride). Reasoning: docs/motor.md, "Simulating ahead".
-##
-## [b]What it copies.[/b] The tunables (a duplicate: the controller re-gates abilities on its
-## own every tick), the body ([method DotFpsBody.copy_for_simulation]; a game's own body type
-## overrides it, or the caller hands one to [method setup]), the modifiers and the custom modes
-## in registration order (so a state's modifier and mode ids mean the same thing here), and the
-## surfaces. [b]What it does not.[/b] Anything a game runs outside the motor (a map's pushes,
-## water a game steps itself, a pit that teleports): that is [member mechanics], a callable the
-## game sets, and [member oracle], which says what a position means.
-##
-## [b]Query-only by contract.[/b] Nothing here emits a signal or touches a node; a simulated
-## tick changes the state it is handed and this object's own counters, nothing else.
+## A player's own movement, run ahead of time on a copy of their state: what a bot plans a surf ride with.
+## A second [DotFpsMotor] over a copy of the body, tunables, modifiers and modes, not a model of the first;
+## query-only, never touches the live player. Reasoning and usage: docs/motor.md, "Simulating ahead".
 
 # No log channel: a pure function with counters.
 
@@ -52,11 +24,9 @@ var delta: float = 1.0 / 60.0
 ## each tick. Unset, every state is [constant EVENT_NONE].
 var oracle: Callable = Callable()
 
-## `func(state: DotFpsState, motor: DotFpsMotor, delta: float, start: Vector3) -> int` (an
-## EVENT_*), run after each motor tick and before [member oracle]: whatever a game runs on a
-## player beside the motor (a map's boosters, gravity volumes). [param start] is where the tick
-## began, for a game that asks "was this player in it last tick" of the position rather than
-## remembering it. It may change the state; a non-zero answer ends the step.
+## `func(state, motor, delta, start: Vector3) -> int` (an EVENT_*), run after each motor tick and before
+## [member oracle]: whatever a game runs on a player beside the motor. [param start] is where the tick
+## began. It may change the state; a non-zero answer ends the step.
 var mechanics: Callable = Callable()
 
 ## Motor ticks this simulator has run, and the microseconds they took: the compute cost.
@@ -64,10 +34,8 @@ var steps: int = 0
 var usec: int = 0
 
 
-## Builds the motor. [param live_motor] and [param live_body] are read for what this one must
-## share with them (the modifiers and modes in order, the surfaces, the masks and excluded
-## colliders) and never written. [param p_body] replaces the copy of [param live_body], for a
-## body type that cannot copy itself. Returns this simulator, or null when there is no body.
+## Builds the motor. [param live_motor] and [param live_body] are read, never written; [param p_body]
+## replaces the body copy for a body type that cannot copy itself. Returns null when there is no body.
 func setup(tunables: DotFpsTunables, live_motor: DotFpsMotor, live_body: DotFpsBody,
 		tick_rate: int, p_body: DotFpsBody = null) -> DotFpsSimulator:
 	body = p_body if p_body != null else (live_body.copy_for_simulation() if live_body != null else null)

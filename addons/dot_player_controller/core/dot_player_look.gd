@@ -2,18 +2,8 @@ class_name DotPlayerLook
 extends RefCounted
 
 ## Where a player is looking, accumulated from deltas, clamped, and never wrapping.
-##
-## [b]Forty lines that every project rewrites and half of them get wrong.[/b] The three
-## mistakes, in the order they are discovered:
-##
-## 1. [b]Pitch is clamped, yaw is wrapped.[/b] Clamping yaw stops the player turning
-##    round; wrapping pitch lets them look through their own feet and come out the top.
-## 2. [b]The wrap has to happen, and to a bounded range.[/b] A yaw that only ever
-##    accumulates is a float that loses precision over a long session, and the symptom
-##    is a mouse that gets less accurate the longer the server has been up.
-## 3. [b]Sensitivity is applied to the delta, not to the angle.[/b] Applied to the
-##    angle it is a multiplier on where you are looking, which snaps the view every
-##    time the setting changes.
+## Pitch clamps, yaw wraps to a bounded range (an ever-growing float loses precision), and
+## sensitivity applies to the delta, not the angle (or the view snaps when the setting changes).
 
 ## Radians. Wrapped to [code]-PI..PI[/code].
 var yaw: float = 0.0
@@ -72,10 +62,7 @@ func forward() -> Vector3:
 	)
 
 
-## The direction being looked along, flattened onto the ground plane.
-##
-## What movement uses, and separate from [method forward] because a player looking at
-## the floor should still walk forwards rather than into it.
+## The look direction flattened onto the ground plane: looking at the floor still walks forwards.
 func forward_flat() -> Vector3:
 	return Vector3(-sin(yaw), 0.0, -cos(yaw))
 
@@ -94,12 +81,8 @@ func body_basis() -> Basis:
 	return Basis(Vector3.UP, yaw)
 
 
-## Turns a ground-plane intent into a world direction, relative to where the player is
-## looking.
-##
-## [b]Here rather than in each controller.[/b] Both the first-person and the third-
-## person controller need it, they need it to agree, and the version that gets written
-## twice is the version where one of them has X and Y the wrong way round.
+## Turns a ground-plane intent into a world direction, relative to where the player is looking.
+## Here so the first- and third-person controllers cannot disagree about the axes.
 func move_direction(move: Vector2) -> Vector3:
 	return (forward_flat() * move.y + right_flat() * move.x)
 
@@ -110,10 +93,7 @@ func direction_2d() -> Vector2:
 
 
 ## Where a 2D player's aim points, given a screen offset from them.
-##
-## Wrapped to the same range as [member yaw] so a 2D game and a 3D one describe an angle
-## the same way, which matters when a replay, a wire message or a describe line is read
-## by something that does not know which it came from.
+## Wrapped like [member yaw] so 2D and 3D describe an angle the same way.
 static func angle_to(from: Vector2, to: Vector2) -> float:
 	return wrapf((to - from).angle(), -PI, PI)
 

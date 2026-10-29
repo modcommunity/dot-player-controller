@@ -1,40 +1,9 @@
 class_name DotPlayerBodyRules
 extends RefCounted
 
-## Whether players (people and bots alike) are solid to each other: the `mp_solidplayers`
-## cvar, 1 by default.
-##
-## [codeblock]
-## # wherever the game sets a player's mask, on every machine
-## player.controller.set_collision_mask(world.body_rules.mask(physics.collision_mask(&"player"), physics.layer_mask(&"player")))
-## # and once the body is built: the capsule the others' sweeps hit
-## world.body_rules.apply_hull(player, tunables.stand_height, tunables.radius)
-## [/codeblock]
-##
-## [b]Both halves, or nothing changes.[/b] The family's player bodies carry no collision
-## shape: the motor sweeps a capsule of its own and the hitboxes are analytic, so a mask
-## with the player layer in it hits nothing. [method apply_hull] gives the body a standing
-## capsule on its own layer, which its own controller excludes (it excludes its body) and
-## every other player's sweep stops at. It stays standing height when its owner crouches:
-## a crouched player is not something to walk over.
-##
-## [b]Why solid by default.[/b] dot-physics' shooter layout leaves players out of each other's
-## mask, which is the competitive genre's choice: nobody blocks a doorway. The first play
-## test (2026-10-11) showed the other side of it in every game with bots: a bot walks into
-## the player and its face fills the first-person screen, because nothing stops two bodies
-## sharing one place. Solid bodies keep heads at least two radii apart; dot-core's
-## [code]DotCameraFade[/code] hides whatever still gets inside the near plane.
-##
-## [b]It is part of the simulation, so it replicates.[/b] A client predicts its own player
-## against the others' capsules where it draws them, which can disagree with the server by
-## a few centimetres when two players lean on each other; the reconcile corrects it. A
-## server that wants the genre's pass-through sets 0.
-##
-## Two bodies that start overlapping (a shared spawn, a teleport) are never stuck: the cast
-## ignores what it starts inside, and [method apply_to] tells the controller every other
-## question ignores the players' layer, so they walk apart, or through, and are solid once
-## clear. Without that second half both pushed into each other's hull and stood still
-## (mg-look-at-me's door check, two players placed on one spot).
+## Whether players (people and bots alike) are solid to each other: the `mp_solidplayers` cvar, 1 by default.
+## Needs both halves: [method mask] on the controller and [method apply_hull] on the body, or nothing changes.
+## Reasoning: docs/rationale.md.
 
 signal changed
 
@@ -87,10 +56,9 @@ func apply_exceptions(entries: Dictionary) -> void:
 const HULL_NAME := &"SolidHull"
 
 
-## Gives [param body] a standing capsule while players are solid (feet at the body's
-## origin, as the motor's state has them), and disables it while they are not. Safe to call
-## again: the hull is found by name and resized. Call it on every machine that simulates
-## players, and again on [signal changed].
+## Gives [param body] a standing capsule while players are solid, and disables it while not.
+## Safe to repeat (the hull is looked up by name); call on every machine that simulates players
+## and again on [signal changed].
 func apply_hull(body: CollisionObject3D, height: float, radius: float) -> void:
 	if body == null or not is_instance_valid(body):
 		return
@@ -107,10 +75,9 @@ func apply_hull(body: CollisionObject3D, height: float, radius: float) -> void:
 	hull.disabled = not solid
 
 
-## Sets a first-person controller's mask ([method mask]) and the layers it may walk out of
-## (the players' own, while they are solid): two players spawned in one place walk apart,
-## where hulls that blocked from inside held both still. Duck-typed on
-## `set_collision_mask` / `set_pass_out_layers`, so an older controller gets the mask alone.
+## Sets a controller's mask ([method mask]) and the layers it may walk out of, so players
+## spawned in one place walk apart. Duck-typed on `set_collision_mask` / `set_pass_out_layers`;
+## an older controller gets the mask alone.
 func apply_to(controller: Object, base: int, player_layers: int) -> void:
 	if controller == null or not is_instance_valid(controller):
 		return

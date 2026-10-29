@@ -3,33 +3,21 @@ class_name DotFpsSurfaceSet
 extends Resource
 
 ## The surfaces a game has, and how a collider is mapped to one.
-##
-## [b]The hard part is not the table, it is the mapping.[/b] The obvious way to ask
-## "what am I standing on" is to look up the collider the ground probe hit — but a
-## collider's instance id is process-local, so the client and the server get different
-## numbers for the same floor. Any mapping keyed on it produces two machines that
-## disagree about the friction under a player, which is a divergence the prediction
-## cannot reconcile and which only appears on some surfaces.
-##
-## So the mapping goes through something both machines load from the same scene:
-## node metadata, or a group. See [method resolve_from_node].
+## The mapping goes through scene metadata or a group, never the collider's instance id, which is
+## process-local and would make client and server disagree about friction. See [method resolve_from_node].
 
 ## Surfaces by id.
 @export var surfaces: Array[DotFpsSurface] = []
 
-## Used when a collider names no surface, or names one that is not here.
-##
-## Never null after [method get_surface] — an unconfigured set behaves exactly like
-## the tunables alone, which is what makes surfaces opt-in.
+## Used when a collider names no surface, or one not here.
+## Never null after [method get_surface]: an unconfigured set behaves like the tunables alone.
 @export var fallback: DotFpsSurface = null
 
 ## Metadata key read from a collider node by [method resolve_from_node].
 @export var metadata_key: StringName = &"dot_fps_surface"
 
 ## Also accept a group name matching this prefix, e.g. [code]surface_ice[/code].
-##
-## Groups are easier to apply to many nodes at once in the editor; metadata is easier
-## to set per instance. Both work, and metadata wins when a node has both.
+## Metadata wins when a node has both.
 @export var group_prefix: String = "surface_"
 
 var _by_id: Dictionary = {}
@@ -71,10 +59,9 @@ func has_surface(id: StringName) -> bool:
 	return _by_id.has(id)
 
 
-## Every surface of a dot-physics `DotPhysicsSurfaceSet` (anything with a `surfaces` array
-## of `DotPhysicsSurface`s), through [method DotFpsSurface.from_physics]. Its fallback is
-## the plain default, not the physics set's fallback material: an untagged floor is normal
-## ground to walk on whatever it is made of.
+## Every surface of a dot-physics `DotPhysicsSurfaceSet` (anything with a `surfaces` array), through
+## [method DotFpsSurface.from_physics]. Its fallback is the plain default, not the physics set's:
+## an untagged floor is normal ground.
 static func from_physics(physics_set: Object) -> DotFpsSurfaceSet:
 	var out := DotFpsSurfaceSet.new()
 	var list: Variant = physics_set.get("surfaces") if physics_set != null else null
@@ -96,14 +83,9 @@ func invalidate() -> void:
 	_built = false
 
 
-## Reads a surface id off a collider node.
-##
-## Metadata first, then a group whose name starts with [member group_prefix]. Both
-## are properties of the scene, so a client and a server that loaded the same level
-## resolve the same id for the same floor — which is the whole requirement.
-##
-## Returns [code]&""[/code] when the node names no surface, so a caller can tell
-## "unmarked" from "marked as default".
+## Reads a surface id off a collider node: metadata first, then a group starting with [member group_prefix].
+## Both are scene properties, so client and server agree. Returns [code]&""[/code] when unmarked,
+## to tell it from "marked as default".
 static func resolve_from_node(
 	node: Node,
 	metadata: StringName = &"dot_fps_surface",

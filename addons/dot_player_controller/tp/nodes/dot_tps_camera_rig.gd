@@ -1,30 +1,9 @@
 class_name DotTpsCameraRig
 extends Node3D
 
-## The orbit camera: a boom that stays out of the level, a shoulder it can swap, and an aim
-## blend.
-##
-## [b]The camera is most of what makes third person work, and the shoulder offset is
-## most of the camera.[/b] A camera on the character's centre line puts the character
-## between the player and whatever they are shooting at; offsetting it sideways is the
-## entire reason a third-person shooter can have a crosshair that means something.
-##
-## Built in code rather than shipped as a scene, because a scene is a thing a game has
-## to merge when this addon changes, and the tree is five nodes.
-##
-## [codeblock]
-## DotTpsCameraRig          moved to the character, yaw applied here
-##   DotCameraBoom          pitch, the shoulder offset and collision (dot-core)
-##     Marker3D             where the boom put the camera
-##       Camera3D
-##         DotCameraFade    characters between the camera and the rig fade
-## [/codeblock]
-##
-## [b]A [DotCameraBoom], not a SpringArm3D.[/b] The spring arm cast a ray and snapped to
-## its hit; the boom sweeps a sphere along the line to the shoulder point and eases in
-## ahead of an obstacle (dot-core's docs/camera.md). The shoulder is part of that line: a
-## Marker3D offset sideways AFTER the arm's cast put the camera through any wall the
-## shoulder was against.
+## The orbit camera: a boom that stays out of the level, a shoulder it can swap, and an aim blend.
+## Built in code, not a scene (a scene is something a game must merge). The arm is a dot-core
+## [DotCameraBoom], not a SpringArm3D, and the shoulder is part of its swept line. Tree: docs/rationale.md.
 
 # No log channel: a camera following a state it is handed every frame. It has nothing
 # outside the process to fail against, and a line from it would be a line per frame.
@@ -98,12 +77,8 @@ func set_fade_mask(mask: int) -> void:
 		fade.collision_mask = mask
 
 
-## Places the rig from a state. Called once a frame, not once a tick.
-##
-## [b]Once a frame is right and once a tick is wrong[/b], which is the reverse of every
-## other "call this regularly" in the family: the camera is presentation, it is allowed
-## to interpolate, and a camera that moved only on simulation ticks judders visibly at
-## any frame rate that is not exactly the tick rate.
+## Places the rig from a state. Called once a frame, not once a tick: the camera is
+## presentation and a camera moved only on ticks judders.
 func follow(state: DotTpsState, feet: Vector3, delta: float) -> void:
 	if state == null or arm == null:
 		return
@@ -140,26 +115,8 @@ func _blend_aim(state: DotTpsState, delta: float) -> void:
 
 
 ## Keeps the arm from colliding with, and the fade from fading, the player it is attached to.
-##
-## [b]The rig hangs off the player, so the arm's cast STARTS inside the player's own
-## collider.[/b] The boom's sweeps ignore a shape they start in, so today this is belt and
-## braces for the arm; it is what keeps the player's own body off the fade's list, and it
-## is what the rig needed when the arm was a spring arm. `SpringArm3D` does not exclude its own ancestors — it excludes nothing
-## unless told — so on a third-person game where the player is a `CharacterBody3D` (which
-## is every third-person game, and is what [DotTpsController] requires) the arm collides
-## on its first millimetre and collapses to the margin. The camera then sits at the
-## shoulder pivot: inside the character, looking at the inside of its own head, at every
-## distance and every angle, with `camera_distance` and every other tunable reading
-## exactly as configured.
-##
-## It went unnoticed because nothing in this family had a player body that was a collision
-## object until game-playground's became one. `tps_selftest` builds no physics world, so
-## its arm collides with nothing and reports the full length — the check passed for the
-## one reason it could not fail.
-##
-## Walks up rather than taking the body as an argument, because the rig is built before
-## the controller has resolved its player and the body can arrive later. Safe to call
-## again; a duplicate exclusion is ignored.
+## Walks up from the rig because it is built before the controller resolves its player.
+## Safe to call again; a duplicate exclusion is ignored. Why it matters: docs/rationale.md.
 func exclude_own_body() -> void:
 	if arm == null:
 		return
@@ -179,10 +136,7 @@ func exclude_own_body() -> void:
 
 
 ## Swaps the shoulder the camera sits over.
-##
-## On the state rather than on the rig, because it is a choice a player made and a
-## rewind must not undo it — and because a spectator mirroring somebody else's view
-## needs to see the same side they are seeing.
+## On the state so a rewind does not undo a player's choice and a spectator sees the same side.
 func swap_shoulder(state: DotTpsState) -> void:
 	if state != null:
 		state.shoulder = -state.shoulder
@@ -200,11 +154,8 @@ func set_active(active: bool) -> void:
 
 
 ## Where the camera actually is, after the boom has pulled it in.
-##
-## What a shot should be traced from in a third-person shooter — and it is deliberately
-## not the muzzle: a shot fired from the muzzle of a model standing behind cover hits
-## the cover, while the player is looking straight at the target. Games resolve that by
-## tracing from the camera and then correcting; this is the first half.
+## What a shot should be traced from, not the muzzle (which can be behind cover while the player
+## looks at the target); games then correct from there.
 func camera_transform() -> Transform3D:
 	return camera.global_transform if camera != null else global_transform
 

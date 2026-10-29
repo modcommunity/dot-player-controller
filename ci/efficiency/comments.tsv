@@ -1,16 +1,5 @@
 # comments
 # Baselines only shrink: scripts/<gate> --update lowers or drops entries and refuses to add.
-addons/dot_player_controller/core/dot_player_body_rules.gd::history	2
-addons/dot_player_controller/core/dot_player_body_rules.gd::long_block	3
-addons/dot_player_controller/core/dot_player_intent.gd::long_block	7
-addons/dot_player_controller/core/dot_player_look.gd::long_block	4
-addons/dot_player_controller/core/dot_player_view_rules.gd::banner	1
-addons/dot_player_controller/core/dot_player_view_rules.gd::history	1
-addons/dot_player_controller/core/dot_player_view_rules.gd::long_block	2
-addons/dot_player_controller/dot_player_controller_api.gd::long_block	2
-addons/dot_player_controller/dot_player_controller_plugin.gd::long_block	1
-addons/dot_player_controller/fp/core/dot_fps_admin_modifiers.gd::banner	2
-addons/dot_player_controller/fp/core/dot_fps_admin_modifiers.gd::long_block	3
 addons/dot_player_controller/fp/core/dot_fps_command.gd::banner	3
 addons/dot_player_controller/fp/core/dot_fps_command.gd::long_block	8
 addons/dot_player_controller/fp/core/dot_fps_modifier.gd::banner	1
@@ -20,8 +9,6 @@ addons/dot_player_controller/fp/core/dot_fps_stats.gd::banner	2
 addons/dot_player_controller/fp/core/dot_fps_stats.gd::long_block	7
 addons/dot_player_controller/fp/core/dot_fps_style.gd::banner	4
 addons/dot_player_controller/fp/core/dot_fps_style.gd::long_block	19
-addons/dot_player_controller/fp/core/dot_fps_surface.gd::long_block	5
-addons/dot_player_controller/fp/core/dot_fps_surface_set.gd::long_block	5
 addons/dot_player_controller/fp/core/dot_fps_tunables.gd::long_block	7
 addons/dot_player_controller/fp/motion/dot_fps_body.gd::banner	1
 addons/dot_player_controller/fp/motion/dot_fps_body.gd::long_block	8
@@ -29,11 +16,8 @@ addons/dot_player_controller/fp/motion/dot_fps_flat_body.gd::history	2
 addons/dot_player_controller/fp/motion/dot_fps_flat_body.gd::long_block	11
 addons/dot_player_controller/fp/motion/dot_fps_motor.gd::history	4
 addons/dot_player_controller/fp/motion/dot_fps_motor.gd::long_block	68
-addons/dot_player_controller/fp/motion/dot_fps_move_mode.gd::long_block	3
 addons/dot_player_controller/fp/motion/dot_fps_physics_body.gd::history	4
 addons/dot_player_controller/fp/motion/dot_fps_physics_body.gd::long_block	16
-addons/dot_player_controller/fp/motion/dot_fps_simulator.gd::long_block	3
-addons/dot_player_controller/fp/motion/dot_fps_swim_mode.gd::long_block	2
 addons/dot_player_controller/fp/net/dot_fps_net_sync.gd::banner	1
 addons/dot_player_controller/fp/net/dot_fps_net_sync.gd::history	1
 addons/dot_player_controller/fp/net/dot_fps_net_sync.gd::long_block	12
@@ -44,19 +28,10 @@ addons/dot_player_controller/fp/nodes/dot_fps_sampler.gd::long_block	12
 addons/dot_player_controller/fp/nodes/dot_fps_touch_sampler.gd::long_block	5
 addons/dot_player_controller/fp/nodes/dot_fps_view.gd::history	1
 addons/dot_player_controller/fp/nodes/dot_fps_view.gd::long_block	20
-addons/dot_player_controller/fp/nodes/dot_fps_view_motion.gd::long_block	3
 addons/dot_player_controller/nodes/dot_player_controller.gd::banner	4
 addons/dot_player_controller/nodes/dot_player_controller.gd::long_block	9
 addons/dot_player_controller/nodes/dot_player_controller_switch.gd::banner	3
 addons/dot_player_controller/nodes/dot_player_controller_switch.gd::long_block	7
-addons/dot_player_controller/tp/core/dot_tps_motor.gd::long_block	4
-addons/dot_player_controller/tp/core/dot_tps_state.gd::long_block	2
-addons/dot_player_controller/tp/core/dot_tps_tunables.gd::banner	1
-addons/dot_player_controller/tp/core/dot_tps_tunables.gd::long_block	8
-addons/dot_player_controller/tp/nodes/dot_tps_camera_rig.gd::long_block	5
-addons/dot_player_controller/tp/nodes/dot_tps_controller.gd::banner	3
-addons/dot_player_controller/tp/nodes/dot_tps_controller.gd::long_block	2
-addons/dot_player_controller/tp/nodes/dot_tps_sampler.gd::long_block	3
 examples/controller_selftest.gd::banner	6
 examples/controller_selftest.gd::long_block	2
 examples/fps_controller_selftest.gd::history	2

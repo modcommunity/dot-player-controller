@@ -1,25 +1,9 @@
 class_name DotFpsViewMotion
 extends RefCounted
 
-## The camera's motion cues as numbers: the landing dip, the strafe and slide roll, the
-## wall-run lean and the field of view widening with speed. No nodes and no camera.
-##
-## [b]Why it is not inside [DotFpsView].[/b] A game that writes its camera itself (one place,
-## with its own interpolation, shake and zoom) could not use the view without handing it the
-## camera, so it copied the arithmetic instead, and a copy drifts. This is the arithmetic
-## alone: [method advance] once a rendered frame with the drawn state, [method note_landing]
-## from [signal DotFpsController.landed], then read [method roll], [method eye_drop],
-## [method pitch] and [method fov_added] and add them where the camera is written.
-## [DotFpsView] is one such host.
-##
-## [b]Everything here moves without a snap.[/b] The landing dip is a critically damped spring
-## kicked in velocity, never in position: the eye keeps going down for a few frames after the
-## feet stop and comes back up, so a landing has no frame where the eye jumps. The strafe roll
-## and the widening are two exponential stages in a row, so they ease in AND out rather than
-## starting at full rate. Each is frame-rate independent (exact in the frame time).
-##
-## View only: nothing here is read by the simulation, so it may differ per player and per
-## machine. That is also why every amount here can be a player's setting.
+## The camera's motion cues as numbers: landing dip, strafe and slide roll, wall-run lean, speed FOV. No nodes.
+## Split from [DotFpsView] so a game that writes its own camera uses this arithmetic, not a drifting copy.
+## View only, never read by the simulation, so it may differ per player. Cues ease in and out, frame-rate independent.
 
 
 ## Degrees the camera leans into a strafe at [member strafe_roll_reference]. 0 disables it.
@@ -67,10 +51,8 @@ var wall_run_body_response: float = 10.0
 var roll_limit: float = 0.0
 
 
-## How far the eye dips on a landing at [member landing_reference_speed], in metres, at the
-## deepest. 0 disables it.
-##
-## Scaled by impact, so stepping off a kerb is a twitch and a long fall is a lurch.
+## How far the eye dips on a landing at [member landing_reference_speed], in metres, at the deepest.
+## 0 disables it. Scaled by impact.
 var landing_dip: float = 0.09
 
 ## Downward speed giving the full [member landing_dip], m/s.
@@ -207,9 +189,7 @@ func _advance_dip(delta: float) -> void:
 
 
 ## A landing at [param impact] m/s downward. Connect to [signal DotFpsController.landed].
-##
-## A kick to the eye's velocity, sized so the dip peaks at [member landing_dip] times the
-## impact's weight. A softer landing during the recovery of a harder one never lessens it.
+## Kicks the eye's velocity so the dip peaks at [member landing_dip] times the impact's weight.
 func note_landing(impact: float) -> void:
 	if landing_dip <= 0.0 or landing_recovery <= 0.0 or landing_strength <= 0.0:
 		return

@@ -1,21 +1,9 @@
 class_name DotTpsMotor
 extends RefCounted
 
-## The third-person simulation: a pure function of (state, intent, delta, tunables).
-##
-## [b]Pure, and deliberately simpler than dot-player-controller's.[/b] That motor
-## does its own collide-and-slide because bunny-hopping and surfing are consequences of
-## exactly how the sliding works; this one produces a velocity and lets Godot's
-## [method CharacterBody3D.move_and_slide] resolve the collisions, because nothing about
-## third-person movement depends on the shape of the resolution.
-##
-## The consequence is worth stating plainly rather than discovering: this motor is
-## deterministic [i]given the same collision results[/i], which is enough for a replay
-## on one machine and is not enough for bit-exact rewind against a server that resolved
-## the collisions itself. A third-person shooter that needs the latter should drive
-## dot-player-controller's motor and use this addon only for the camera.
-##
-## [method step] never reads a node, a clock, an input device or a random stream.
+## The third-person simulation: a pure function of (state, intent, delta, tunables); [method step] reads no node, clock, device or random stream.
+## Simpler than dot-player-controller's motor: Godot's move_and_slide resolves collisions, so it is deterministic
+## only given the same collision results (fine for replay, not bit-exact rewind against a server).
 
 ## One tick. Mutates [param state] and returns the velocity to move with.
 static func step(
@@ -57,10 +45,7 @@ static func step(
 
 
 ## Where the character wants to go, in world terms.
-##
-## [b]Camera-relative, always.[/b] A third-person character whose forward is its own
-## facing turns in circles as soon as the camera moves, because the player is steering
-## with the camera and the character is steering with itself.
+## Camera-relative always: steering by the character's own facing turns in circles once the camera moves.
 static func _wish_direction(state: DotTpsState, move: Vector2) -> Vector3:
 	if move.is_zero_approx():
 		return Vector3.ZERO
@@ -111,10 +96,7 @@ static func _update_ground(
 
 	state.air_time += delta
 
-	# The coyote window: still "on the floor" as far as jumping is concerned for a
-	# moment after walking off a ledge. Twelve lines that turn "the jump is unreliable"
-	# into "the jump is forgiving", and the single most valuable thing in any character
-	# controller.
+# Coyote window: still "on the floor" for jumping a moment after walking off a ledge.
 	state.on_floor = state.air_time <= tunables.coyote_time
 
 
@@ -185,10 +167,7 @@ static func _turn(
 
 
 ## Applies a look delta to the state's camera angles, clamped by the tunables.
-##
-## Here rather than on the rig so that a rewind restores the camera as well as the body
-## — a correction that put the player back and left them looking somewhere else is a
-## correction that feels like being grabbed.
+## Here, not on the rig, so a rewind restores the camera along with the body.
 static func look(
 	state: DotTpsState,
 	delta_look: Vector2,

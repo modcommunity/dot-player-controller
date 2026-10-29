@@ -2,11 +2,8 @@ class_name DotTpsController
 extends DotPlayerController
 
 ## Third-person movement, as a [DotPlayerController] the switch can hand a player to.
-##
-## Five overrides and a camera. The movement is [DotTpsMotor]'s, the camera is
-## [DotTpsCameraRig]'s, and what this adds is the binding: the body, the state, and the
-## handover that lets a player change from first person to third without stopping dead
-## in mid-air.
+## Movement is [DotTpsMotor]'s and the camera [DotTpsCameraRig]'s; this binds the body, the state and the
+## handover from first person without stopping dead in mid-air.
 
 const TPS_CHANNEL := "player.tps"
 
@@ -19,9 +16,7 @@ signal grounded_changed(on_floor: bool)
 @export var owns_camera: bool = true
 
 ## Whether the body's rotation follows the state's facing.
-##
-## On. Off for a game whose visual model is a separate node that rotates itself — which
-## is the usual arrangement once there is an animation blend tree in the way.
+## Off when the visual model is a separate node that rotates itself.
 @export var rotate_body: bool = true
 
 var state: DotTpsState = null
@@ -64,7 +59,7 @@ func _process(delta: float) -> void:
 	rig.follow(state, _read_transform().origin, delta)
 
 
-# --- The simulation ---------------------------------------------------------
+# The simulation
 
 func _apply_intent(intent: DotPlayerIntent, delta: float) -> void:
 	var body := character_body()
@@ -96,7 +91,7 @@ func _apply_intent(intent: DotPlayerIntent, delta: float) -> void:
 		body.rotation.y = state.facing
 
 
-# --- The DotPlayerController contract ---------------------------------------
+# The DotPlayerController contract
 
 func _read_transform() -> Transform3D:
 	var body := character_body()
@@ -152,7 +147,7 @@ func eye_transform() -> Transform3D:
 	return _read_transform()
 
 
-# --- Reading ----------------------------------------------------------------
+# Reading
 
 func character_body() -> CharacterBody3D:
 	if _body != null and is_instance_valid(_body):

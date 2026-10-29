@@ -1,27 +1,9 @@
 class_name DotFpsSwimMode
 extends DotFpsMoveMode
 
-## Swimming: a player in water moves where they look, rises with jump, dives with crouch,
-## floats to the surface with their head out when they let go, and climbs out at an edge
-## with a jump.
-##
-## [b]Water is data, not an area.[/b] [member volumes] is a list of axis-aligned boxes the
-## game hands over (from its map), and every question is a containment test against it:
-## an `Area3D`'s overlap signals arrive after the physics step, on the main loop, and a
-## client replaying ten ticks of prediction cannot ask an area where it WAS. A box list can
-## be asked anything, any number of times, and gives both ends the same answer.
-##
-## [b]Entering is the game's call, once a tick[/b] ([method update]), and leaving is this
-## mode's own: the moment the waist is out of every volume it hands the player to AIR. Both
-## read only [member volumes] and the state, so a replay enters and leaves on the same ticks.
-##
-## [codeblock]
-## var swim := DotFpsSwimMode.new()
-## swim.volumes = map.water_boxes()
-## swim_id = controller.motor.register_mode(swim)
-## # every tick, after the move:
-## swim.update(controller.motor, controller.state)
-## [/codeblock]
+## Swimming: move where you look, jump rises, crouch dives, let go to float with the head out, jump at an edge to climb out.
+## Water is data, not an area: [member volumes] is a box list the game supplies, so a replay can ask where a player WAS.
+## The game calls [method update] once a tick to enter; leaving is this mode's own. Usage: docs/rationale.md.
 
 ## The liquid boxes, world space.
 var volumes: Array[AABB] = []
@@ -46,11 +28,8 @@ var exit_speed: float = 5.0
 ## How close to the surface the waist must be for that jump to count, metres.
 var exit_reach: float = 0.5
 
-## What a player who presses nothing does, m/s downward. 0 (the default) drifts them to
-## [member float_depth], head out of the water; above 0 they sink at this speed instead,
-## which is what the competitive shooters' water does (60 units/s) and what a timer map
-## built for them expects: a pit full of water is climbed out of by holding jump, and a
-## player who lets go goes back down.
+## Downward m/s for a player who presses nothing. 0 drifts them to [member float_depth], head out;
+## above 0 they sink at this speed instead (a pit of water is climbed out of by holding jump).
 var idle_sink_speed: float = 0.0
 
 ## Drag on the swimmer's speed, per second of the classic water friction scale (0 off, 1 the

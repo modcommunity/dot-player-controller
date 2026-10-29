@@ -2,12 +2,7 @@ class_name DotTpsState
 extends RefCounted
 
 ## Everything the third-person simulation carries between ticks.
-##
-## [b]Everything, and that is the rule rather than a description.[/b] A field left on
-## the controller node is a field a rewind does not restore, so a replay starts from a
-## state the server never computed and the correction is measured against a fiction.
-## dot-player-controller's `DotFpsState` documents the same rule and it is the same
-## rule: if the motor reads it between ticks, it lives here.
+## If the motor reads it between ticks it lives here: a field left on the node is not restored by a rewind.
 
 var velocity: Vector3 = Vector3.ZERO
 
@@ -23,9 +18,7 @@ var on_floor: bool = true
 var air_time: float = 0.0
 
 ## Simulated seconds since a jump was pressed. Counts the buffer window.
-##
-## Negative means no jump is buffered, which is distinct from zero — zero is "pressed
-## this very tick" and is the commonest case there is.
+## Negative means no jump is buffered; zero is "pressed this very tick".
 var jump_buffered: float = -1.0
 
 var air_jumps_used: int = 0

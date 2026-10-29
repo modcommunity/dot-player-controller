@@ -3,8 +3,7 @@ extends EditorPlugin
 
 ## Editor entry point for dot-player-controller. Registers inspector types only.
 ##
-## No autoloads: a listen server drives its host player's controller and mirrors every
-## other one in the same process, and a spectator camera is a third.
+## No autoloads: one process can host a server, a client and a spectator camera.
 
 const _ICON := "res://addons/dot_player_controller/icon_placeholder.svg"
 

@@ -1,33 +1,9 @@
 class_name DotPlayerViewRules
 extends RefCounted
 
-## Whether a player sees through their own eyes or from behind, and what the server owner
-## lets them choose: the `mp_forceview` cvar every first-person game in the family binds.
-##
-## [codeblock]
-## # server module
-## world.view_rules.bind_cvars(add_cvar, DotConVar.FLAG_NOTIFY | DotConVar.FLAG_REPLICATED)
-## # client, once it has a link
-## game.view_rules.follow_cvars(link)
-## game.view_rules.changed.connect(_apply_view)
-## # the view key
-## third_person = game.view_rules.toggled(third_person)
-## [/codeblock]
-##
-## [b]0 the player's choice, 1 first person only, 2 third person only[/b], the numbering of
-## the spectator rule it sits beside (`mp_forcecamera`, where 0 is also "free"): an owner
-## who knows one reads the other. Christian's words for it (2026-10-11): "first person and
-## third person should be toggleable for server owners if they want to allow users to
-## toggle them". The default is 0, the choice.
-##
-## [b]Presentation, decided by the server.[/b] The simulation does not know which view is on
-## (a third-person camera sees round corners, which is why an owner may forbid it), so the
-## rule replicates and every client applies it; nothing here touches a camera. A server
-## that forces a view does not move a camera by itself either: a client that follows the
-## cvar gets [signal changed] and puts its own camera where [method resolve] says.
-##
-## A solo game has no server: the game's console variable or its config sets
-## [member force_view], and the default leaves the toggle on.
+## Whether a player sees through their own eyes or from behind, and what the server owner lets them choose: the `mp_forceview` cvar.
+## 0 the player's choice, 1 first person only, 2 third person only. Presentation only: it replicates, each client
+## applies it via [signal changed] and [method resolve]; the simulation and cameras are untouched here.
 
 ## Emitted when [member force_view] changes, from a cvar or by hand.
 signal changed
@@ -157,7 +133,7 @@ func refusal() -> String:
 	return ""
 
 
-# --- Server cvars ------------------------------------------------------------
+# Server cvars
 
 func cvar_specs() -> Array[Dictionary]:
 	return [
@@ -172,12 +148,9 @@ func cvar_specs() -> Array[Dictionary]:
 	]
 
 
-## Registers `mp_forceview` through [param add] (a server module's `add_cvar`, or anything
-## shaped `(name, default, description, flags) -> cvar` with a `changed` signal and
-## `get_string()`) and keeps these rules in step with it. Pass dot-server's
-## FLAG_REPLICATED: the clients are the ones that place cameras. Duck-typed, because
-## dot-server is not a dependency here; the value a cvar already holds (argv, a config file)
-## is read back after registering.
+## Registers `mp_forceview` through [param add] (a server module's `add_cvar`, shaped
+## `(name, default, description, flags) -> cvar`) and keeps these rules in step with it. Pass
+## FLAG_REPLICATED. Duck-typed (dot-server is not a dependency); a value already held is read back.
 func bind_cvars(add: Callable, flags: int = 0) -> Array:
 	var made: Array = []
 	for spec in cvar_specs():

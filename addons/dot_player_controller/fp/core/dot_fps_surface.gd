@@ -3,25 +3,8 @@ class_name DotFpsSurface
 extends Resource
 
 ## How one kind of ground behaves under the player. Ice, mud, metal, a conveyor.
-##
-## [b]Multipliers, not values.[/b] A surface scales what [DotFpsTunables] already
-## says rather than replacing it, so a game retunes its movement once and every
-## surface follows. A surface that set absolute numbers would silently ignore every
-## later change to the base feel, which is the failure mode of every "surface
-## override" system that stores values.
-##
-## [codeblock]
-## var ice := DotFpsSurface.new()
-## ice.id = &"ice"
-## ice.friction_scale = 0.05
-## ice.accelerate_scale = 0.3
-## [/codeblock]
-##
-## [b]Surfaces are simulation, not decoration.[/b] They change acceleration, so a
-## client and a server that disagree about which surface a player is on will disagree
-## about where the player is. That is why they are resolved from something both
-## machines can see — see [DotFpsSurfaceSet.resolve_from_node] — rather than from the
-## collider's instance id, which differs between processes.
+## Multipliers on [DotFpsTunables], so retuning the base feel moves every surface. Simulation, not decoration:
+## resolved from something both machines see ([method DotFpsSurfaceSet.resolve_from_node]), never an instance id.
 
 ## Name this surface is looked up by. Must match on every machine.
 @export var id: StringName = &"default"
@@ -42,26 +25,12 @@ extends Resource
 
 @export_group("Behaviour")
 
-## Whether this surface can be stood on at all.
-##
-## False makes it behave like a wall regardless of its angle — a rail, a pane of
-## glass, the top of a fence.
+## Whether this surface can be stood on at all; false behaves like a wall (a rail, a pane of glass).
 @export var standable: bool = true
 
-## Constant push applied while standing on it, in m/s². A conveyor or a slick slope.
-##
-## In world space, so a level designer places the direction with the geometry rather
-## than deriving it from the surface normal.
-##
-## [b]It competes with friction, and friction wins by default.[/b] Ground friction is
-## applied as though the player were moving at least
-## [member DotFpsTunables.stop_speed], so a push below
-## [code]stop_speed * friction * friction_scale[/code] — 24 m/s² with the shipped
-## defaults — cannot move a standing player at all, and one just above it produces a
-## crawl. A conveyor that visibly moves someone wants a value several times that, or
-## a low [member friction_scale] to go with it. The equilibrium speed is
-## [code]push / (friction * friction_scale)[/code] once that speed exceeds
-## [code]stop_speed[/code].
+## Constant push applied while standing on it, in m/s², in world space.
+## Friction wins by default: a push under stop_speed * friction * friction_scale cannot move a standing player.
+## Equilibrium and numbers: docs/rationale.md.
 @export var push: Vector3 = Vector3.ZERO
 
 ## How much of a hard landing this surface takes away: 0 none, 1 all (snow, a mattress, a
@@ -70,10 +39,7 @@ extends Resource
 
 @export_group("Presentation")
 
-## Tag a game uses to pick footstep sounds, decals or particles.
-##
-## Carried here so the surface is one lookup rather than two parallel systems that
-## can disagree about what the player is standing on.
+## Tag a game uses to pick footstep sounds, decals or particles, so there is one lookup.
 @export var material_tag: StringName = &""
 
 
@@ -83,17 +49,9 @@ static func make(p_id: StringName) -> DotFpsSurface:
 	return s
 
 
-## A movement surface read off a dot-physics `DotPhysicsSurface`, so a game that uses both
-## reads one number per material ("a game that uses both should be reading one number",
-## dot-physics' own note). Duck-typed: this addon does not depend on dot-physics.
-##
-## - `traction` is the friction scale (ice 0.1);
-## - `move_scale` is the acceleration scale;
-## - the top speed comes down with `dampening`, the extra velocity a material takes off on
-##   contact: 1 - 0.15 per unit, never under 0.4 (mud 2.5 -> 0.63, sand 1.2 -> 0.82, snow
-##   0.8 -> 0.88). Ice keeps its top speed, which is what makes it ice and not mud;
-## - `jump_scale` carries over (rubber 1.8, mud 0.8);
-## - a `liquid` is not stood on, and neither is anything not `solid` (foliage).
+## A movement surface read off a dot-physics `DotPhysicsSurface` (duck-typed: no dependency).
+## `traction` is the friction scale, `move_scale` the acceleration scale, `dampening` lowers top speed
+## (1 - 0.15 per unit, floor 0.4), `jump_scale` carries over; a `liquid` or non-`solid` is not stood on.
 static func from_physics(surface: Object) -> DotFpsSurface:
 	var s := DotFpsSurface.new()
 	if surface == null:
