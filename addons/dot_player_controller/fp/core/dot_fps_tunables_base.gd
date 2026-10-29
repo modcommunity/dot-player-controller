@@ -228,11 +228,26 @@ extends DotConfig
 ## Whether a shot fired while sprinting leaves along the lowered barrel instead of the crosshair.
 @export var sprint_shot_follows_barrel: bool = true
 
-## Whether taking damage drops the player out of the sights ([DotFpsAimBreak]).
-@export var unscope_on_hit: bool = true
+## Whether taking damage drops the player out of the sights ([DotFpsAimBreak]). Off: the sights stay and the hit shakes the view and wobbles the aim instead (the `hit_*` members).
+@export var unscope_on_hit: bool = false
 
 ## Seconds the sights stay refused after a hit.
 @export_range(0.0, 3.0, 0.05) var unscope_hit_time: float = 0.4
+
+## Degrees of camera roll a hit shakes the view by (and a few millimetres of offset); 0 off. Read when `unscope_on_hit` is off.
+@export_range(0.0, 10.0, 0.05) var hit_shake: float = 1.2
+
+## Degrees the aim wobbles by after a hit (it moves where the shots go); 0 off.
+@export_range(0.0, 10.0, 0.05) var hit_wobble: float = 0.6
+
+## Wobble and shake cycles per second.
+@export_range(0.5, 30.0, 0.5) var hit_wobble_hz: float = 9.0
+
+## Seconds a hit's shake and wobble last, fading to nothing; 0 turns the flinch off.
+@export_range(0.0, 3.0, 0.05) var hit_flinch_time: float = 0.5
+
+## How much the damage taken scales the shake and wobble: 0 the same for every hit, 1 in proportion (25 damage is the 1x hit).
+@export_range(0.0, 1.0, 0.05) var hit_damage_scale: float = 0.5
 
 ## Whether the sprint button toggles instead of being held (read by [DotFpsSampler]; stopping clears it).
 @export var sprint_toggle: bool = false
