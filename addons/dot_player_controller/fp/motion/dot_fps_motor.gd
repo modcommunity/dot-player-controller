@@ -275,7 +275,7 @@ func _update_noclip(state: DotFpsState, command: DotFpsCommand) -> void:
 			state.velocity = Vector3.ZERO
 		return
 
-	if not tunables.can_noclip:
+	if not (tunables.can_noclip or _effects.grant_noclip):
 		# The bit may still be set — a client can put anything in a command. Leaving
 		# noclip on a state that entered it before the ability was revoked would let
 		# a player keep flying, so it is cleared here rather than only ignored.

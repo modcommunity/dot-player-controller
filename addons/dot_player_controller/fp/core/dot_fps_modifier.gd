@@ -82,6 +82,11 @@ extends Resource
 ## [method DotFpsAdminModifiers.set_noclip] also puts them back in AIR.
 @export var forces_noclip: bool = false
 
+## Lets the noclip button work while this is active, whatever [member DotFpsTunables.can_noclip] says.
+## A permission, not a force: the server adds it for somebody its groups allow, so the key is
+## predicted on the owner's client and never works without it.
+@export var grants_noclip: bool = false
+
 @export_group("Impulse")
 
 ## Velocity added once, when the modifier is applied, in m/s.
@@ -148,6 +153,7 @@ class Aggregate extends RefCounted:
 	var deny_move: bool = false
 
 	var force_noclip: bool = false
+	var grant_noclip: bool = false
 
 	func reset() -> void:
 		max_speed = 1.0
@@ -160,6 +166,7 @@ class Aggregate extends RefCounted:
 		deny_crouch = false
 		deny_move = false
 		force_noclip = false
+		grant_noclip = false
 
 	func apply(modifier: DotFpsModifier) -> void:
 		max_speed *= modifier.max_speed_scale
@@ -175,6 +182,7 @@ class Aggregate extends RefCounted:
 		deny_crouch = deny_crouch or modifier.deny_crouch
 		deny_move = deny_move or modifier.deny_move
 		force_noclip = force_noclip or modifier.forces_noclip
+		grant_noclip = grant_noclip or modifier.grants_noclip
 
 	func is_neutral() -> bool:
 		return (

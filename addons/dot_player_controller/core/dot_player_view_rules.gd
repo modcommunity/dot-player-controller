@@ -35,6 +35,9 @@ signal changed
 const CVAR_FORCE := "mp_forceview"
 
 ## 1 draws a first-person player's own legs when they look down, 0 (the default) does not.
+## The views the view key cycles through, comma separated ("fp,tp"). A game may add its own ids with [method register_mode].
+const CVAR_CYCLE := "mp_viewcycle"
+
 const CVAR_LEGS := "mp_firstperson_legs"
 
 ## Strength of the camera kick on a landing, 0 off to 2 double (client-side, default 1).
@@ -59,6 +62,17 @@ var force_view: int = ANY:
 
 ## Whether a first-person player sees their own legs when looking down: `mp_firstperson_legs`.
 ## The game reads it where it draws the body; nothing here draws.
+## The cycle order of the view key. Ids not in [member known_modes] are skipped.
+var view_cycle: PackedStringArray = PackedStringArray(["fp", "tp"]):
+	set(value):
+		if value == view_cycle:
+			return
+		view_cycle = value
+		changed.emit()
+
+## Every view this game can show: first and third person, plus what [method register_mode] added.
+var known_modes: PackedStringArray = PackedStringArray(["fp", "tp"])
+
 var first_person_legs: bool = false:
 	set(value):
 		if value == first_person_legs:
@@ -78,6 +92,30 @@ var landing_kick: float = 1.0:
 
 
 ## Whether the player may switch between the two.
+## Adds a view (a third-person variant, say) the cycle may name. It counts as third person for [member force_view].
+func register_mode(id: StringName) -> void:
+	if not known_modes.has(String(id)):
+		known_modes.append(String(id))
+
+
+## Whether [param id] is shown under [member force_view].
+func allows_mode(id: StringName) -> bool:
+	return allows_first() if id == &"fp" else allows_third()
+
+
+## The view after [param current] in the cycle, skipping unknown and forbidden ones. [param current] itself when there is none or the view is forced.
+func next_mode(current: StringName) -> StringName:
+	if not may_toggle():
+		return current
+	var order := view_cycle
+	var at := order.find(String(current))
+	for step in range(1, order.size() + 1):
+		var id := StringName(order[(at + step) % order.size()] if at >= 0 else order[step - 1])
+		if id != current and known_modes.has(String(id)) and allows_mode(id):
+			return id
+	return current
+
+
 func may_toggle() -> bool:
 	return force_view == ANY
 
@@ -125,6 +163,8 @@ func cvar_specs() -> Array[Dictionary]:
 	return [
 		{"name": CVAR_FORCE, "value": str(force_view), "min": float(ANY), "max": float(THIRD_ONLY),
 			"description": "Players' view: 0 their choice (the view key toggles), 1 first person only, 2 third person only"},
+		{"name": CVAR_CYCLE, "value": ",".join(view_cycle),
+			"description": "The views the view key cycles through, comma separated: fp, tp, plus any the game adds"},
 		{"name": CVAR_LEGS, "value": "1" if first_person_legs else "0", "min": 0.0, "max": 1.0,
 			"description": "1 lets a first-person player see their own legs when they look down"},
 		{"name": CVAR_LANDING_KICK, "value": str(landing_kick), "min": 0.0, "max": 2.0,
@@ -146,7 +186,7 @@ func bind_cvars(add: Callable, flags: int = 0) -> Array:
 		if not (made_cvar is Object) or made_cvar == null:
 			continue
 		var cv := made_cvar as Object
-		if cv.has_method(&"with_range"):
+		if spec.has("min") and cv.has_method(&"with_range"):
 			cv.call(&"with_range", float(spec["min"]), float(spec["max"]))
 		if cv.has_signal(&"changed"):
 			var on_change := _on_cvar_changed.bind(cvar_name)
@@ -166,7 +206,7 @@ func follow_cvars(source: Object) -> bool:
 		return false
 	if not source.has_method(&"replicated_cvar") or not source.has_signal(&"replicated_cvar_changed"):
 		return false
-	for cv in [CVAR_FORCE, CVAR_LEGS]:
+	for cv in [CVAR_FORCE, CVAR_LEGS, CVAR_CYCLE]:
 		var held := String(source.call(&"replicated_cvar", cv, ""))
 		if held != "":
 			var _applied := set_cvar(cv, held)
@@ -182,6 +222,14 @@ func set_cvar(cvar_name: String, value: String) -> bool:
 		if text != "0" and text != "1":
 			return false
 		first_person_legs = text == "1"
+		return true
+	if cvar_name == CVAR_CYCLE:
+		var ids := PackedStringArray()
+		for part in text.split(",", false):
+			ids.append(part.strip_edges())
+		if ids.is_empty():
+			return false
+		view_cycle = ids
 		return true
 	if cvar_name == CVAR_LANDING_KICK:
 		if not text.is_valid_float():

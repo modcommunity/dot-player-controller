@@ -37,6 +37,9 @@ extends RefCounted
 const NOCLIP := &"admin_noclip"
 const FREEZE := &"admin_freeze"
 
+## Held by somebody allowed to toggle noclip with the key; see [method set_noclip_permit].
+const NOCLIP_PERMIT := &"admin_noclip_permit"
+
 ## Speed multipliers an admin can put somebody on. 1.0 is "none" and is not a step.
 ##
 ## Each scales top speed and both accelerations together, so a player on 2× reaches their
@@ -80,6 +83,11 @@ static func definitions() -> Array[DotFpsModifier]:
 		var gravity := DotFpsModifier.make(gravity_id(float(step)))
 		gravity.gravity_scale = float(step)
 		out.append(gravity)
+
+	# Last, so no earlier modifier's index moves.
+	var permit := DotFpsModifier.make(NOCLIP_PERMIT)
+	permit.grants_noclip = true
+	out.append(permit)
 
 	return out
 
@@ -144,6 +152,29 @@ static func set_noclip(controller: DotFpsController, on: bool) -> DotResult:
 		controller.state.velocity = Vector3.ZERO
 
 	return DotResult.success(false)
+
+
+## Lets a player toggle noclip with the key (or takes it away, dropping them out of noclip).
+static func set_noclip_permit(controller: DotFpsController, on: bool) -> DotResult:
+	var usable := _ready_on(controller)
+
+	if not usable.ok:
+		return usable
+
+	if on:
+		controller.add_modifier(NOCLIP_PERMIT)
+		return DotResult.success(true)
+
+	controller.remove_modifier(NOCLIP_PERMIT)
+	if controller.state.mode == DotFpsState.Mode.NOCLIP and not controller.has_modifier(NOCLIP):
+		controller.state.mode = DotFpsState.Mode.AIR
+		controller.state.velocity = Vector3.ZERO
+
+	return DotResult.success(false)
+
+
+static func has_noclip_permit(controller: DotFpsController) -> bool:
+	return controller != null and controller.has_modifier(NOCLIP_PERMIT)
 
 
 static func set_frozen(controller: DotFpsController, on: bool) -> DotResult:
