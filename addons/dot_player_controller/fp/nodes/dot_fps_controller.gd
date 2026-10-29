@@ -213,6 +213,7 @@ var _surface_cache: Dictionary = {}
 var _last_modifiers: Array[Vector2i] = []
 
 var _replaying: bool = false
+var _external_velocity: Vector3 = Vector3.ZERO
 
 var _accumulator: float = 0.0
 var _tick: int = 0
@@ -783,6 +784,13 @@ func simulate_tick(tick: int, delta: float) -> void:
 
 	_on_pre_simulate(tick, delta)
 
+	if _external_velocity != Vector3.ZERO and not _replaying:
+		state.velocity += _external_velocity
+		if _external_velocity.y > 0.0:
+			state.mode = DotFpsState.Mode.AIR
+			state.time_since_grounded = 1000.0
+		_external_velocity = Vector3.ZERO
+
 	# Handed over every tick: the body copied the mask when built, and a game sets the
 	# tunables' mask after setup, so the tunables must be the one place the mask lives.
 	if body != null and body.collision_mask != tunables.collision_mask:
@@ -1178,6 +1186,12 @@ func _write_transform(to: Transform3D) -> void:
 
 func _read_velocity() -> Vector3:
 	return state.velocity
+
+
+## Queued and added on the next live tick, before the move, so the motor sees it and an upward
+## change lifts the player off the ground instead of being snapped back down.
+func apply_external_velocity(dv: Vector3) -> void:
+	_external_velocity += dv
 
 
 func _write_velocity(v: Vector3) -> void:

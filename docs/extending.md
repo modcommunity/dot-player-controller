@@ -83,6 +83,10 @@ Two deliberate costs. **The multipliers are a ladder** (`SPEED_STEPS`, `GRAVITY_
 - **Their timers (`slide_time`, the slide, launch and dash cooldowns) are in `DotFpsState` AND in the snapshot**, packed into `net_flags` with `previous_buttons`. See [networking.md](networking.md#what-rides-in-net_flags).
 - `slide_changed`, `launched` and `dashed` are **not** emitted during a prediction replay, unlike `crouch_changed`: they are where a game hangs a sound, and a replayed tick is one the player already heard.
 
+## External pushes
+
+`apply_external_velocity(dv)` on any `DotPlayerController` adds a velocity change that the controller keeps: a tornado, an explosion or a conveyor calls it instead of writing `velocity`, which the controller re-asserts every tick. `DotFpsController` queues the sum and applies it once, before the motor runs, on the next simulated tick; an upward push puts the player in the air so ground snap does not eat it. It is skipped during a prediction replay, because the server's push is already in the snapshot. Level 12 of the API.
+
 ## The collision mask
 
 `DotFpsController.simulate_tick` hands `tunables.collision_mask` to its `body` every tick, because every game sets the mask after setup (when it knows its physics layout) and a body that copied it once in `_make_body` kept the world layer only: players walked through every prop with the tunables reading the right mask.

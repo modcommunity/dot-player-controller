@@ -153,6 +153,13 @@ func place(to: Transform3D, keep_velocity: bool = false) -> void:
 	teleported.emit(to)
 
 
+## Adds [param dv] (m/s) to the player's velocity, the door for a tornado, a blast or a jump pad
+## that is not the player's own input. A controller that integrates its own motion overrides it
+## to apply the change on its next simulated tick, where a direct write would be undone.
+func apply_external_velocity(dv: Vector3) -> void:
+	_write_velocity(_read_velocity() + dv)
+
+
 func transform_3d() -> Transform3D:
 	return _read_transform()
 

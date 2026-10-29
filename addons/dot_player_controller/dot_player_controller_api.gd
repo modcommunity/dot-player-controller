@@ -28,5 +28,6 @@ extends RefCounted
 # 10: DotFpsNetSync.rewind_specs()/pack_timers()/unpack_timers(): the jump timers in net_timers.
 # 11: DotFpsSprintRules (sprint and stamina cvars as one live group), DotFpsTunables.sprint_toggle
 #    (sv_sprint_toggle, applied by DotFpsSampler), and `sprinting`/`sprint_blocks_aim` in motion().
-const LEVEL := 11
+# 12: DotPlayerController.apply_external_velocity(dv): a push (tornado, explosion) the controller keeps.
+const LEVEL := 12
 const OLDEST := 1
