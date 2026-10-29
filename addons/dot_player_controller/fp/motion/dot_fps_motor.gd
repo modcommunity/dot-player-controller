@@ -201,11 +201,8 @@ func _advance_timers(
 
 	if state.mode == DotFpsState.Mode.GROUND:
 		state.time_since_grounded = 0.0
-		# Counted in TICKS, not seconds, and deliberately so: "did the jump go out on
-		# the same tick the player landed" is the definition of a perfect bunny-hop,
-		# and it is a tick question. A seconds counter compared against a tick
-		# duration answers it differently at 64 Hz and at 128 Hz, which is exactly
-		# the thing a timer's statistics must not do.
+		# Counted in TICKS, not seconds: "jumped on the tick the player landed" is a perfect
+		# bunny-hop, and a seconds counter answers that differently at 64 Hz and 128 Hz.
 		state.ground_ticks += 1
 
 		if tunables.wall_run_enabled or tunables.wall_jump_enabled:
@@ -228,6 +225,7 @@ func _advance_timers(
 	state.dash_cooldown_left = maxf(state.dash_cooldown_left - delta, 0.0)
 	state.wall_run_cooldown_left = maxf(state.wall_run_cooldown_left - delta, 0.0)
 	_tick_stamina(state, command, delta)
+	DotFpsNetSync.snap_stamina(state)
 
 
 ## Decides whether this tick sprints and moves stamina. Crouch and walk win over sprint, as in speed_for.

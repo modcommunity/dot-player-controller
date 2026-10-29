@@ -1,4 +1,4 @@
-extends "res://examples/movement_selftest_base.gd"
+extends "res://examples/movement_selftest_stamina.gd"
 
 ## The physics-server sections of the movement self-test.
 

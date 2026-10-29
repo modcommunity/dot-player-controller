@@ -384,8 +384,9 @@ static func rewind_specs() -> Array[Dictionary]:
 
 
 ## Owner-only stamina for a predicting client's rewind: opt in with [code]var net_stamina: int[/code]
-## and replicate [method stamina_specs]. 7 bits of stamina, 1 exhausted, 6 of the refill delay (1/16 s).
-const STAMINA_BITS := 14
+## and replicate [method stamina_specs]. 14 bits of stamina, 1 exhausted, 13 of the refill delay (1/2048 s).
+## Coarser steps made a rewound client decide a sprint or an exhaustion a tick away from the server.
+const STAMINA_BITS := 28
 
 
 static func stamina_specs() -> Array[Dictionary]:
@@ -394,15 +395,21 @@ static func stamina_specs() -> Array[Dictionary]:
 
 
 static func pack_stamina(state: DotFpsState) -> int:
-	return (roundi(clampf(state.stamina, 0.0, 1.0) * 127.0)
-		| (1 if state.stamina_exhausted else 0) << 7
-		| clampi(roundi(state.stamina_delay_left * 16.0), 0, 63) << 8)
+	return (roundi(clampf(state.stamina, 0.0, 1.0) * 16383.0)
+		| (1 if state.stamina_exhausted else 0) << 14
+		| clampi(roundi(state.stamina_delay_left * 2048.0), 0, 8191) << 15)
+
+
+## Puts the state's stamina on the wire grid, so a state rewound from net_stamina is identical to the
+## server's rather than close, which flips a sprint or exhaustion at the boundary.
+static func snap_stamina(state: DotFpsState) -> void:
+	unpack_stamina(state, pack_stamina(state))
 
 
 static func unpack_stamina(state: DotFpsState, code: int) -> void:
-	state.stamina = float(code & 127) / 127.0
-	state.stamina_exhausted = (code >> 7) & 1 == 1
-	state.stamina_delay_left = float((code >> 8) & 63) / 16.0
+	state.stamina = float(code & 16383) / 16383.0
+	state.stamina_exhausted = (code >> 14) & 1 == 1
+	state.stamina_delay_left = float((code >> 15) & 8191) / 2048.0
 
 
 static func pack_timers(state: DotFpsState) -> int:
