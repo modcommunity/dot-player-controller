@@ -65,3 +65,22 @@ signal modifier_added(id: StringName)
 
 
 signal modifier_removed(id: StringName)
+
+
+var _external_velocity: Vector3 = Vector3.ZERO
+
+
+## Queued and added on the next live tick, before the move, so the motor sees it and an upward
+## change lifts the player off the ground instead of being snapped back down.
+func apply_external_velocity(dv: Vector3) -> void:
+	_external_velocity += dv
+
+
+func _consume_external_velocity(s: DotFpsState, replaying: bool) -> void:
+	if _external_velocity == Vector3.ZERO or replaying:
+		return
+	s.velocity += _external_velocity
+	if _external_velocity.y > 0.0:
+		s.mode = DotFpsState.Mode.AIR
+		s.time_since_grounded = 1000.0
+	_external_velocity = Vector3.ZERO

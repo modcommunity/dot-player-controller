@@ -160,3 +160,19 @@ func _wheel_event(pressed: bool) -> InputEventMouseButton:
 
 class LegSource extends Node:
 	signal legs_broken(seconds: float, speed_scale: float)
+
+
+func _test_external_push(controller: DotFpsController) -> void:
+	for i in range(120):
+		controller.apply_command(_command())
+		controller.simulate_tick(400 + i, STEP)
+	var before_push := (controller.get_parent() as Node3D).global_position
+	controller.apply_external_velocity(Vector3(12.0, 9.0, 0.0))
+	var peak := before_push.y
+	for i in range(30):
+		controller.apply_command(_command())
+		controller.simulate_tick(600 + i, STEP)
+		peak = maxf(peak, (controller.get_parent() as Node3D).global_position.y)
+	var after_push := (controller.get_parent() as Node3D).global_position
+	_check(peak - before_push.y > 1.0, "an external push lifts a grounded player", "%.2f m" % (peak - before_push.y))
+	_check(after_push.x - before_push.x > 2.0, "and carries them sideways, past the controller's own velocity", "%.2f m" % (after_push.x - before_push.x))

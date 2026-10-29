@@ -12,9 +12,7 @@ extends "res://examples/fps_controller_selftest_base.gd"
 ## None of that is reachable from the motor alone, and all of it is the part a host
 ## game touches first.
 ##
-## The scenes are built in code rather than loaded from [code].tscn[/code] files so
-## that a failure names a line rather than a resource, and so the test does not
-## silently pass when someone edits a scene in the editor.
+## Scenes are built in code so a failure names a line and an editor change cannot silently pass.
 
 const CHECKS := 116
 
@@ -700,19 +698,7 @@ func _test_teleport_and_signals() -> void:
 	_check(jumps.size() == 1, "a jump is reported once", "%d" % jumps.size())
 	_check(modes.size() >= 3, "mode changes are reported", "%d" % modes.size())
 
-	for i in range(120):
-		controller.apply_command(_command())
-		controller.simulate_tick(400 + i, STEP)
-	var before_push := (controller.get_parent() as Node3D).global_position
-	controller.apply_external_velocity(Vector3(12.0, 9.0, 0.0))
-	var peak := before_push.y
-	for i in range(30):
-		controller.apply_command(_command())
-		controller.simulate_tick(600 + i, STEP)
-		peak = maxf(peak, (controller.get_parent() as Node3D).global_position.y)
-	var after_push := (controller.get_parent() as Node3D).global_position
-	_check(peak - before_push.y > 1.0, "an external push lifts a grounded player", "%.2f m" % (peak - before_push.y))
-	_check(after_push.x - before_push.x > 2.0, "and carries them sideways, past the controller's own velocity", "%.2f m" % (after_push.x - before_push.x))
+	_test_external_push(controller)
 
 	world.queue_free()
 	await get_tree().process_frame
