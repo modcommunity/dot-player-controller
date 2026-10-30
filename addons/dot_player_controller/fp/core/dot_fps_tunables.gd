@@ -66,6 +66,7 @@ const _CVARS := {
 	"sv_stepsize": ["step_height", SOURCE_UNIT, "Tallest walkable step, units"],
 	"sv_airwishspeed": ["max_air_wish_speed", SOURCE_UNIT, "Air wish-speed cap that makes strafe-jumping, units/s"],
 	"sv_runspeed": ["max_speed", SOURCE_UNIT, "Running speed, units/s"],
+	"sv_speedscale": ["speed_scale", 1.0, "Multiplier on every ground speed; 1 as set"],
 	"sv_crouchspeed": ["crouch_speed_scale", 1.0, "Crouch speed, fraction of run"],
 	"sv_walkspeed": ["walk_speed_scale", 1.0, "Walk speed, fraction of run"],
 	"sv_sprint": ["can_sprint", 1.0, "1 lets the sprint button work"],
@@ -281,7 +282,8 @@ func speed_for(buttons: int, load_fraction: float = 0.0) -> float:
 		scale = 1.0 + (sprint_speed_scale - 1.0) * (1.0 - clampf(load_fraction * sprint_load_speed, 0.0, 1.0))
 
 	var wish := max_speed * scale
-	return minf(wish, max_wish_speed) if max_wish_speed > 0.0 else wish
+	wish = minf(wish, max_wish_speed) if max_wish_speed > 0.0 else wish
+	return wish * speed_scale
 
 
 # How far these numbers carry a player, so a map sizes a gap or ledge against the class and not its own copy of the formula.

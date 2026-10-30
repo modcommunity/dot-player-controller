@@ -32,6 +32,9 @@ extends DotConfig
 ## Ground speed with no modifier held, in metres per second.
 @export_range(0.1, 100.0, 0.1) var max_speed: float = 4.7625
 
+## Server-wide multiplier on every ground speed (run, walk, crouch, sprint); 1 leaves them as set.
+@export_range(0.05, 10.0, 0.01) var speed_scale: float = 1.0
+
 ## Multipliers applied to [member max_speed]. They do not stack; the most restrictive
 ## one held wins (crouch, walk, sprint). Derived from the held buttons every tick, because
 ## a stored multiplier reset on release let a crouched player sprint-run after releasing sprint.
