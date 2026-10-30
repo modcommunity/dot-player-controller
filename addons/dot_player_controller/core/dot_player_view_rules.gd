@@ -10,10 +10,12 @@ signal changed
 
 const CVAR_FORCE := "mp_forceview"
 
-## 1 draws a first-person player's own legs when they look down, 0 (the default) does not.
 ## The views the view key cycles through, comma separated ("fp,tp"). A game may add its own ids with [method register_mode].
 const CVAR_CYCLE := "mp_viewcycle"
 
+## A first-person player's own body when they look down: [constant BODY_OFF], [constant BODY_LEGS] (the default) or [constant BODY_FULL].
+const CVAR_BODY := "mp_fp_body"
+## The older 0/1 name, still accepted by [method set_cvar] (1 is [constant BODY_LEGS]); no longer registered.
 const CVAR_LEGS := "mp_firstperson_legs"
 
 ## Strength of the camera kick on a landing, 0 off to 2 double (client-side, default 1).
@@ -26,6 +28,13 @@ const FIRST_ONLY := 1
 ## Third person only.
 const THIRD_ONLY := 2
 
+## No body of your own in first person.
+const BODY_OFF := 0
+## Legs and feet, nothing from the belly up.
+const BODY_LEGS := 1
+## The whole body but the head and arms (the view model draws the arms).
+const BODY_FULL := 2
+
 ## [constant ANY], [constant FIRST_ONLY] or [constant THIRD_ONLY].
 var force_view: int = ANY:
 	set(value):
@@ -36,8 +45,6 @@ var force_view: int = ANY:
 		changed.emit()
 
 
-## Whether a first-person player sees their own legs when looking down: `mp_firstperson_legs`.
-## The game reads it where it draws the body; nothing here draws.
 ## The cycle order of the view key. Ids not in [member known_modes] are skipped.
 var view_cycle: PackedStringArray = PackedStringArray(["fp", "tp"]):
 	set(value):
@@ -49,12 +56,23 @@ var view_cycle: PackedStringArray = PackedStringArray(["fp", "tp"]):
 ## Every view this game can show: first and third person, plus what [method register_mode] added.
 var known_modes: PackedStringArray = PackedStringArray(["fp", "tp"])
 
-var first_person_legs: bool = false:
+## How much of their own body a first-person player sees: `mp_fp_body`. The game reads it through
+## [method own_body] where it draws the body; nothing here draws.
+var first_person_body: int = BODY_LEGS:
 	set(value):
-		if value == first_person_legs:
+		value = clampi(value, BODY_OFF, BODY_FULL)
+		if value == first_person_body:
 			return
-		first_person_legs = value
+		first_person_body = value
 		changed.emit()
+
+## Whether any of it shows; true sets [constant BODY_LEGS] when it was off.
+var first_person_legs: bool:
+	get:
+		return first_person_body != BODY_OFF
+	set(value):
+		if value != first_person_legs:
+			first_person_body = BODY_LEGS if value else BODY_OFF
 
 
 ## Multiplier for the camera's landing kick (`cl_landing_kick`); the game hands it to `DotFpsView.landing_strength`.
@@ -67,7 +85,6 @@ var landing_kick: float = 1.0:
 		changed.emit()
 
 
-## Whether the player may switch between the two.
 ## Adds a view (a third-person variant, say) the cycle may name. It counts as third person for [member force_view].
 func register_mode(id: StringName) -> void:
 	if not known_modes.has(String(id)):
@@ -92,6 +109,7 @@ func next_mode(current: StringName) -> StringName:
 	return current
 
 
+## Whether the player may switch between the views.
 func may_toggle() -> bool:
 	return force_view == ANY
 
@@ -141,14 +159,14 @@ func cvar_specs() -> Array[Dictionary]:
 			"description": "Players' view: 0 their choice (the view key toggles), 1 first person only, 2 third person only"},
 		{"name": CVAR_CYCLE, "value": ",".join(view_cycle),
 			"description": "The views the view key cycles through, comma separated: fp, tp, plus any the game adds"},
-		{"name": CVAR_LEGS, "value": "1" if first_person_legs else "0", "min": 0.0, "max": 1.0,
-			"description": "1 lets a first-person player see their own legs when they look down"},
+		{"name": CVAR_BODY, "value": str(first_person_body), "min": float(BODY_OFF), "max": float(BODY_FULL),
+			"description": "A first-person player's own body when looking down: 0 none, 1 legs and feet, 2 the whole body but head and arms; a player's own setting overrides it"},
 		{"name": CVAR_LANDING_KICK, "value": str(landing_kick), "min": 0.0, "max": 2.0,
 			"description": "Camera kick on a landing: 0 none, 1 normal, 2 double"},
 	]
 
 
-## Registers `mp_forceview` through [param add] (a server module's `add_cvar`, shaped
+## Registers these rules' cvars through [param add] (a server module's `add_cvar`, shaped
 ## `(name, default, description, flags) -> cvar`) and keeps these rules in step with it. Pass
 ## FLAG_REPLICATED. Duck-typed (dot-server is not a dependency); a value already held is read back.
 func bind_cvars(add: Callable, flags: int = 0) -> Array:
@@ -179,7 +197,7 @@ func follow_cvars(source: Object) -> bool:
 		return false
 	if not source.has_method(&"replicated_cvar") or not source.has_signal(&"replicated_cvar_changed"):
 		return false
-	for cv in [CVAR_FORCE, CVAR_LEGS, CVAR_CYCLE]:
+	for cv in [CVAR_FORCE, CVAR_BODY, CVAR_CYCLE]:
 		var held := String(source.call(&"replicated_cvar", cv, ""))
 		if held != "":
 			var _applied := set_cvar(cv, held)
@@ -188,9 +206,14 @@ func follow_cvars(source: Object) -> bool:
 	return true
 
 
-## Applies one cvar by name. False for another name or a value that is not 0, 1 or 2.
+## Applies one cvar by name. False for another name or a value out of its range.
 func set_cvar(cvar_name: String, value: String) -> bool:
 	var text := value.strip_edges()
+	if cvar_name == CVAR_BODY:
+		if not text in ["0", "1", "2"]:
+			return false
+		first_person_body = text.to_int()
+		return true
 	if cvar_name == CVAR_LEGS:
 		if text != "0" and text != "1":
 			return false
@@ -226,13 +249,19 @@ func _on_replicated_cvar(cvar_name: String, value: String) -> void:
 	var _applied := set_cvar(cvar_name, value)
 
 
-## Whether the local player's own legs are drawn in first person: the server's [constant CVAR_LEGS], or the game's own setting [param game_wants]. Hand it to whatever draws the body (for example DotPlayerFirstPersonBody).
+## The body the local player sees of themselves in first person: their own [param choice]
+## (a client setting, BODY_*) when they made one, else the server's [member first_person_body]; -1 is no choice.
+func own_body(choice: int = -1) -> int:
+	return clampi(choice, BODY_OFF, BODY_FULL) if choice >= 0 else first_person_body
+
+
+## Whether the local player's own legs are drawn in first person: the server's [constant CVAR_BODY], or the game's own wish [param game_wants].
 func shows_own_legs(game_wants: bool = false) -> bool:
 	return first_person_legs or game_wants
 
 
 func describe() -> Dictionary:
-	return {"force_view": force_view, "may_toggle": may_toggle(), "first_person_legs": first_person_legs, "landing_kick": landing_kick}
+	return {"force_view": force_view, "may_toggle": may_toggle(), "first_person_body": first_person_body, "landing_kick": landing_kick}
 
 
 func describe_lines() -> PackedStringArray:

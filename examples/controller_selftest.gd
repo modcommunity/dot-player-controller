@@ -13,7 +13,7 @@ extends Node
 ## [/codeblock]
 
 const SECTIONS := 7
-const CHECKS := 131
+const CHECKS := 132
 
 var _passed := 0
 var _failed := 0
@@ -166,10 +166,13 @@ func _test_rules() -> void:
 		return cvar
 	var fresh := DotPlayerViewRules.new()
 	var _bound := fresh.bind_cvars(add)
-	_check(made == ["mp_forceview", "mp_viewcycle", "mp_firstperson_legs", "cl_landing_kick"], "bind_cvars registers mp_forceview, mp_viewcycle, mp_firstperson_legs and cl_landing_kick")
-	_check(fresh.first_person_legs, "mp_firstperson_legs reads back the operator's 1 (default 0 hides the legs)")
-	_check(fresh.shows_own_legs() and not DotPlayerViewRules.new().shows_own_legs() and DotPlayerViewRules.new().shows_own_legs(true), "shows_own_legs is the cvar or the game's own wish")
-	_check(not DotPlayerViewRules.new().first_person_legs and not fresh.set_cvar("mp_firstperson_legs", "2"), "legs are off by default and a value other than 0 or 1 is refused")
+	_check(made == ["mp_forceview", "mp_viewcycle", "mp_fp_body", "cl_landing_kick"], "bind_cvars registers mp_forceview, mp_viewcycle, mp_fp_body and cl_landing_kick")
+	_check(fresh.first_person_body == DotPlayerViewRules.BODY_LEGS and fresh.first_person_legs, "mp_fp_body reads back the operator's 1 (legs)")
+	_check(fresh.shows_own_legs() and DotPlayerViewRules.new().shows_own_legs() and DotPlayerViewRules.new().first_person_body == DotPlayerViewRules.BODY_LEGS, "legs and feet show by default")
+	_check(not fresh.set_cvar("mp_fp_body", "3") and fresh.set_cvar("mp_firstperson_legs", "0") and fresh.first_person_body == DotPlayerViewRules.BODY_OFF and fresh.set_cvar("mp_fp_body", "1"), "a value out of 0 to 2 is refused; the older 0/1 name still turns it off")
+	var own := DotPlayerViewRules.new()
+	own.first_person_body = DotPlayerViewRules.BODY_OFF
+	_check(own.own_body() == DotPlayerViewRules.BODY_OFF and own.own_body(DotPlayerViewRules.BODY_FULL) == DotPlayerViewRules.BODY_FULL and fresh.own_body(DotPlayerViewRules.BODY_OFF) == DotPlayerViewRules.BODY_OFF, "a player's own setting overrides the server's, -1 follows it")
 	_check(fresh.force_view == DotPlayerViewRules.FIRST_ONLY, "and reads back a value the operator set first")
 	var heard := [0]
 	fresh.changed.connect(func() -> void: heard[0] += 1)
@@ -179,8 +182,9 @@ func _test_rules() -> void:
 
 	var link := FakeLink.new()
 	link.held["mp_forceview"] = "1"
+	link.held["mp_fp_body"] = "2"
 	var client := DotPlayerViewRules.new()
-	_check(client.follow_cvars(link) and client.force_view == DotPlayerViewRules.FIRST_ONLY, "a client follows the server's value through its link")
+	_check(client.follow_cvars(link) and client.force_view == DotPlayerViewRules.FIRST_ONLY and client.first_person_body == DotPlayerViewRules.BODY_FULL, "a client follows the server's view and body through its link")
 	link.replicated_cvar_changed.emit("mp_forceview", "0")
 	_check(client.may_toggle(), "and every change to it")
 	_check(not client.follow_cvars(RefCounted.new()), "an older link that cannot say leaves the rules alone")

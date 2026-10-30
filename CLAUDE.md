@@ -22,7 +22,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 
 | Path | What |
 | --- | --- |
-| `addons/dot_player_controller/core/` | `DotPlayerIntent` (one tick of intent and its wire form), `DotPlayerLook`, `DotPlayerViewRules` (`mp_forceview`), `DotPlayerBodyRules` (`mp_solidplayers`) |
+| `addons/dot_player_controller/core/` | `DotPlayerIntent` (one tick of intent and its wire form), `DotPlayerLook`, `DotPlayerViewRules` (`mp_forceview`, `mp_fp_body`), `DotPlayerBodyRules` (`mp_solidplayers`) |
 | `addons/dot_player_controller/nodes/` | `DotPlayerController` (abstract base, five methods), `DotPlayerControllerSwitch` |
 | `addons/dot_player_controller/fp/core/` | data: `DotFpsTunables`, `DotFpsCvars` (binds the `sv_*` movement cvars of tunables, swim and ladder to a console and `DotGameMapConfig`), `DotFpsSprintRules` (the sprint/stamina cvars as one replicated group), `DotFpsState`, `DotFpsCommand`, styles, surfaces, modifiers, admin modifiers, stats |
 | `addons/dot_player_controller/fp/motion/` | the simulation: `DotFpsMotor`, `DotFpsBody` and its flat and physics implementations, `DotFpsMoveMode`, `DotFpsSwimMode`, `DotFpsLadderMode` (boxes as data; the game calls `update` each tick), `DotFpsSimulator` (a second motor a bot runs ahead) |
