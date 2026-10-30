@@ -1028,8 +1028,98 @@ func _update_wall_run(
 	if approach > tunables.wall_run_max_approach_angle:
 		return
 
+	if not _wall_runnable(state, wall):
+		return
+
 	state.wall_run_time = 0.0
 	wall_runs += 1
+
+
+const WALL_PROBE_STEP := 0.25
+const WALL_PROBE_STANDOFF := 0.12
+const WALL_PROBE_RADIUS := 0.05
+const WALL_PROBE_HEIGHT := 0.12
+
+
+## Whether [param wall] is big enough to START a run on: tall enough around the contact (and
+## reaching above the hip) and long enough ahead. Probes only the world, so both peers agree.
+## A wall jump never asks: a ledge is still a thing to push off.
+func _wall_runnable(state: DotFpsState, wall: DotFpsBody.Hit) -> bool:
+	var min_height := tunables.wall_run_min_height
+	var min_length := tunables.wall_run_min_length
+	if min_height <= 0.0 and min_length <= 0.0:
+		return true
+
+	var normal := _flat_normal(wall.normal)
+	if normal == Vector3.ZERO:
+		return false
+
+	var height := _height(state)
+	var feet_y := state.position.y
+	var base := Vector3(wall.point.x, 0.0, wall.point.z)
+
+	# The capsule's contact point can sit above a low wall's top, so find the highest part
+	# of the face inside the capsule's span instead.
+	var contact_y := -INF
+	var level := feet_y + height
+	while level >= feet_y + 0.05 and contact_y == -INF:
+		if _wall_probe(base, normal, level) == 1:
+			contact_y = level
+		level -= WALL_PROBE_STEP * 0.5
+	if contact_y == -INF:
+		return false
+
+	if min_height > 0.0:
+		var top := _wall_extent(base, normal, contact_y, 1.0, min_height)
+		var bottom := _wall_extent(base, normal, contact_y, -1.0, min_height)
+		if top + bottom < min_height - 0.001 or contact_y + top < feet_y + height * 0.5:
+			return false
+
+	if min_length > 0.0:
+		var flat := Vector3(state.velocity.x, 0.0, state.velocity.z)
+		var tangent := normal.cross(Vector3.UP)
+		if tangent.dot(flat) < 0.0:
+			tangent = -tangent
+		var ahead := _wall_extent_along(base, normal, tangent, contact_y, min_length)
+		if ahead < min_length - 0.001:
+			return false
+
+	return true
+
+
+## Whether a thin probe at [param at] (flat) and [param y] finds the wall face.
+func _wall_probe(at: Vector3, normal: Vector3, y: float) -> int:
+	var origin := Vector3(at.x, y, at.z) + normal * WALL_PROBE_STANDOFF
+	if body.overlaps(origin, WALL_PROBE_HEIGHT, WALL_PROBE_RADIUS):
+		return 2
+	var hit := _sweep(origin, -normal * (WALL_PROBE_STANDOFF + 0.2), WALL_PROBE_HEIGHT, WALL_PROBE_RADIUS)
+	if hit.hit and _flat_normal(hit.normal).dot(normal) > 0.9:
+		return 1
+	return 0
+
+
+## How far the face continues up (+1) or down (-1) from [param y], up to [param limit]. A probe
+## that starts inside solid ground ends the count there: the face runs into the floor.
+func _wall_extent(base: Vector3, normal: Vector3, y: float, sign_y: float, limit: float) -> float:
+	var reached := 0.0
+	while reached < limit:
+		var found := _wall_probe(base, normal, y + sign_y * (reached + WALL_PROBE_STEP))
+		if found == 2:
+			return reached
+		if found == 0:
+			break
+		reached += WALL_PROBE_STEP
+	return reached
+
+
+func _wall_extent_along(base: Vector3, normal: Vector3, tangent: Vector3, y: float, limit: float) -> float:
+	var reached := 0.0
+	while reached < limit:
+		var at := base + tangent * (reached + WALL_PROBE_STEP)
+		if _wall_probe(at, normal, y) != 1:
+			break
+		reached += WALL_PROBE_STEP
+	return reached
 
 
 func _reset_walls(state: DotFpsState) -> void:
@@ -1080,6 +1170,9 @@ func _try_jump_run(state: DotFpsState, wall: DotFpsBody.Hit) -> bool:
 	if approach > tunables.wall_run_jump_max_angle:
 		return false
 
+	if not _wall_runnable(state, wall):
+		return false
+
 	_turn_along(state, tangent * speed)
 	state.time_since_jump_pressed = 1000.0
 	return true
@@ -1118,6 +1211,9 @@ func _try_auto_run(state: DotFpsState, command: DotFpsCommand, wall: DotFpsBody.
 		tangent = -tangent
 	var approach := rad_to_deg(atan2(maxf(into, 0.0), absf(tangent.dot(flat))))
 	if approach > tunables.wall_run_jump_max_angle:
+		return
+
+	if not _wall_runnable(state, wall):
 		return
 
 	_turn_along(state, tangent * speed)

@@ -22,11 +22,11 @@ extends "res://examples/movement_selftest_physics.gd"
 ## failure has exactly one possible cause. [method _test_physics_body] covers the real
 ## implementation separately.
 
-const CHECKS := 391
+const CHECKS := 398
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
-const SECTIONS := 54
+const SECTIONS := 55
 
 
 func _ready() -> void:
@@ -80,6 +80,7 @@ func _run_flat() -> void:
 	_test_wall_jump()
 	_test_wall_run_on_jump()
 	_test_wall_run_auto()
+	_test_wall_run_min_size()
 	_test_wall_replay()
 	_test_wall_hop_rewind()
 	_test_sprint_stamina()
@@ -2346,6 +2347,71 @@ func _test_wall_run_auto() -> void:
 	motor = _motor(t, _wall_world())
 	motor.simulate(idle, _command(0.0, 0.0, 0.0), STEP)
 	_check(motor.wall_runs == 0, "no forward held, no automatic run")
+	_done()
+
+
+func _size_world(top: float) -> DotFpsFlatBody:
+	var world := DotFpsFlatBody.with_floor(0.0)
+	world.add_box(AABB(Vector3(1.0, 0.0, -200.0), Vector3(0.5, top, 200.0)))
+	return world
+
+
+## Runs a player beside an object of height [param top] and reports whether a run started, and
+## whether the yaw or the view turn ever moved; a second motor replays the same ticks.
+func _size_trial(t: DotFpsTunables, top: float, press_at: int = -1) -> Dictionary:
+	var motor := _motor(t, _size_world(top))
+	var twin := _motor(t, _size_world(top))
+	var s := _beside_wall(8.0, 0.0, 1.0 if top > 2.0 else maxf(top - 0.2, 0.05))
+	s.yaw = 0.0
+	var mirror := s.duplicate_state()
+	var steady := true
+	var agree := true
+	for i in range(30):
+		var buttons := DotFpsCommand.BUTTON_JUMP if i == press_at else 0
+		motor.simulate(s, _command(1.0, 0.0, 0.0, buttons), STEP)
+		twin.simulate(mirror, _command(1.0, 0.0, 0.0, buttons), STEP)
+		steady = steady and s.yaw == 0.0 and s.pitch == 0.0 and motor.view_turn == 0.0
+		agree = agree and s.equals(mirror)
+	return {"runs": motor.wall_runs, "jumps": motor.wall_jumps, "steady": steady, "agree": agree}
+
+
+func _test_wall_run_min_size() -> void:
+	_section("a wall run needs a wall of some size; a wall jump does not")
+
+	var t := _wall_tunables()
+	t.wall_run_auto = true
+	t.wall_run_turn_view = true
+	t.wall_run_jump_min_speed = 5.0
+
+	var wall := _size_trial(t, 3.0)
+	_check(wall["runs"] == 1 and wall["steady"] and wall["agree"], "a 3 m wall starts a run", str(wall))
+	for top in [0.5, 1.0]:
+		var low := _size_trial(t, top)
+		_check(low["runs"] == 0 and low["steady"] and low["agree"],
+			"a %.1f m block starts no run and never turns the view" % top, str(low))
+
+	t.wall_run_auto = false
+	t.wall_run_on_jump = true
+	var pressed := _size_trial(t, 1.0, 2)
+	_check(pressed["runs"] == 0 and pressed["jumps"] == 1 and pressed["steady"],
+		"a press at a 1 m ledge wall-jumps instead of running", str(pressed))
+	var big := _size_trial(t, 3.0, 2)
+	_check(big["runs"] >= 1, "the same press at a 3 m wall still runs", str(big))
+
+	t.wall_run_auto = true
+	t.wall_run_on_jump = false
+	t.wall_run_min_height = 0.0
+	_check(_size_trial(t, 1.0)["runs"] == 1, "wall_run_min_height 0 turns the check off")
+
+	t.wall_run_min_height = 2.0
+	t.wall_run_min_length = 5.0
+	var stub := DotFpsFlatBody.with_floor(0.0)
+	stub.add_box(AABB(Vector3(1.0, 0.0, -3.0), Vector3(0.5, 12.0, 3.0)))
+	var stub_motor := _motor(t, stub)
+	var q := _beside_wall(8.0, 0.0, 3.0)
+	q.position.z = -0.5
+	stub_motor.simulate(q, _command(1.0, 0.0, 0.0), STEP)
+	_check(stub_motor.wall_runs == 0, "a 3 m long wall stub does not carry a run needing 5 m")
 	_done()
 
 

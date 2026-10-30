@@ -393,6 +393,14 @@ extends DotConfig
 ## from straight into the wall. 0 needs a velocity exactly along it; 90 accepts any.
 @export_range(0.0, 90.0, 0.5) var wall_run_max_approach_angle: float = 60.0
 
+## How tall a wall must be, in metres, for a run to START on it: the face has to reach this far
+## up and down around the contact and above the player's hip. A crate edge or low ledge is not
+## a wall to run on, though a wall jump off it still works. 0 turns the check off.
+@export_range(0.0, 20.0, 0.1) var wall_run_min_height: float = 2.0
+
+## How far the wall must continue ahead along the run, in metres, for a run to start. 0 is off.
+@export_range(0.0, 20.0, 0.1) var wall_run_min_length: float = 1.0
+
 ## Whether forward has to be held to start and to keep running. Releasing it drops off
 ## the wall, which is the player's way off a run short of jumping.
 @export var wall_run_requires_forward: bool = true
