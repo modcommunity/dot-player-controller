@@ -32,14 +32,14 @@ var exit_reach: float = 0.5
 ## above 0 they sink at this speed instead (a pit of water is climbed out of by holding jump).
 var idle_sink_speed: float = 0.0
 
-## Drag on the swimmer's speed, per second of the classic water friction scale (0 off, 1 the
-## classic profile): the velocity loses speed * friction * delta before it eases to the wish.
-var friction: float = 0.0
+## Drag on the swimmer's speed, per second (0 off, 1 the classic profile and the default): the
+## velocity loses speed * friction * delta before it eases to the wish.
+var friction: float = 1.0
 
 ## cvar name -> [member, description]; the values are the classic profile's own units.
 const CVARS := {
 	"sv_wateraccelerate": ["accelerate", "Water acceleration, per second toward the wish"],
-	"sv_waterfriction": ["friction", "Water friction; 0 off"],
+	"sv_waterfriction": ["friction", "Water friction; 0 off, 1 classic"],
 }
 
 

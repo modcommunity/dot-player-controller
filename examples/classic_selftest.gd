@@ -6,7 +6,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 const U := 0.01905
-const CHECKS := 95
+const CHECKS := 96
 const SECTIONS := 13
 
 var _passed := 0
@@ -271,7 +271,7 @@ func _test_water_ladder() -> void:
 	var ladder := DotFpsLadderMode.new()
 	_check(ladder.set_cvar("sv_ladder_dampen", "0.5") and ladder.dampen == 0.5, "sv_ladder_dampen sets the dampening")
 	_check(not ladder.set_cvar("sv_ladder_dampen", "x") and not ladder.set_cvar("sv_x", "1"), "a bad ladder value or name is refused")
-	_check(DotFpsLadderMode.new().dampen == 0.0 and DotFpsSwimMode.new().friction == 0.0, "both default to off, as before")
+	_check(DotFpsLadderMode.new().dampen == 0.0 and DotFpsSwimMode.new().friction == 1.0, "ladder dampen defaults off, water friction to the classic 1")
 	_check(ladder.cvar_specs()[0]["name"] == "sv_ladder_dampen", "the ladder cvar is listed")
 	_done()
 
@@ -385,9 +385,11 @@ func _ladder_exit_checks(motor: DotFpsMotor, ladder: DotFpsLadderMode, up: DotFp
 	_check(j.mode != ladder.mode_id, "and the ladder does not take the player straight back")
 
 
+## Friction is off here so each check isolates one quantity; the default 1 has its own check below.
 func _water_rig() -> Array:
 	var motor := DotFpsMotor.new(DotFpsTunables.new(), DotFpsFlatBody.with_floor(-6.0))
 	var swim := DotFpsSwimMode.new()
+	swim.friction = 0.0
 	swim.volumes = [AABB(Vector3(-20.0, -5.0, -20.0), Vector3(40.0, 5.0, 40.0))]
 	swim.mode_id = motor.register_mode(swim)
 	return [motor, swim]
@@ -488,8 +490,12 @@ func _test_water_ladder_reference() -> void:
 	var steady := _swim_speed_after(swim, motor, 240) / top
 	var expect := (1.0 / 6.0) / (1.0 - (59.0 / 60.0) * (5.0 / 6.0))
 	_near(steady, expect, 0.01, "water friction 1 settles a held swim at 92.3% of the speed")
+	var dflt := DotFpsSwimMode.new()
+	dflt.volumes = swim.volumes
+	dflt.mode_id = motor.register_mode(dflt)
+	_near(_swim_speed_after(dflt, motor, 240) / top, expect, 0.01, "an untouched swim mode uses the reference water friction 1")
 	swim.set_cvar("sv_waterfriction", "0")
-	_near(_swim_speed_after(swim, motor, 240) / top, 1.0, 0.01, "water friction 0 (the default) reaches the full speed")
+	_near(_swim_speed_after(swim, motor, 240) / top, 1.0, 0.01, "water friction 0 (off) reaches the full speed")
 
 	var ladder: DotFpsLadderMode = _ladder_rig()[1]
 	var lmotor: DotFpsMotor = _ladder_rig()[0]
