@@ -221,6 +221,22 @@ func is_wall_running() -> bool:
 	return wall_run_time >= 0.0
 
 
+## Bits of [method move_flags]: what the body is doing, readable on a remote player too.
+enum Move { CROUCH = 1, SLIDE = 2, SPRINT = 4, WALL_RUN = 8, AIR = 16 }
+
+
+## Bitmask of [enum Move] from the replicated state (net_flags), so animation reads one int.
+## Sprint falls back to the held sprint button because [member sprinting] is not on the wire.
+func move_flags() -> int:
+	var f := 0
+	if is_crouched(): f |= Move.CROUCH
+	if is_sliding(): f |= Move.SLIDE
+	if sprinting or ((previous_buttons & DotFpsCommand.BUTTON_SPRINT) != 0 and is_grounded() and horizontal_speed() > 1.0): f |= Move.SPRINT
+	if is_wall_running(): f |= Move.WALL_RUN
+	if not is_grounded(): f |= Move.AIR
+	return f
+
+
 func speed() -> float:
 	return velocity.length()
 
