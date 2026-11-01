@@ -143,17 +143,6 @@ var exclude: Array[RID] = []
 var pass_out_mask: int = 0
 
 
-## Called by [DotFpsMotor] around one tick: a body may reuse an answer to a question it was
-## already asked at the same place until [method end_tick], because the world does not step in between.
-func begin_tick() -> void:
-	pass
-
-
-## Ends what [method begin_tick] began; answers are asked afresh from here on.
-func end_tick() -> void:
-	pass
-
-
 ## A body that answers every question this one does, for a [DotFpsSimulator]: the same world,
 ## the same masks, exclusions and pass-out layers, and none of this one's counters. Null when
 ## the type cannot copy itself, which a simulator refuses (a caller hands it a body instead).

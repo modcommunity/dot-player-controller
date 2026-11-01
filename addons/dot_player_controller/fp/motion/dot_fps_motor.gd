@@ -70,16 +70,6 @@ func simulate(
 ) -> void:
 	if delta <= 0.0:
 		return
-	body.begin_tick()
-	_simulate(state, command, delta)
-	body.end_tick()
-
-
-func _simulate(
-	state: DotFpsState,
-	command: DotFpsCommand,
-	delta: float
-) -> void:
 	view_turn = 0.0
 
 	ticks_simulated += 1
