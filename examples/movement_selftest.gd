@@ -26,7 +26,7 @@ const CHECKS := 398
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
-const SECTIONS := 55
+const SECTIONS := 56
 
 
 func _ready() -> void:

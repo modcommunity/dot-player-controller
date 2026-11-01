@@ -1854,7 +1854,13 @@ func _move(state: DotFpsState, delta: float, jumped: bool) -> bool:
 	# Stepping is tried only when it could help: on the ground, actually blocked, and
 	# not on the tick a jump left the surface. Attempting it every tick would double
 	# the query cost of the most expensive part of the frame for nothing.
-	if was_grounded and not jumped and plain.blocked and tunables.step_height > 0.0:
+	# A step cannot travel further than the horizontal motion, so when the plain slide is
+	# already within the acceptance margin of it the step could never win; skip its queries.
+	if (
+		was_grounded and not jumped and plain.blocked and tunables.step_height > 0.0
+		and plain.travelled + tunables.skin_width * 2.0 + 1e-4
+			< Vector2(motion.x, motion.z).length()
+	):
 		var stepped := _slide_with_step(state.position, state.velocity, motion, height)
 
 		# Only if it genuinely got further. A step that gains nothing but ends
