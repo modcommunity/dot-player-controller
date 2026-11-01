@@ -80,6 +80,7 @@ func _run_flat() -> void:
 	_test_wall_jump()
 	_test_wall_run_on_jump()
 	_test_wall_run_auto()
+	_test_wall_no_stick_walking()
 	_test_wall_run_min_size()
 	_test_wall_replay()
 	_test_wall_hop_rewind()
@@ -2347,6 +2348,41 @@ func _test_wall_run_auto() -> void:
 	motor = _motor(t, _wall_world())
 	motor.simulate(idle, _command(0.0, 0.0, 0.0), STEP)
 	_check(motor.wall_runs == 0, "no forward held, no automatic run")
+	_done()
+
+
+func _test_wall_no_stick_walking() -> void:
+	_section("walking or standing beside a wall never attaches; a real airborne run still does")
+
+	for auto in [true, false]:
+		var t := _wall_tunables()
+		t.wall_run_auto = auto
+		t.wall_run_min_speed = 5.0
+		t.wall_run_jump_min_speed = 5.0
+		var label := "auto" if auto else "plain"
+
+		var motor := _motor(t, _wall_world())
+		var walker := _beside_wall(0.0, 0.0, 0.0)
+		walker.mode = DotFpsState.Mode.GROUND
+		walker.position.y = 0.0
+		walker.time_since_grounded = 0.0
+		for _i in range(60):
+			motor.simulate(walker, _command(1.0, 0.0, 0.0), STEP)
+		_check(motor.wall_runs == 0 and not walker.is_wall_running(),
+			"%s: a walk along a wall does not run" % label, ", ".join(walker.describe_lines()))
+
+		motor = _motor(t, _wall_world())
+		var bump := _beside_wall(8.0, 0.0)
+		bump.time_since_grounded = 0.0
+		motor.simulate(bump, _command(1.0, 0.0, 0.0), STEP)
+		_check(motor.wall_runs == 0 and not bump.is_wall_running(),
+			"%s: one tick of AIR at walking speed beside a wall does not attach" % label)
+
+		motor = _motor(t, _wall_world())
+		var real := _beside_wall(8.0, 0.5)
+		motor.simulate(real, _command(1.0, 0.0, 0.0), STEP)
+		_check(motor.wall_runs == 1 and real.is_wall_running(),
+			"%s: a fast airborne run along the wall still starts" % label, ", ".join(real.describe_lines()))
 	_done()
 
 

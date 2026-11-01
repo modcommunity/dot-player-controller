@@ -1040,6 +1040,9 @@ func _update_wall_run(
 	if state.mode != DotFpsState.Mode.AIR or state.wall_run_cooldown_left > 0.0:
 		return
 
+	if state.time_since_grounded < WALL_ENTRY_MIN_AIR:
+		return
+
 	if tunables.wall_run_requires_forward and command.move.y <= 0.0:
 		return
 
@@ -1070,6 +1073,9 @@ func _update_wall_run(
 	wall_runs += 1
 
 
+## Seconds off the ground before a run may start: a step, kerb or slope bump that flickers the
+## mode to AIR for a tick while walking beside a wall must not attach. A jump sets it to 1000.
+const WALL_ENTRY_MIN_AIR := 0.08
 const WALL_PROBE_STEP := 0.25
 const WALL_PROBE_STANDOFF := 0.12
 const WALL_PROBE_RADIUS := 0.05
@@ -1223,6 +1229,9 @@ func _try_auto_run(state: DotFpsState, command: DotFpsCommand, wall: DotFpsBody.
 		return
 
 	if state.wall_run_cooldown_left > 0.0 or _effects.deny_move:
+		return
+
+	if state.time_since_grounded < WALL_ENTRY_MIN_AIR:
 		return
 
 	if tunables.wall_run_requires_forward and command.move.y <= 0.0:
