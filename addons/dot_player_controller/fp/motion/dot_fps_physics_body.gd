@@ -63,6 +63,50 @@ func bind(node: Node3D) -> DotResult:
 	return DotResult.success(null)
 
 
+func begin_tick() -> void:
+	end_tick()
+	_memo_on = true
+
+
+func end_tick() -> void:
+	_memo_on = false
+	_memo_rest.clear()
+	_memo_pass.clear()
+	_memo_ray.clear()
+
+
+## Answers of this tick, by the point asked about. A tick asks the same question twice
+## more often than not (the position a depenetration measured is the one the ground probe
+## and the first sweep then measure), and the world does not step inside a tick. Each value
+## is a list of [mask, height, radius, answer] because the shape and mask change between
+## questions; cleared by [method end_tick] and whenever [member exclude] changes.
+var _memo_on := false
+var _memo_rest := {}
+var _memo_pass := {}
+var _memo_ray := {}
+
+
+## The remembered answer in [param table] for [param at] under the shape and mask now
+## configured, or null. Entries are [mask, height, radius, answer].
+func _recall(table: Dictionary, at: Vector3) -> Array:
+	var entries: Array = table.get(at, _NO_ENTRIES)
+	for e: Array in entries:
+		if e[0] == _cfg_mask and e[1] == _cfg_height and e[2] == _cfg_radius:
+			return e
+	return _NO_ENTRIES
+
+
+const _NO_ENTRIES: Array = []
+
+
+func _remember(table: Dictionary, at: Vector3, answer: Variant) -> void:
+	var entries: Array = table.get(at, _NO_ENTRIES)
+	if entries.is_empty():
+		entries = []
+		table[at] = entries
+	entries.append([_cfg_mask, _cfg_height, _cfg_radius, answer])
+
+
 func is_bound() -> bool:
 	return _space != null
 
@@ -93,6 +137,9 @@ func _configure(height: float, radius: float) -> void:
 	if exclude != _cfg_exclude:
 		_shape_params.exclude = exclude
 		_cfg_exclude = exclude.duplicate()
+		_memo_rest.clear()
+		_memo_pass.clear()
+		_memo_ray.clear()
 
 
 ## [member PhysicsShapeQueryParameters3D.collision_mask], written only when it changes: a
@@ -179,7 +226,15 @@ func sweep(
 	_shape_params.motion = Vector3.ZERO
 	if pass_out_mask != 0:
 		_set_mask(collision_mask & pass_out_mask)
-		if not _space.intersect_shape(_shape_params, 1).is_empty():
+		var inside: bool
+		var seen := _recall(_memo_pass, from) if _memo_on else _NO_ENTRIES
+		if not seen.is_empty():
+			inside = seen[3]
+		else:
+			inside = not _space.intersect_shape(_shape_params, 1).is_empty()
+			if _memo_on:
+				_remember(_memo_pass, from, inside)
+		if inside:
 			_set_mask(collision_mask & ~pass_out_mask)
 		else:
 			_set_mask(collision_mask)
@@ -376,7 +431,14 @@ func _downward_ray_fallback(
 	query.collide_with_areas = false
 	query_count += 1
 
-	var contact: Dictionary = _space.intersect_ray(query)
+	var contact: Dictionary
+	var seen := _recall(_memo_ray, foot) if _memo_on else _NO_ENTRIES
+	if not seen.is_empty() and seen[3][0] == query.to:
+		contact = seen[3][1]
+	else:
+		contact = _space.intersect_ray(query)
+		if _memo_on:
+			_remember(_memo_ray, foot, [query.to, contact])
 
 	if contact.is_empty():
 		return result
@@ -542,7 +604,14 @@ func _raw_rest_or_null(at: Vector3, height: float, radius: float) -> Hit:
 	_shape_params.transform = Transform3D(Basis.IDENTITY, at)
 	_shape_params.motion = Vector3.ZERO
 
-	var contact: Dictionary = _space.get_rest_info(_shape_params)
+	var contact: Dictionary
+	var seen := _recall(_memo_rest, at) if _memo_on else _NO_ENTRIES
+	if not seen.is_empty():
+		contact = seen[3]
+	else:
+		contact = _space.get_rest_info(_shape_params)
+		if _memo_on:
+			_remember(_memo_rest, at, contact)
 
 	if contact.is_empty():
 		return null
