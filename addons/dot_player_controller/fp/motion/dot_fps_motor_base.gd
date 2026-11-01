@@ -127,6 +127,22 @@ var depenetrated_ticks: int = 0
 ## the same question on the same state. Diagnostic; see [method _categorise_ground_settled].
 var settled_ground_ticks: int = 0
 
+## Ticks whose start-of-tick ground check was skipped because the last tick ended on a settled
+## ground check of exactly this state. Diagnostic; see [member reuse_settled_ground].
+var reused_ground_ticks: int = 0
+
+## Skip a tick's first ground probe when the last tick ended on a settled one of the same state.
+## Off if the floor can change between ticks (a platform that is not moved with its rider).
+var reuse_settled_ground: bool = true
+
+var _rest_valid: bool = false
+var _rest_position: Vector3
+var _rest_velocity: Vector3
+var _rest_height: float
+var _rest_normal: Vector3
+var _rest_ground_id: int
+var _rest_surface: StringName
+
 
 ## Registers a custom movement mode and returns its id.
 ## Ids travel on the wire, so register in the same fixed order on every machine, not conditionally

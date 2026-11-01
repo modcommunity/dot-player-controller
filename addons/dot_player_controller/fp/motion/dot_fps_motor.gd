@@ -97,6 +97,7 @@ func simulate(
 	# A custom mode owns its whole tick — gravity, acceleration, collision — because
 	# a ladder that had gravity applied behind its back would have to cancel a force
 	# it never asked for. See DotFpsMoveMode.
+	_rest_valid = _rest_valid and state.mode == DotFpsState.Mode.GROUND
 	var custom := mode_for(state.mode)
 
 	if custom != null:
@@ -120,7 +121,9 @@ func simulate(
 	# player in AIR on a ramp, which is exactly the case every earlier guard excluded.
 	_depenetrate(state, _height(state))
 
-	var start_settled := _categorise_ground_settled(state)
+	var start_settled := _reuse_rest(state)
+	if not start_settled:
+		start_settled = _categorise_ground_settled(state)
 	var start_position := state.position
 	var start_velocity := state.velocity
 	var start_height := _height(state)
@@ -186,10 +189,42 @@ func simulate(
 		and _height(state) == start_height
 	):
 		settled_ground_ticks += 1
+		_stamp_rest(state)
 	else:
+		_rest_valid = false
 		_categorise_ground(state)
 
 	state.previous_buttons = command.buttons
+
+
+## Remembers the state a settled ground check just proved, for [method _reuse_rest].
+func _stamp_rest(state: DotFpsState) -> void:
+	_rest_valid = reuse_settled_ground and state.mode == DotFpsState.Mode.GROUND
+	_rest_position = state.position
+	_rest_velocity = state.velocity
+	_rest_height = _height(state)
+	_rest_normal = state.ground_normal
+	_rest_ground_id = state.ground_id
+	_rest_surface = state.surface
+
+
+## Whether the state is the one the last tick ended on after a settled ground check, so that
+## the start-of-tick check would repeat its queries and write the same values. The one thing
+## that can differ is the world between the two ticks; the stamp is dropped on any other
+## change to the state, so a mover that carries its rider (position changes) is still probed.
+func _reuse_rest(state: DotFpsState) -> bool:
+	if not _rest_valid:
+		return false
+	_rest_valid = false
+	if (
+		state.mode == DotFpsState.Mode.GROUND
+		and state.position == _rest_position and state.velocity == _rest_velocity
+		and state.ground_normal == _rest_normal and state.ground_id == _rest_ground_id
+		and state.surface == _rest_surface and _height(state) == _rest_height
+	):
+		reused_ground_ticks += 1
+		return true
+	return false
 
 
 func _advance_timers(
@@ -2779,6 +2814,7 @@ func describe() -> Dictionary:
 		"stuck_ticks": stuck_ticks,
 		"depenetrated_ticks": depenetrated_ticks,
 		"settled_ground_ticks": settled_ground_ticks,
+		"reused_ground_ticks": reused_ground_ticks,
 		"surface": _surface.id if _surface != null else &"",
 		"effects": _effects.describe() if not _effects.is_neutral() else "neutral",
 		"custom_modes": Array(mode_names),
