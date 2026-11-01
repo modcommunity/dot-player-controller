@@ -22,7 +22,7 @@ extends "res://examples/movement_selftest_physics.gd"
 ## failure has exactly one possible cause. [method _test_physics_body] covers the real
 ## implementation separately.
 
-const CHECKS := 398
+const CHECKS := 405
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
@@ -2479,6 +2479,19 @@ func _test_wall_run_on_jump() -> void:
 	_check(absf(s.velocity.x) < 0.5 and -s.velocity.z > speed * 0.9,
 		"the heading turns along the wall at the speed the player had",
 		"%s from %.2f" % [s.velocity, speed])
+
+	# A ground flicker (just left the floor, a kerb bump) with the press buffered is no run.
+	var tf := _wall_tunables()
+	tf.wall_run_on_jump = true
+	tf.wall_run_min_speed = 20.0
+	tf.coyote_time = 0.0
+	var flicker_motor := _motor(tf, _wall_world())
+	var flicker := _beside_wall(2.0, -1.0)
+	flicker.velocity = Vector3(5.0, 0.0, -5.0)
+	flicker.time_since_grounded = 0.0
+	flicker_motor.simulate(flicker, _command(1.0, 0.0, 0.0, jump), STEP)
+	_check(flicker_motor.wall_runs == 0 and not flicker.is_wall_running(),
+		"a jump press on a ground flicker does not attach a run", "%d runs" % flicker_motor.wall_runs)
 
 	_wall_run_view_checks(motor, jump)
 

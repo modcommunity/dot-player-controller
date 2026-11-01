@@ -1191,6 +1191,9 @@ func _try_jump_run(state: DotFpsState, wall: DotFpsBody.Hit) -> bool:
 	if state.wall_run_cooldown_left > 0.0 or _effects.deny_move or _effects.deny_jump:
 		return false
 
+	if state.time_since_grounded < WALL_ENTRY_MIN_AIR:
+		return false
+
 	if state.time_since_jump_pressed > tunables.jump_buffer_time:
 		return false
 
