@@ -1837,9 +1837,62 @@ func _sweep(
 	return hit
 
 
+## [method _move_full], except that a grounded walker who ends a move where it began (pressed
+## into a wall) and starts the next from the same position, velocity, ground and world stamp
+## gets the same answer without the sweeps: a world nothing has stepped answers alike.
+func _move(state: DotFpsState, delta: float, jumped: bool) -> bool:
+	if (
+		not reuse_blocked_moves or jumped or state.mode != DotFpsState.Mode.GROUND
+		or state.velocity == Vector3.ZERO
+	):
+		return _move_full(state, delta, jumped)
+
+	var height := _height(state)
+	if (
+		_mm_valid and state.position == _mm_position and state.velocity == _mm_velocity
+		and delta == _mm_delta and height == _mm_height and environment_stamp == _mm_stamp
+		and state.ground_normal == _mm_normal and state.ground_id == _mm_ground_id
+		and state.surface == _mm_surface
+	):
+		reused_moves += 1
+		state.velocity = _mm_velocity_out
+		stuck_ticks += _mm_stuck
+		duplicate_plane_ticks += _mm_duplicate
+		return _mm_settled
+
+	var normal_in := state.ground_normal
+	var ground_in := state.ground_id
+	var surface_in := state.surface
+	var position_in := state.position
+	var velocity_in := state.velocity
+	var stuck_in := stuck_ticks
+	var duplicate_in := duplicate_plane_ticks
+	var other_in := embedded_ticks + lifted_ticks
+	var settled := _move_full(state, delta, jumped)
+	_mm_valid = (
+		state.mode == DotFpsState.Mode.GROUND and state.position == position_in
+		and state.ground_normal == normal_in and state.ground_id == ground_in
+		and state.surface == surface_in and embedded_ticks + lifted_ticks == other_in
+	)
+	if _mm_valid:
+		_mm_position = position_in
+		_mm_velocity = velocity_in
+		_mm_velocity_out = state.velocity
+		_mm_delta = delta
+		_mm_height = height
+		_mm_stamp = environment_stamp
+		_mm_normal = normal_in
+		_mm_ground_id = ground_in
+		_mm_surface = surface_in
+		_mm_stuck = stuck_ticks - stuck_in
+		_mm_duplicate = duplicate_plane_ticks - duplicate_in
+		_mm_settled = settled
+	return settled
+
+
 ## Returns whether the ground check it ran for the snap is already the end-of-tick answer
 ## (see [method _categorise_ground_settled]); false whenever it ran none.
-func _move(state: DotFpsState, delta: float, jumped: bool) -> bool:
+func _move_full(state: DotFpsState, delta: float, jumped: bool) -> bool:
 	var height := _height(state)
 	var motion := state.velocity * delta
 
@@ -2833,6 +2886,7 @@ func describe() -> Dictionary:
 		"depenetrated_ticks": depenetrated_ticks,
 		"settled_ground_ticks": settled_ground_ticks,
 		"reused_ground_ticks": reused_ground_ticks,
+		"reused_moves": reused_moves,
 		"surface": _surface.id if _surface != null else &"",
 		"effects": _effects.describe() if not _effects.is_neutral() else "neutral",
 		"custom_modes": Array(mode_names),

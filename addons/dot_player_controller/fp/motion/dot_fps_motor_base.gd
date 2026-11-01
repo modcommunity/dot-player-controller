@@ -135,6 +135,31 @@ var reused_ground_ticks: int = 0
 ## Off if the floor can change between ticks (a platform that is not moved with its rider).
 var reuse_settled_ground: bool = true
 
+## Skip a grounded walker's move when it is pressed into a wall and nothing it depends on changed
+## since the last one. Off if the world moves colliders without bumping [member environment_stamp].
+var reuse_blocked_moves: bool = true
+
+## A number the game changes whenever a collider that can touch a walker moves (a door, a lift, a
+## player who blocks). A repeated move is reused only while it is unchanged.
+var environment_stamp: int = 0
+
+## Moves answered from the last identical one. Diagnostic; see [member reuse_blocked_moves].
+var reused_moves: int = 0
+
+var _mm_valid: bool = false
+var _mm_position: Vector3
+var _mm_velocity: Vector3
+var _mm_velocity_out: Vector3
+var _mm_delta: float
+var _mm_height: float
+var _mm_stamp: int
+var _mm_normal: Vector3
+var _mm_ground_id: int
+var _mm_surface: StringName
+var _mm_stuck: int
+var _mm_duplicate: int
+var _mm_settled: bool
+
 var _rest_valid: bool = false
 var _rest_position: Vector3
 var _rest_velocity: Vector3
