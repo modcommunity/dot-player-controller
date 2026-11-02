@@ -22,7 +22,7 @@ extends "res://examples/movement_selftest_physics.gd"
 ## failure has exactly one possible cause. [method _test_physics_body] covers the real
 ## implementation separately.
 
-const CHECKS := 407
+const CHECKS := 409
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
@@ -961,6 +961,18 @@ func _test_ladder_mode() -> void:
 	s.mode = DotFpsState.Mode.AIR
 	ladder.update(motor, s)
 	_check(s.mode != id, "and away from every ladder nobody is put on one")
+
+	var top := _standing(motor)
+	top.position = Vector3(1.75, 8.0, 0.0)
+	top.time_since_jump = 10.0
+	top.tick = s.tick + 100
+	ladder.wish = Vector3(1.0, 0.0, 0.0)
+	ladder.update(motor, top)
+	_check(top.mode != id, "walking into the face from the floor at the top does not grab", str(top.mode))
+	top.position.y = 5.0
+	ladder.update(motor, top)
+	_check(top.mode == id, "the same push lower down still grabs", str(top.mode))
+	ladder.wish = Vector3.ZERO
 
 	ladder.volumes = []
 	s.position = Vector3(1.75, 3.0, 0.0)

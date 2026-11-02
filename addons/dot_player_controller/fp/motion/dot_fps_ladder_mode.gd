@@ -76,7 +76,8 @@ func update(motor: DotFpsMotor, state: DotFpsState) -> void:
 	var into := -flat.dot(away)
 	# A wall behind a thin ladder zeroes the velocity before this reads it and the reach is under
 	# one tick of travel, so pushing into the face is also judged by the commanded direction.
-	var pushing := -wish.dot(away) > 0.5
+	# Not within 0.3 m of the top: someone standing there walks off the lip into the face.
+	var pushing := -wish.dot(away) > 0.5 and state.position.y < box.position.y + box.size.y - 0.3
 	if (not state.is_grounded() and state.velocity.y < 0.0) or into > 0.25 or pushing:
 		motor.set_mode(state, mode_id)
 		state.velocity = Vector3.ZERO
