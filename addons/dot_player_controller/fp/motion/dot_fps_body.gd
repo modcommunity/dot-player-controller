@@ -84,6 +84,11 @@ func sweep(
 	return Hit.miss()
 
 
+## The node a [member Hit.collider_id] names, or null when this body's ids are not engine instance ids.
+func collider_node(_id: int) -> Node3D:
+	return null
+
+
 ## Whether a capsule of this size at this position overlaps anything.
 ##
 ## Used for the standing-up test. Separate from a zero-length [method sweep] because

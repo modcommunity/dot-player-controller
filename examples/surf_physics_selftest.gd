@@ -26,11 +26,11 @@ extends "res://examples/surf_physics_selftest_base.gd"
 ## clearance, and nothing but a geometric test of the capsule against the face they
 ## are on can tell you so.
 
-const CHECKS := 46
+const CHECKS := 52
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
-const SECTIONS := 11
+const SECTIONS := 13
 
 
 func _ready() -> void:
@@ -54,6 +54,8 @@ func _run() -> void:
 	await _test_a_simulator_is_the_motor()
 	await _test_a_surfer_rides_the_crease_of_two_slabs()
 	await _test_static_world_changes_no_result()
+	await _test_a_teleported_platform_leaves_a_pinned_rider(true)
+	await _test_a_teleported_platform_leaves_a_pinned_rider(false)
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -619,4 +621,53 @@ func _test_static_world_changes_no_result() -> void:
 		"%d vs %d" % [plain[3], reused[3]])
 	_check(reused[4] < plain[4], "with fewer physics queries",
 		"%d vs %d" % [reused[4], plain[4]])
+	_done()
+
+
+func _test_a_teleported_platform_leaves_a_pinned_rider(pinned: bool) -> void:
+	_section("a platform teleported from under %s rider lets the rider fall" % (
+		"a wall-pinned" if pinned else "an idle"))
+
+	await _clear()
+	var platform := StaticBody3D.new()
+	var pcs := CollisionShape3D.new()
+	var pbox := BoxShape3D.new()
+	pbox.size = Vector3(10.0, 1.0, 10.0)
+	pcs.shape = pbox
+	platform.add_child(pcs)
+	platform.position = Vector3(0.0, -0.5, 0.0)
+	add_child(platform)
+	var wall := StaticBody3D.new()
+	var wcs := CollisionShape3D.new()
+	var wbox := BoxShape3D.new()
+	wbox.size = Vector3(1.0, 400.0, 10.0)
+	wcs.shape = wbox
+	wall.add_child(wcs)
+	wall.position = Vector3(1.5, 0.0, 0.0)
+	add_child(wall)
+	await _settle()
+
+	var motor := DotFpsMotor.new(_tunables(), DotFpsPhysicsBody.for_node(self))
+	var s := DotFpsState.new()
+	s.position = Vector3(0.4, 0.0, 0.0)
+	s.mode = DotFpsState.Mode.GROUND
+	var push := DotFpsCommand.new()
+	push.move = Vector2(0.0, -1.0) if pinned else Vector2.ZERO
+	push.yaw = 90.0
+	for i in range(160):
+		motor.simulate(s, push, STEP)
+	var rest_y := s.position.y
+	_check(s.mode == DotFpsState.Mode.GROUND and absf(rest_y) < 0.05,
+		"the rider stands on the platform",
+		"mode %d y %.3f x %.3f" % [s.mode, rest_y, s.position.x])
+	_check(motor.reused_ground_ticks > 0, "and the motor is reusing the settled ground check",
+		"%d reused" % motor.reused_ground_ticks)
+
+	platform.position = Vector3(0.0, -60.0, 0.0)
+	await _settle()
+	for i in range(128):
+		motor.simulate(s, push, STEP)
+	_check(s.mode != DotFpsState.Mode.GROUND and s.position.y < rest_y - 1.0,
+		"the platform leaves from under the rider and the rider falls",
+		"mode %d y %.3f" % [s.mode, s.position.y])
 	_done()

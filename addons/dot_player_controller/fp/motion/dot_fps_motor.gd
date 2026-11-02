@@ -206,6 +206,18 @@ func _stamp_rest(state: DotFpsState) -> void:
 	_rest_normal = state.ground_normal
 	_rest_ground_id = state.ground_id
 	_rest_surface = state.surface
+	_rest_ground_node = _ground_node(state.ground_id)
+	if _rest_ground_node != null:
+		_rest_ground_xform = _rest_ground_node.global_transform
+
+
+var _rest_ground_node: Node3D = null
+var _rest_ground_xform := Transform3D.IDENTITY
+
+
+## The ground collider as a node, or null when it is not one (a stamp then never compares transforms).
+func _ground_node(id: int) -> Node3D:
+	return body.collider_node(id) if id != 0 else null
 
 
 ## Whether the state is the one the last tick ended on after a settled ground check, so that
@@ -221,10 +233,21 @@ func _reuse_rest(state: DotFpsState) -> bool:
 		and state.position == _rest_position and state.velocity == _rest_velocity
 		and state.ground_normal == _rest_normal and state.ground_id == _rest_ground_id
 		and state.surface == _rest_surface and _height(state) == _rest_height
+		and _rest_ground_unmoved()
 	):
 		reused_ground_ticks += 1
 		return true
 	return false
+
+
+## False when the ground collider was moved since the stamp (a teleported platform leaves
+## from under a rider whose own state does not change), or has been freed.
+func _rest_ground_unmoved() -> bool:
+	if _rest_ground_node == null:
+		return true
+	if not is_instance_valid(_rest_ground_node):
+		return false
+	return _rest_ground_node.global_transform == _rest_ground_xform
 
 
 func _advance_timers(

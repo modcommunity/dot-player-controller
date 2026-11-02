@@ -603,3 +603,7 @@ func describe() -> Dictionary:
 	out["bound"] = is_bound()
 	out["queries"] = query_count
 	return out
+
+
+func collider_node(id: int) -> Node3D:
+	return instance_from_id(id) as Node3D
