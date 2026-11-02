@@ -148,14 +148,14 @@ extends DotConfig
 
 @export_group("Crouching")
 
-## Standing collision height, in metres. The capsule's total height.
-@export_range(0.2, 5.0, 0.01) var stand_height: float = 1.8
+## Standing collision height, in metres: 72 units on a 0.0254 m/unit map. The capsule's total height.
+@export_range(0.2, 5.0, 0.01) var stand_height: float = 1.83
 
-## Crouched collision height, in metres.
-@export_range(0.2, 5.0, 0.01) var crouch_height: float = 0.9
+## Crouched collision height, in metres: 54 units on a 0.0254 m/unit map.
+@export_range(0.2, 5.0, 0.01) var crouch_height: float = 1.372
 
-## Collider radius, in metres.
-@export_range(0.05, 2.0, 0.01) var radius: float = 0.35
+## Collider radius, in metres: half of a 32 unit hull width.
+@export_range(0.05, 2.0, 0.01) var radius: float = 0.4064
 
 ## Seconds to move fully between standing and crouching.
 ## Part of the simulation, not a visual: the collider changes size over it, so peers must agree.

@@ -8,6 +8,7 @@ The family's method is in [game-dev/docs/testing.md](../../../docs/testing.md); 
 | --- | --- |
 | `controller_selftest` | the base contract and the switch. The main scene, so the one a careless check runs alone |
 | `movement_selftest` | the first-person motor: determinism, slopes, kerbs, steep faces, seams, jump reach, modifiers, admin, slide/launch/dash replays, wall run/jump/slide and their replays, the walls-off golden hash, swimming, the physics-body sweep sections, `FakeWire` |
+| `feel_pin_selftest` | what a body-size change must not move: walk, run and crouch speed, jump apex and time, air speed and which step heights are climbed, against real physics (`-- --record` prints the numbers) |
 | `surf_selftest` | surf and hop properties against `DotFpsFlatBody` |
 | `surf_physics_selftest` | the same properties against real `StaticBody3D` geometry and `DotFpsPhysicsBody`, plus ramp ends and reversed normals |
 | `fps_controller_selftest` | the node: drives, `render_state`, the collision mask, `extra_modes` surviving a style, the wall-run camera roll |

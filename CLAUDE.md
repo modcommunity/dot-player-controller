@@ -35,7 +35,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 ## Running and testing
 
 - The family's two steps ([game-dev/CLAUDE.md](../../CLAUDE.md#validating-anything)): `--import`, `--check-only` every script, then run every suite.
-- **Run all seven suites**: `classic_selftest`, `controller_selftest`, `movement_selftest`, `surf_selftest`, `surf_physics_selftest`, `fps_controller_selftest`, `tps_selftest`. `controller_selftest` is the main scene and is the one a careless check runs alone. All exit non-zero on failure. [testing](docs/testing.md)
+- **Run all eight suites**: `feel_pin_selftest`, `classic_selftest`, `controller_selftest`, `movement_selftest`, `surf_selftest`, `surf_physics_selftest`, `fps_controller_selftest`, `tps_selftest`. `controller_selftest` is the main scene and is the one a careless check runs alone. All exit non-zero on failure. [testing](docs/testing.md)
 - `surf_selftest` and `surf_physics_selftest` are **not alternatives**: the first replaces the very component the worst bug was in. [testing](docs/testing.md#flat-body-and-physics-body)
 - Run the check-only pass first: a scene whose script does not parse hangs instead of failing.
 - A change to the motor is not done until the first-person games' suites agree too (game-playground, game-g2gfast, game-arena, mg-buses-from-hell, mg-smash-copter and the other `mg-*`).

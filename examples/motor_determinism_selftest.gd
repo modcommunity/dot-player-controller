@@ -14,7 +14,7 @@ const STEP := 1.0 / 128.0
 const TICKS := 1500
 
 ## Scenario name -> final digest of position, velocity, mode, flags and ground, every tick.
-const GOLDEN := {"floor_run": 754302676, "floor_walk": 2157417681, "ramps": 373416079, "turning": 4015719188, "wall_run": 3966437830, "surf_slab": 2237822970, "trimesh": 1098828982, "pillars": 2259845389, "stairs": 1505822202, "air_drop": 1276350727, "corner": 2742614112, "hull_walk": 4252886137}
+const GOLDEN := {"floor_run": 1366850886, "floor_walk": 622660714, "ramps": 421802700, "turning": 821068502, "wall_run": 4222990983, "surf_slab": 1514153479, "trimesh": 1126123275, "pillars": 1444773003, "stairs": 4117850496, "air_drop": 2619813238, "corner": 2626857896, "hull_walk": 2551140144}
 
 var _passed := 0
 var _failed := 0

@@ -245,7 +245,7 @@ func _test_crouch_jump() -> void:
 	var plain := _crouch_jump_peak(false, t.crouch_transition_time)
 	var ducked := _crouch_jump_peak(true, t.crouch_transition_time)
 	_near(ducked - plain, t.stand_height - t.crouch_height, 0.05, "a crouch in the air lifts the feet by the hull difference")
-	_check(ducked > 57.0 * U + 0.5, "so a crouch-jump clears a ledge a standing jump cannot")
+	_check(ducked > 57.0 * U + 0.3, "so a crouch-jump clears a ledge a standing jump cannot")
 	var slow := _crouch_jump_peak(true, 0.4)
 	_near(slow - plain, t.stand_height - t.crouch_height, 0.05, "the air duck is instant whatever the duck time")
 	_check(t.set_cvar("sv_ducktime", "0.4") and t.crouch_transition_time == 0.4, "sv_ducktime sets the duck time")
