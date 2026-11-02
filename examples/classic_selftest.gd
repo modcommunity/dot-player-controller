@@ -306,6 +306,44 @@ func _test_ladder_motion() -> void:
 	ladder.update(motor, s)
 	_check(s.mode == ladder.mode_id and s.velocity == Vector3.ZERO, "a falling player beside a ladder attaches and stops dead")
 
+	_ladder_attach_checks(motor, ladder, yaw)
+
+	var up := _cmd(1.0, yaw)
+	for _i in range(10):
+		motor.simulate(s, up, STEP)
+	_near(s.velocity.y, 200.0 * U, 0.02, "forward facing the ladder climbs at 200 units/s")
+	var y0 := s.position.y
+	for _i in range(60):
+		motor.simulate(s, up, STEP)
+	_near(s.position.y - y0, 200.0 * U, 0.1, "a second of climbing rises 200 units")
+	_check(s.mode == ladder.mode_id, "and the player stays on")
+
+	var down := _cmd(-1.0, yaw)
+	for _i in range(10):
+		motor.simulate(s, down, STEP)
+	_near(s.velocity.y, -200.0 * U, 0.02, "back descends at the same speed")
+	var sideways := _cmd(0.0, yaw)
+	sideways.move = Vector2(1.0, 0.0)
+	var z0 := s.position.z
+	for _i in range(12):
+		motor.simulate(s, sideways, STEP)
+	_check(absf(s.position.z - z0) > 0.3 and absf(s.velocity.y) < 0.05, "strafing moves along the wall, not up it")
+
+	ladder.set_cvar("sv_ladder_dampen", "1")
+	var d := DotFpsState.new()
+	d.position = Vector3(1.75, 3.0, 0.0)
+	d.mode = ladder.mode_id
+	for _i in range(10):
+		motor.simulate(d, sideways, STEP)
+	_check(absf(d.velocity.z) < 0.01, "sv_ladder_dampen 1 removes the sideways part of the move")
+	ladder.set_cvar("sv_ladder_dampen", "0")
+
+	_ladder_exit_checks(motor, ladder, up, down, yaw)
+	_done()
+
+
+## Attaching: falling past it, walking into it, flush against it, and a stale intent.
+func _ladder_attach_checks(motor: DotFpsMotor, ladder: DotFpsLadderMode, yaw: float) -> void:
 	var walker := DotFpsState.new()
 	walker.position = Vector3(1.75, 0.0, 0.0)
 	walker.time_since_jump = 10.0
@@ -344,39 +382,6 @@ func _test_ladder_motion() -> void:
 	ladder.update(motor, stale)
 	_check(stale.mode != ladder.mode_id, "an intent is spent by one update, a stale one grabs nothing")
 	ladder.wish = Vector3.ZERO
-
-	var up := _cmd(1.0, yaw)
-	for _i in range(10):
-		motor.simulate(s, up, STEP)
-	_near(s.velocity.y, 200.0 * U, 0.02, "forward facing the ladder climbs at 200 units/s")
-	var y0 := s.position.y
-	for _i in range(60):
-		motor.simulate(s, up, STEP)
-	_near(s.position.y - y0, 200.0 * U, 0.1, "a second of climbing rises 200 units")
-	_check(s.mode == ladder.mode_id, "and the player stays on")
-
-	var down := _cmd(-1.0, yaw)
-	for _i in range(10):
-		motor.simulate(s, down, STEP)
-	_near(s.velocity.y, -200.0 * U, 0.02, "back descends at the same speed")
-	var sideways := _cmd(0.0, yaw)
-	sideways.move = Vector2(1.0, 0.0)
-	var z0 := s.position.z
-	for _i in range(12):
-		motor.simulate(s, sideways, STEP)
-	_check(absf(s.position.z - z0) > 0.3 and absf(s.velocity.y) < 0.05, "strafing moves along the wall, not up it")
-
-	ladder.set_cvar("sv_ladder_dampen", "1")
-	var d := DotFpsState.new()
-	d.position = Vector3(1.75, 3.0, 0.0)
-	d.mode = ladder.mode_id
-	for _i in range(10):
-		motor.simulate(d, sideways, STEP)
-	_check(absf(d.velocity.z) < 0.01, "sv_ladder_dampen 1 removes the sideways part of the move")
-	ladder.set_cvar("sv_ladder_dampen", "0")
-
-	_ladder_exit_checks(motor, ladder, up, down, yaw)
-	_done()
 
 
 ## Leaving a ladder: the foot, the top and a jump off.
