@@ -22,7 +22,7 @@ extends "res://examples/movement_selftest_physics.gd"
 ## failure has exactly one possible cause. [method _test_physics_body] covers the real
 ## implementation separately.
 
-const CHECKS := 409
+const CHECKS := 410
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
@@ -692,8 +692,34 @@ func _test_surfaces() -> void:
 		"z = %.2f" % weak_state.position.z
 	)
 
+	_belt_against_wall(t, set)
 	_surface_resolver_checks()
 	_done()
+
+
+## The wall-creep cap holds the player's own wish, not a conveyor carrying them along a wall.
+func _belt_against_wall(t: DotFpsTunables, set: DotFpsSurfaceSet) -> void:
+	var yaw := 0.0
+	for candidate in [0.0, 90.0, 180.0, 270.0]:
+		if DotFpsMotor._view_basis(candidate, 0.0).forward.x > 0.9:
+			yaw = candidate
+	var world := DotFpsFlatBody.with_floor(0.0)
+	world.add_box(AABB(Vector3(1.0, 0.0, -400.0), Vector3(0.5, 4.0, 800.0)))
+	var motor := _motor(t, world)
+	motor.surfaces = set
+	motor.surface_resolver = func(_id: int) -> StringName: return &"belt"
+	var s := _standing(motor)
+	for _i in range(120):
+		motor.simulate(s, _command(1.0, 0.0, yaw), STEP)
+	var free := _motor(t, DotFpsFlatBody.with_floor(0.0))
+	free.surfaces = set
+	free.surface_resolver = motor.surface_resolver
+	var f := _standing(free)
+	for _i in range(120):
+		free.simulate(f, DotFpsCommand.new(), STEP)
+	_check(absf(s.velocity.z) > absf(f.velocity.z) * 0.8,
+		"a conveyor still carries a walker pressing into a wall",
+		"wall %.2f, free %.2f m/s" % [absf(s.velocity.z), absf(f.velocity.z)])
 
 
 ## Surfaces read off dot-physics, duck-typed: the fields DotPhysicsSurface has.
@@ -970,6 +996,7 @@ func _test_ladder_mode() -> void:
 	ladder.update(motor, top)
 	_check(top.mode != id, "walking into the face from the floor at the top does not grab", str(top.mode))
 	top.position.y = 5.0
+	ladder.wish = Vector3(1.0, 0.0, 0.0)
 	ladder.update(motor, top)
 	_check(top.mode == id, "the same push lower down still grabs", str(top.mode))
 	ladder.wish = Vector3.ZERO

@@ -171,6 +171,9 @@ func _simulate(
 		# than as a velocity so it composes with friction instead of fighting it.
 		if _surface.push != Vector3.ZERO:
 			state.velocity += _surface.push * delta
+			# Environment motion is not wall-creep: let the cap rise by what the push added.
+			if _ground_cap > 0.0:
+				_ground_cap += _surface.push.length() * delta
 	elif state.is_wall_running():
 		_wall_run_vertical(state, delta)
 	else:

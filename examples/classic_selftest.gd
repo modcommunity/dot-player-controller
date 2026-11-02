@@ -6,7 +6,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 const U := 0.01905
-const CHECKS := 98
+const CHECKS := 99
 const SECTIONS := 13
 
 var _passed := 0
@@ -335,6 +335,14 @@ func _test_ladder_motion() -> void:
 	back.mode = DotFpsState.Mode.GROUND
 	ladder.update(motor, back)
 	_check(back.mode != ladder.mode_id, "commanding away from the face does not attach")
+	ladder.wish = DotFpsMotor._view_basis(yaw, 0.0).forward
+	ladder.update(motor, back)
+	var stale := DotFpsState.new()
+	stale.position = Vector3(1.75, 0.0, 0.0)
+	stale.time_since_jump = 10.0
+	stale.mode = DotFpsState.Mode.GROUND
+	ladder.update(motor, stale)
+	_check(stale.mode != ladder.mode_id, "an intent is spent by one update, a stale one grabs nothing")
 	ladder.wish = Vector3.ZERO
 
 	var up := _cmd(1.0, yaw)

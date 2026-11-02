@@ -33,7 +33,7 @@ func cvar_specs() -> Array[Dictionary]:
 	return [{"name": "sv_ladder_dampen", "value": dampen,
 		"description": "Fraction of sideways ladder movement removed", "member": "dampen"}]
 
-## Horizontal direction the player commands this tick, set by the caller before the move (zero for none).
+## Horizontal direction the player commands this tick, set by the caller before update; update clears it.
 var wish := Vector3.ZERO
 
 ## The tick a climber last jumped off, so the ladder they are still touching does not
@@ -63,6 +63,8 @@ func touching(feet: Vector3, radius: float, height: float) -> AABB:
 ## walking into it, is put on it. Read from the state rather than the command, so it
 ## needs nothing a replayed tick does not have. Noclip, and somebody already on, are left.
 func update(motor: DotFpsMotor, state: DotFpsState) -> void:
+	var intent := wish
+	wish = Vector3.ZERO    # spent: a tick with no command must not reuse the last one
 	if mode_id < 0 or volumes.is_empty() or state.mode == mode_id or state.mode == DotFpsState.Mode.NOCLIP:
 		return
 	var t := motor.tunables
@@ -77,7 +79,7 @@ func update(motor: DotFpsMotor, state: DotFpsState) -> void:
 	# A wall behind a thin ladder zeroes the velocity before this reads it and the reach is under
 	# one tick of travel, so pushing into the face is also judged by the commanded direction.
 	# Not within 0.3 m of the top: someone standing there walks off the lip into the face.
-	var pushing := -wish.dot(away) > 0.5 and state.position.y < box.position.y + box.size.y - 0.3
+	var pushing := -intent.dot(away) > 0.5 and state.position.y < box.position.y + box.size.y - 0.3
 	if (not state.is_grounded() and state.velocity.y < 0.0) or into > 0.25 or pushing:
 		motor.set_mode(state, mode_id)
 		state.velocity = Vector3.ZERO
