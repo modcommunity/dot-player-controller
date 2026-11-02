@@ -6,7 +6,7 @@ extends Node
 
 const STEP := 1.0 / 60.0
 const U := 0.01905
-const CHECKS := 96
+const CHECKS := 98
 const SECTIONS := 13
 
 var _passed := 0
@@ -319,6 +319,23 @@ func _test_ladder_motion() -> void:
 	idle.mode = DotFpsState.Mode.GROUND
 	ladder.update(motor, idle)
 	_check(idle.mode != ladder.mode_id, "a player standing against it without pushing does not")
+
+	var flush := DotFpsState.new()
+	flush.position = Vector3(1.75, 0.0, 0.0)
+	flush.time_since_jump = 10.0
+	flush.mode = DotFpsState.Mode.GROUND
+	flush.velocity = Vector3.ZERO
+	ladder.wish = DotFpsMotor._view_basis(yaw, 0.0).forward
+	ladder.update(motor, flush)
+	_check(flush.mode == ladder.mode_id, "flush against a wall (velocity zeroed) but commanding into the face attaches")
+	ladder.wish = -ladder.wish
+	var back := DotFpsState.new()
+	back.position = Vector3(1.75, 0.0, 0.0)
+	back.time_since_jump = 10.0
+	back.mode = DotFpsState.Mode.GROUND
+	ladder.update(motor, back)
+	_check(back.mode != ladder.mode_id, "commanding away from the face does not attach")
+	ladder.wish = Vector3.ZERO
 
 	var up := _cmd(1.0, yaw)
 	for _i in range(10):

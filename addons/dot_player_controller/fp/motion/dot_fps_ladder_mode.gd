@@ -33,6 +33,9 @@ func cvar_specs() -> Array[Dictionary]:
 	return [{"name": "sv_ladder_dampen", "value": dampen,
 		"description": "Fraction of sideways ladder movement removed", "member": "dampen"}]
 
+## Horizontal direction the player commands this tick, set by the caller before the move (zero for none).
+var wish := Vector3.ZERO
+
 ## The tick a climber last jumped off, so the ladder they are still touching does not
 ## take them straight back. One per player: every player has their own mode.
 var _jumped_off_tick: int = -1000
@@ -69,8 +72,12 @@ func update(motor: DotFpsMotor, state: DotFpsState) -> void:
 	if state.time_since_jump < 0.15 or state.tick - _jumped_off_tick < 32:
 		return    # a jump at the foot of a ladder, or off it, is a jump
 	var flat := Vector3(state.velocity.x, 0.0, state.velocity.z)
-	var into := -flat.dot(_away(box, state.position))
-	if (not state.is_grounded() and state.velocity.y < 0.0) or into > 0.25:
+	var away := _away(box, state.position)
+	var into := -flat.dot(away)
+	# A wall behind a thin ladder zeroes the velocity before this reads it and the reach is under
+	# one tick of travel, so pushing into the face is also judged by the commanded direction.
+	var pushing := -wish.dot(away) > 0.5
+	if (not state.is_grounded() and state.velocity.y < 0.0) or into > 0.25 or pushing:
 		motor.set_mode(state, mode_id)
 		state.velocity = Vector3.ZERO
 
