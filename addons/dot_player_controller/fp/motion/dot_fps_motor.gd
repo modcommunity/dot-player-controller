@@ -241,11 +241,11 @@ func _reuse_rest(state: DotFpsState) -> bool:
 
 
 ## False when the ground collider was moved since the stamp (a teleported platform leaves
-## from under a rider whose own state does not change), or has been freed.
+## from under a rider whose own state does not change), or has been freed or left the tree.
 func _rest_ground_unmoved() -> bool:
 	if _rest_ground_node == null:
 		return true
-	if not is_instance_valid(_rest_ground_node):
+	if not is_instance_valid(_rest_ground_node) or not _rest_ground_node.is_inside_tree():
 		return false
 	return _rest_ground_node.global_transform == _rest_ground_xform
 
