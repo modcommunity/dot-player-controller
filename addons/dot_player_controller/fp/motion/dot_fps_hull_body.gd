@@ -1,10 +1,7 @@
 class_name DotFpsHullBody
 extends DotFpsBody
-## Wraps a world body and adds other players' hulls as solid boxes, for [member DotPlayerBodyRules.solid].
-##
-## [member hulls_fn] returns an Array of AABB. Inside a motor tick the list is gathered once, because nobody else moves
-## during one player's tick; a sweep then tests only the boxes its swept bounds can touch. Gathering per sweep and
-## sweeping every box made the cost of a tick grow with the square of the player count.
+## Wraps a world body and adds other players' hulls ([member hulls_fn], an Array of AABB) as solid boxes, for [member DotPlayerBodyRules.solid].
+## The list is gathered once per motor tick (nobody else moves during it) and a sweep tests only the boxes its bounds touch, so cost does not grow with the square of the player count.
 
 ## First collider id reported for a hull; a hit on box n has id [constant HULL_ID_BASE] + n.
 const HULL_ID_BASE := 1 << 24

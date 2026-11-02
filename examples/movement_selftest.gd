@@ -2881,7 +2881,7 @@ func _test_walls_off_identical() -> void:
 	world.add_box(AABB(Vector3(-6.0, 0.0, -20.0), Vector3(12.0, 3.0, 1.0)))
 	world.add_box(AABB(Vector3(3.0, 0.0, -30.0), Vector3(0.5, 4.0, 30.0)))
 	var old_body := _tunables()
-	# The 2026-10-10 hash was taken on the old 1.8 / 0.9 / 0.35 m body, so keep that body here.
+	# The stored hash was taken on the old 1.8 / 0.9 / 0.35 m body, so keep that body here.
 	old_body.stand_height = 1.8
 	old_body.crouch_height = 0.9
 	old_body.radius = 0.35

@@ -1,14 +1,7 @@
 extends Node3D
 
-## Records every tick of scripted input runs against real physics geometry and compares
-## the digest with the one stored from before the motor's query-cost work (the goldens
-## below), so a cheaper motor is proven to be the same motor.
-##
-## [codeblock]
-## godot --headless --path . res://examples/motor_determinism_selftest.tscn [-- --print]
-## [/codeblock]
-## `--print` prints the digests to paste into [constant GOLDEN] after a change that is
-## meant to alter movement; a pure speed-up must leave them alone.
+## Records every tick of scripted input runs against real physics geometry and compares the digest with the stored golden from before the motor's query-cost work, so a cheaper motor is proven the same motor.
+## Run: [code]godot --headless --path . res://examples/motor_determinism_selftest.tscn [-- --print][/code]; [code]--print[/code] prints digests to paste into [constant GOLDEN] after an intended movement change.
 
 const STEP := 1.0 / 128.0
 const TICKS := 1500
