@@ -109,3 +109,7 @@ game-g2gfast's surf bonus bot sat in the crease of bhop_g2g_stages' two 50 degre
 ## Default body size changed (v0.4.0)
 
 The default hull is now the one an imported 0.0254 m/unit map is built for: stand 1.83 m (72 units), crouch 1.372 m (54 units), radius 0.4064 m (32 unit width), eye 1.627 m derived. Before: 1.8 / 0.9 / 0.35. Speeds, jump, air control and step height are untouched and pinned by `feel_pin_selftest`. A game that wants the old body sets the three exports itself; crouch-only gaps under 1.372 m no longer pass, and a 0.81 m gap is the narrowest a standing player fits.
+
+## Faster hugging a wall
+
+Holding forward and strafe into a wall on the ground (video 0:21 of the arena feedback) ran at 8.25 m/s against a 7 m/s cap, for good. Ground acceleration measures speed along the wish only, and the wall slide strips the sideways half of the velocity every tick, so a diagonal wish never sees the cap until the forward speed is `max_speed / cos(45)`. `_move` now holds a blocked ground walk to the larger of the cap and the speed the tick started at (free running is untouched, so the recorded digests of unblocked runs stand; three scenarios that touch walls in `motor_determinism_selftest` were re-recorded). `movement_selftest`'s "holding forward and strafe into a wall" runs it against the physics body, walls from 0 to 60 degrees, both sides, two profiles. `[wall-hug-speed-1]`

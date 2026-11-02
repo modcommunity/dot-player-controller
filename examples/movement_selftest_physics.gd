@@ -599,3 +599,62 @@ func _test_physics_body() -> void:
 
 	world.queue_free()
 	_done()
+
+
+## Holding forward and strafe into a wall on the ground is not faster than running free.
+## `[wall-hug-speed-1]`
+func _test_physics_wall_hug_speed() -> void:
+	_section("holding forward and strafe into a wall never exceeds the run speed, physics body")
+	var worst_ratio := 0.0
+	var worst_case := ""
+	var cases := 0
+	for profile: String in ["legacy", "default"]:
+		var t := DotFpsTunables.with_profile(profile) if profile != "default" else DotFpsTunables.new()
+		for wall_angle: float in [0.0, 10.0, 30.0, 60.0]:
+			for strafe: float in [-1.0, 1.0]:
+				var world := Node3D.new()
+				add_child(world)
+				var floor_body := StaticBody3D.new()
+				var floor_shape := CollisionShape3D.new()
+				var floor_box := BoxShape3D.new()
+				floor_box.size = Vector3(80.0, 1.0, 80.0)
+				floor_shape.shape = floor_box
+				floor_body.add_child(floor_shape)
+				floor_body.position = Vector3(0.0, -0.5, 0.0)
+				world.add_child(floor_body)
+				# The wall's face runs along -z, strafe * -1 side, turned wall_angle off the run.
+				var wall := StaticBody3D.new()
+				var wall_shape := CollisionShape3D.new()
+				var wall_box := BoxShape3D.new()
+				wall_box.size = Vector3(1.0, 6.0, 60.0)
+				wall_shape.shape = wall_box
+				wall.add_child(wall_shape)
+				wall.position = Vector3(strafe * 1.5, 3.0, 0.0)
+				wall.rotate_y(deg_to_rad(wall_angle * strafe))
+				world.add_child(wall)
+				await get_tree().physics_frame
+				await get_tree().physics_frame
+				var body := DotFpsPhysicsBody.new()
+				if not body.bind(world).ok:
+					world.queue_free()
+					continue
+				var motor := DotFpsMotor.new(t, body)
+				var s := DotFpsState.new()
+				s.position = Vector3(0.0, 0.0, 20.0)
+				s.mode = DotFpsState.Mode.GROUND
+				for _i in range(4):
+					motor.simulate(s, DotFpsCommand.new(), STEP)
+				var top := 0.0
+				for _i in range(240):
+					motor.simulate(s, _command(1.0, strafe), STEP)
+					top = maxf(top, Vector2(s.velocity.x, s.velocity.z).length())
+				cases += 1
+				if top / t.max_speed > worst_ratio:
+					worst_ratio = top / t.max_speed
+					worst_case = "%s wall %.0f strafe %.0f: %.2f of %.2f" % [profile, wall_angle, strafe, top, t.max_speed]
+				world.queue_free()
+	_check(cases == 16, "all sixteen wall and profile cases ran", "%d" % cases)
+	_check(worst_ratio <= 1.001,
+		"holding forward and strafe into a wall, at any angle, never runs faster than max_speed",
+		worst_case)
+	_done()

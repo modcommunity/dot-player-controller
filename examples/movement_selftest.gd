@@ -22,11 +22,11 @@ extends "res://examples/movement_selftest_physics.gd"
 ## failure has exactly one possible cause. [method _test_physics_body] covers the real
 ## implementation separately.
 
-const CHECKS := 405
+const CHECKS := 407
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
-const SECTIONS := 56
+const SECTIONS := 57
 
 
 func _ready() -> void:
@@ -103,6 +103,7 @@ func _run_physics() -> void:
 	await _test_physics_wall_sweep()
 	await _test_physics_steep_face_walk()
 	await _test_physics_slope_landing()
+	await _test_physics_wall_hug_speed()
 
 
 func _finish() -> void:

@@ -163,6 +163,7 @@ func _simulate(
 	elif tunables.air_friction > 0.0:
 		_apply_air_friction(state, delta)
 
+	_ground_cap = 0.0
 	_apply_wish_move(state, command, delta)
 
 	if state.mode == DotFpsState.Mode.GROUND:
@@ -220,6 +221,9 @@ func _stamp_rest(state: DotFpsState) -> void:
 	if _rest_ground_node != null:
 		_rest_ground_xform = _rest_ground_node.global_transform
 
+
+## Horizontal speed a blocked ground walk may keep this tick; 0 when the tick has no ground wish.
+var _ground_cap := 0.0
 
 var _rest_ground_node: Node3D = null
 var _rest_ground_xform := Transform3D.IDENTITY
@@ -1617,6 +1621,7 @@ func _apply_wish_move(
 		var ground_accel := (
 			tunables.slide_accelerate if state.is_sliding() else tunables.accelerate
 		)
+		_ground_cap = maxf(Vector2(state.velocity.x, state.velocity.z).length(), target)
 		accelerate(
 			state,
 			direction,
@@ -1910,6 +1915,16 @@ func _move(state: DotFpsState, delta: float, jumped: bool) -> bool:
 
 	state.position = plain.position
 	state.velocity = plain.velocity
+
+	# A diagonal wish held into a wall is measured along its own direction, and the slide strips
+	# the sideways half every tick, so the walker would creep to target / cos(45). Only a blocked
+	# walk is held to the speed it arrived with or the cap, so free running is untouched.
+	if was_grounded and not jumped and plain.blocked and _ground_cap > 0.0:
+		var flat := Vector2(state.velocity.x, state.velocity.z)
+		if flat.length() > _ground_cap:
+			flat = flat.normalized() * _ground_cap
+			state.velocity.x = flat.x
+			state.velocity.z = flat.y
 
 	# [b]A walker is not lifted by a face they cannot stand on[/b] (`[steep-climb-1]`).
 	# Sliding along a face that leans back turns a walk into it partly UP it, and that
