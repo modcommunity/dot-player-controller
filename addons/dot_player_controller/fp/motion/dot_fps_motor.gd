@@ -1890,7 +1890,11 @@ func _move(state: DotFpsState, delta: float, jumped: bool) -> bool:
 	# plane, because by the time it runs the categorise has already forgotten it.
 	var stood_on := state.ground_normal
 
+	var hulls_before := body.hull_blocks
+	var world_before := body.world_touches
 	var plain := _slide(state.position, state.velocity, motion, height)
+	# Only another player stopped the slide: no kerb to climb, and a step over a standing player won 1 in 5000 ticks.
+	var hull_only := body.hull_blocks > hulls_before and body.world_touches == world_before
 
 	# Stepping is tried only when it could help: on the ground, actually blocked, and
 	# not on the tick a jump left the surface. Attempting it every tick would double
@@ -1899,6 +1903,7 @@ func _move(state: DotFpsState, delta: float, jumped: bool) -> bool:
 	# already within the acceptance margin of it the step could never win; skip its queries.
 	if (
 		was_grounded and not jumped and plain.blocked and tunables.step_height > 0.0
+		and not hull_only
 		and plain.travelled + tunables.skin_width * 2.0 + 1e-4
 			< Vector2(motion.x, motion.z).length()
 	):

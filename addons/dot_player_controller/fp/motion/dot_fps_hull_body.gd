@@ -68,6 +68,8 @@ func sweep(from: Vector3, motion: Vector3, height: float, radius: float) -> Hit:
 	if inner != null:
 		_sync()
 	var world: Hit = inner.sweep(from, motion, height, radius) if inner != null else Hit.miss()
+	if world.hit:
+		world_touches += 1
 	var boxes := _hull_list()
 	if boxes.is_empty():
 		return world
@@ -95,6 +97,7 @@ func sweep(from: Vector3, motion: Vector3, height: float, radius: float) -> Hit:
 		return world
 
 	hull_stops += 1
+	hull_blocks += 1
 	other.collider_id = HULL_ID_BASE + _near_index[other.collider_id - DotFpsFlatBody.box_id(0)]
 	return other
 

@@ -147,6 +147,11 @@ var exclude: Array[RID] = []
 ## place walk apart, where a hull that also blocked from inside held both still forever.
 var pass_out_mask: int = 0
 
+## Sweeps another player's hull stopped, and sweeps the world touched at all. A wrapper that adds hulls counts them so the
+## motor can tell a slide stopped only by a player (stepping over a standing player never succeeds) from a wall or kerb.
+var hull_blocks: int = 0
+var world_touches: int = 0
+
 
 ## Called by the motor around each tick: a wrapper that gathers other bodies' hulls may reuse one gather for the whole tick.
 func begin_tick() -> void:
