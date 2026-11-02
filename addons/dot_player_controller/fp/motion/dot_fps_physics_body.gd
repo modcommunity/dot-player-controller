@@ -27,6 +27,50 @@ var _ray_exclude: Array[RID] = []
 ## Queries run this tick. Reset by the controller; watched by the server operator.
 var query_count: int = 0
 
+## Per engine query kind (cast, rest, overlap, ray): calls and microseconds, filled only while [member profile] is on.
+static var profile: bool = false
+static var prof := PackedInt64Array([0, 0, 0, 0, 0, 0, 0, 0])
+
+
+func _q_cast() -> PackedFloat32Array:
+	if not profile:
+		return _space.cast_motion(_shape_params)
+	var t := Time.get_ticks_usec()
+	var r := _space.cast_motion(_shape_params)
+	prof[0] += 1
+	prof[1] += Time.get_ticks_usec() - t
+	return r
+
+
+func _q_rest() -> Dictionary:
+	if not profile:
+		return _space.get_rest_info(_shape_params)
+	var t := Time.get_ticks_usec()
+	var r := _space.get_rest_info(_shape_params)
+	prof[2] += 1
+	prof[3] += Time.get_ticks_usec() - t
+	return r
+
+
+func _q_overlap() -> Array[Dictionary]:
+	if not profile:
+		return _space.intersect_shape(_shape_params, 1)
+	var t := Time.get_ticks_usec()
+	var r := _space.intersect_shape(_shape_params, 1)
+	prof[4] += 1
+	prof[5] += Time.get_ticks_usec() - t
+	return r
+
+
+func _q_ray(query: PhysicsRayQueryParameters3D) -> Dictionary:
+	if not profile:
+		return _space.intersect_ray(query)
+	var t := Time.get_ticks_usec()
+	var r := _space.intersect_ray(query)
+	prof[6] += 1
+	prof[7] += Time.get_ticks_usec() - t
+	return r
+
 
 static func for_node(node: Node3D) -> DotFpsPhysicsBody:
 	# Not this class's own name. A script that names itself in an expression, loaded after
@@ -179,7 +223,7 @@ func sweep(
 	_shape_params.motion = Vector3.ZERO
 	if pass_out_mask != 0:
 		_set_mask(collision_mask & pass_out_mask)
-		if not _space.intersect_shape(_shape_params, 1).is_empty():
+		if not _q_overlap().is_empty():
 			_set_mask(collision_mask & ~pass_out_mask)
 		else:
 			_set_mask(collision_mask)
@@ -189,7 +233,7 @@ func sweep(
 	# first with one. `safe` is what we move by; `unsafe` is where the normal is
 	# sampled, because at `safe` the shapes are not yet touching and there is no
 	# contact to report.
-	var fractions := _space.cast_motion(_shape_params)
+	var fractions := _q_cast()
 
 	if fractions.is_empty():
 		return result
@@ -227,7 +271,7 @@ func sweep(
 	)
 	_shape_params.motion = Vector3.ZERO
 
-	var contacts := _space.get_rest_info(_shape_params)
+	var contacts := _q_rest()
 
 	if contacts.is_empty():
 		# Contact at `unsafe` but no rest info: the shapes are touching to within
@@ -245,7 +289,7 @@ func sweep(
 			_shape_params.transform = Transform3D(
 				Basis.IDENTITY, from + motion * unsafe + along * depth
 			)
-			contacts = _space.get_rest_info(_shape_params)
+			contacts = _q_rest()
 			if not contacts.is_empty():
 				break
 
@@ -376,7 +420,7 @@ func _downward_ray_fallback(
 	query.collide_with_areas = false
 	query_count += 1
 
-	var contact: Dictionary = _space.intersect_ray(query)
+	var contact: Dictionary = _q_ray(query)
 
 	if contact.is_empty():
 		return result
@@ -542,7 +586,7 @@ func _raw_rest_or_null(at: Vector3, height: float, radius: float) -> Hit:
 	_shape_params.transform = Transform3D(Basis.IDENTITY, at)
 	_shape_params.motion = Vector3.ZERO
 
-	var contact: Dictionary = _space.get_rest_info(_shape_params)
+	var contact: Dictionary = _q_rest()
 
 	if contact.is_empty():
 		return null
@@ -584,7 +628,7 @@ func overlaps(at: Vector3, height: float, radius: float) -> bool:
 	_shape_params.motion = Vector3.ZERO
 
 	# One result is enough — the question is "is anything there", not "what".
-	return not _space.intersect_shape(_shape_params, 1).is_empty()
+	return not _q_overlap().is_empty()
 
 
 ## A body over the same physics space (bound to the node this one is), with its masks and

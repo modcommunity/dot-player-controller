@@ -12,8 +12,8 @@ extends Node
 ## godot --headless --path . res://examples/controller_selftest.tscn
 ## [/codeblock]
 
-const SECTIONS := 7
-const CHECKS := 132
+const SECTIONS := 8
+const CHECKS := 139
 
 var _passed := 0
 var _failed := 0
@@ -36,6 +36,7 @@ func _run() -> void:
 	await _test_switch()
 	await _test_handover()
 	_test_rules()
+	_test_hull_body()
 
 	_line("")
 	_line("%d sections, %d passed, %d failed" % [_section_count, _passed, _failed])
@@ -652,6 +653,38 @@ func _test_handover() -> void:
 	_check(fresh.position.is_equal_approx(untouched), "and an empty one changes nothing")
 
 	player.queue_free()
+
+
+var _gathers := 0
+
+
+func _hulls() -> Array:
+	_gathers += 1
+	return [AABB(Vector3(50, 0, 50), Vector3(1, 2, 1)), AABB(Vector3(2, 0, -0.5), Vector3(1, 2, 1))]
+
+
+func _test_hull_body() -> void:
+	_section("DotFpsHullBody")
+	var body := DotFpsHullBody.new()
+	var _wrapped := body.wrap(DotFpsFlatBody.with_floor(0.0), _hulls)
+	var from := Vector3(0, 1, 0)
+	var hit := body.sweep(from, Vector3(4, 0, 0), 2.0, 0.4)
+	_check(hit.hit and hit.collider_id == DotFpsHullBody.HULL_ID_BASE + 1, "a hull stops the sweep, under its index in the full list")
+	_check(is_equal_approx(hit.fraction, (2.0 - 0.4) / 4.0), "at its face")
+	_check(not body.sweep(from, Vector3(0, 0, -4), 2.0, 0.4).hit, "a hull off the swept path is ignored")
+	_gathers = 0
+	var _a := body.sweep(from, Vector3(4, 0, 0), 2.0, 0.4)
+	var _b := body.sweep(from, Vector3(4, 0, 0), 2.0, 0.4)
+	_check(_gathers == 2, "outside a tick every sweep gathers afresh")
+	_gathers = 0
+	body.begin_tick()
+	var _c := body.sweep(from, Vector3(4, 0, 0), 2.0, 0.4)
+	var again := body.sweep(from, Vector3(4, 0, 0), 2.0, 0.4)
+	body.end_tick()
+	_check(_gathers == 1 and again.hit, "inside a tick they gather once")
+	var _d := body.sweep(from, Vector3(4, 0, 0), 2.0, 0.4)
+	_check(_gathers == 2, "and the next sweep outside gathers again")
+	_check(not body.sweep(Vector3(0, 1, 0), Vector3(0, 0, 0), 2.0, 0.4).hit, "no motion, no hit")
 
 
 # --- Harness ---------------------------------------------------------------

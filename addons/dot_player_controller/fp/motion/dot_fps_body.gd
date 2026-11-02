@@ -148,6 +148,16 @@ var exclude: Array[RID] = []
 var pass_out_mask: int = 0
 
 
+## Called by the motor around each tick: a wrapper that gathers other bodies' hulls may reuse one gather for the whole tick.
+func begin_tick() -> void:
+	pass
+
+
+## Ends the span [method begin_tick] opened.
+func end_tick() -> void:
+	pass
+
+
 ## A body that answers every question this one does, for a [DotFpsSimulator]: the same world,
 ## the same masks, exclusions and pass-out layers, and none of this one's counters. Null when
 ## the type cannot copy itself, which a simulator refuses (a caller hands it a body instead).
