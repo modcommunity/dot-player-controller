@@ -1,15 +1,7 @@
 extends Node
 
-## Exercises dot-player-controller with a motor driven by hand and a real body.
-##
-## The motor is a pure function, so the interesting half — coyote time, the jump buffer,
-## camera-relative movement, shortest-way-round turning — is checkable as arithmetic and
-## is checked exhaustively. The controller and the camera rig are exercised against a
-## real [CharacterBody3D] in a real tree, because a spring arm is not a value.
-##
-## [codeblock]
-## godot --headless --path . res://examples/tps_selftest.tscn
-## [/codeblock]
+## Exercises dot-player-controller with a motor driven by hand and a real body. Run: [code]godot --headless --path . res://examples/tps_selftest.tscn[/code]
+## The motor is a pure function, so coyote time, the jump buffer, camera-relative movement and shortest-way-round turning are checked as arithmetic; the controller and camera rig run against a real [CharacterBody3D] in a real tree, because a spring arm is not a value.
 
 const SECTIONS := 8
 const CHECKS := 105
@@ -62,7 +54,6 @@ func _intent(move: Vector2 = Vector2.ZERO, buttons: int = 0) -> DotPlayerIntent:
 	return i
 
 
-# --- Tunables ---------------------------------------------------------------
 
 func _test_tunables() -> void:
 	_section("tunables")
@@ -160,7 +151,6 @@ func _test_state() -> void:
 	_check(s.describe().contains("grounded"), "and it describes itself")
 
 
-# --- Movement ---------------------------------------------------------------
 
 func _test_movement() -> void:
 	_section("movement")
@@ -444,7 +434,6 @@ func _test_look() -> void:
 	_check(absf(sensitive.yaw) > absf(half.yaw), "and sensitivity scales the delta")
 
 
-# --- The controller ---------------------------------------------------------
 
 ## The rig against a real wall. The rest of this suite has no level, so a rig that
 ## collided with nothing passed every check here once (docs/design.md); this section has a
@@ -662,7 +651,6 @@ func _check_sampler() -> void:
 	sampler.queue_free()
 
 
-# --- Harness ---------------------------------------------------------------
 
 func _section(title: String) -> void:
 	_section_count += 1

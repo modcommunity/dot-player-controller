@@ -2,61 +2,18 @@
 class_name DotFpsStyle
 extends Resource
 
-## A named variation on the movement, as a bhop or surf server means the word.
-##
-## [b]What a style is.[/b] "Sideways", "half-sideways", "backwards", "low gravity",
-## "half time", "TAS" — the same map, the same timer, the same records table, played
-## under different rules. Timer servers have had them for fifteen years and
-## they are most of what keeps a map alive after its normal-style record has stopped
-## moving: a run nobody can beat straight is wide open sideways.
-##
-## [b]A style is a transform, not a second movement system.[/b] It does exactly two
-## things, and both are applied on the client and the server identically:
-##
-## [codeblock]
-## controller.set_style(style)              # tunables := style.apply_to(base)
-## style.filter_command(command)            # before the motor ever sees it
-## [/codeblock]
-##
-## [method apply_to] returns a [i]derived[/i] [DotFpsTunables] and never mutates the
-## base, so a server can hold one base configuration and hand thirty players thirty
-## different styles without any of them treading on the others. [method filter_command]
-## clears the buttons the style forbids.
-##
-## [b]Scales, not values[/b] — the same choice [DotFpsSurface] made, and for the same
-## reason. A style that stored an absolute [code]max_speed[/code] would silently stop
-## tracking the base movement the first time somebody retuned it, and the symptom is
-## one style feeling wrong months later with nothing in its own definition to explain
-## it. The exceptions are the two fields where a scale is meaningless
-## ([member air_accelerate] and [member max_air_wish_speed]): those are absolute, and
-## a non-positive value means "leave the base alone".
-##
-## [b]Every player on a server may be on a different style, and that is fine.[/b]
-## The tunables are an input to the simulation, so the client and the server must
-## agree — but they only have to agree [i]per player[/i]. What must not happen is a
-## style changing mid-run, which is why [DotTimerRun] treats a style change as
-## stopping the run.
-##
-## The ranking half of a style — is it ranked, what multiplier do its points carry,
-## what is the shortest run that counts — is [code]DotTimerStyle[/code] in dot-timer.
-## The split is deliberate: this half is movement and belongs where the motor is;
-## that half is records and belongs where the records are. A game pairs them by id.
+## A named variation on the movement ("sideways", "low gravity"): same map and records table, different rules.
+## A transform, not a second system: [method apply_to] derives tunables without mutating the base and [method filter_command] clears forbidden buttons, identically on client and server.
+## A style must not change mid-run ([DotTimerRun]); the ranking half is [code]DotTimerStyle[/code] in dot-timer.
 
-## A three-state switch, because a style has to be able to say "leave it alone".
-##
-## Two-state would need a second "does this style override it" bool per field, which
-## is the same information with twice the ways to get it wrong.
+## A three-state switch so a style can say "leave it alone" without a second override bool per field.
 enum Toggle {
 	INHERIT,
 	OFF,
 	ON,
 }
 
-## Which keys a style leaves the player.
-##
-## Presets over the four block flags, because these five are what every timer
-## actually ships and spelling them as flags in a config file gets one wrong.
-## [constant KeyPreset.CUSTOM] leaves the flags exactly as set.
+## Presets over the four block flags, the five combinations timers ship; [constant KeyPreset.CUSTOM] leaves the flags as set.
 enum KeyPreset {
 	## Every key. Normal style.
 	FREE,
@@ -74,10 +31,7 @@ enum KeyPreset {
 
 @export_group("Identity")
 
-## Stable id. This is what travels on the wire and what a record is filed under.
-##
-## Renaming [member display_name] is free; changing this orphans every record ever
-## set on the style, which is why they are two fields.
+## Stable id; it travels on the wire and files records. Renaming [member display_name] is free, changing this orphans records.
 @export var id: StringName = &"normal"
 
 @export var display_name: String = "Normal"
@@ -85,32 +39,18 @@ enum KeyPreset {
 ## Two or three characters, for a scoreboard column or a chat tag.
 @export var short_name: String = "N"
 
-## A hex colour for the HUD and the site leaderboard, e.g. [code]#7fc8ff[/code].
-##
-## A string rather than a [Color] so it survives a round trip through JSON and
-## through the backbone's leaderboard API without anybody having to agree on a
-## serialisation.
+## A hex colour for the HUD and leaderboard, e.g. [code]#7fc8ff[/code]; a string so it survives JSON unchanged.
 @export var html_colour: String = "#ffffff"
 
 @export_multiline var description: String = ""
 
 @export_group("Jumping")
 
-## Hold the jump key instead of tapping it. The familiar
-## [code]sv_autobunnyhopping[/code].
-##
-## Every modern bhop and surf server has this on. It is the difference between the
-## skill being "time the tap to the tick" — which is a keyboard-hardware contest —
-## and being "aim the strafes", which is the actual game.
+## Hold the jump key instead of tapping it ([code]sv_autobunnyhopping[/code]), so the skill is aiming strafes, not tap timing.
 @export var auto_hop: Toggle = Toggle.INHERIT
 
-## Whether a jump pressed slightly early still fires on landing. The community
-## timers'
-## [code]easybhop[/code].
-##
-## [constant Toggle.OFF] sets the jump buffer to zero, so the press has to land on the
-## tick the player touches down and a miss costs all the speed — "hard" or "prebhop"
-## style. [constant Toggle.ON] restores the base buffer.
+## Whether a jump pressed slightly early still fires on landing ([code]easybhop[/code]).
+## [constant Toggle.OFF] zeroes the jump buffer ("hard" or "prebhop"); [constant Toggle.ON] restores the base buffer.
 @export var easy_bhop: Toggle = Toggle.INHERIT
 
 ## Multiplier on jump height. 1 leaves it alone.
@@ -125,23 +65,14 @@ enum KeyPreset {
 @export_range(0.01, 5.0, 0.01) var speed_scale: float = 1.0
 
 ## Absolute [member DotFpsTunables.air_accelerate]. Non-positive inherits.
-##
-## Absolute because this number is not a feel dial: paired with
-## [member max_air_wish_speed] it decides how much speed one strafe can add, and
-## every style people have muscle memory for is defined by a specific pair.
+## Absolute because with [member max_air_wish_speed] it fixes how much one strafe adds, and styles are defined by that pair.
 @export var air_accelerate: float = 0.0
 
 ## Absolute [member DotFpsTunables.max_air_wish_speed]. Non-positive inherits.
 @export var max_air_wish_speed: float = 0.0
 
-## How fast the clock runs relative to real time. 0.5 is "half time".
-##
-## [b]Not applied by [method apply_to].[/b] Scaling the simulation means scaling
-## [param delta], which is the host's tick loop's decision and not a tunable — and on
-## a server it has to be the same decision for every player or the tick counter stops
-## meaning anything. It lives here because it is part of the style's definition and
-## because the timer needs it to convert ticks to a displayed time; the game applies
-## it. See [method scaled_delta].
+## How fast the clock runs relative to real time; 0.5 is "half time".
+## Not applied by [method apply_to]: scaling [param delta] is the host tick loop's decision and must be the same for every player. See [method scaled_delta].
 @export_range(0.05, 4.0, 0.01) var timescale: float = 1.0
 
 @export_group("Keys")
@@ -155,11 +86,7 @@ enum KeyPreset {
 @export var block_left: bool = false
 @export var block_right: bool = false
 
-## Allow only one strafe key at a time.
-##
-## Holding A and D together cancels to nothing on flat ground and is a real technique
-## in the air, so a style that means "sideways" and not "sideways except for that"
-## needs this as well as the blocks.
+## Allow only one strafe key at a time (A and D together cancel on the ground but are a technique in the air).
 @export var one_strafe_key_only: bool = false
 
 ## Deny crouching entirely. Some styles do, because crouch-jumping trivialises them.
@@ -168,30 +95,17 @@ enum KeyPreset {
 @export_group("Limits")
 
 ## Horizontal speed a player may leave the start zone with, in m/s. 0 = no limit.
-##
-## [b]Enforced by the timer, not here.[/b] "Leaving the start zone" is a zone event
-## and the motor knows nothing about zones. It is defined on the style because it is
-## part of what the style means, and because a record has to be able to say which
-## limit it was set under. See [code]DotTimerRules.clamp_prespeed[/code].
+## Enforced by the timer (the motor knows no zones); defined here so a record says which limit it was set under. See [code]DotTimerRules.clamp_prespeed[/code].
 @export_range(0.0, 200.0, 0.1) var prespeed_limit: float = 0.0
 
-## Absolute speed cap while the style is in force, in m/s. 0 = the base cap.
-##
-## Applied to [member DotFpsTunables.max_velocity], so it is a real ceiling in the
-## simulation rather than something a timer notices afterwards.
+## Absolute speed cap while the style is in force, in m/s. 0 = the base cap; applied to [member DotFpsTunables.max_velocity], a real ceiling in the simulation.
 @export_range(0.0, 10000.0, 1.0) var velocity_limit: float = 0.0
 
 
-# --- Deriving the tunables -------------------------------------------------
 
 ## The tunables for a player on this style. [param base] is never modified.
-##
-## [b]Returns a fresh resource every call[/b], and callers should hold the result
-## rather than calling this per tick: a [Resource] allocation inside the tick loop on
-## a thirty-player server is measurable, and — worse — the motor holds a reference to
-## the tunables it was constructed with, so replacing them under it silently does
-## nothing until the motor is rebuilt. [method DotFpsController.set_style] does both
-## halves in the right order.
+## Returns a fresh resource each call; hold the result. The motor keeps the tunables it was built with, so
+## [method DotFpsController.set_style] swaps both in the right order.
 func apply_to(base: DotFpsTunables) -> DotFpsTunables:
 	if base == null:
 		base = DotFpsTunables.new()
@@ -228,10 +142,8 @@ func apply_to(base: DotFpsTunables) -> DotFpsTunables:
 	if velocity_limit > 0.0:
 		out.max_velocity = velocity_limit
 
-	# max_velocity is a backstop against a runaway, and a style that raises max_speed
-	# past it would be refused by validate() — which is correct and is also a refusal
-	# nobody would understand from the style definition alone. Lift the ceiling
-	# instead; it is not a gameplay number.
+	# max_velocity is a backstop; raising max_speed past it would make validate() refuse the style for a reason the
+	# style does not show, so lift the ceiling instead.
 	if out.max_speed > out.max_velocity:
 		out.max_velocity = out.max_speed
 
@@ -246,13 +158,9 @@ func scaled_delta(delta: float) -> float:
 	return delta * timescale
 
 
-# --- Filtering the command -------------------------------------------------
 
 ## Writes the key blocks implied by [member key_preset] into the four flags.
-##
-## Called by [method filter_command], so a style loaded from JSON with only
-## [code]key_preset[/code] set behaves correctly without the loader having to know
-## the mapping. Idempotent.
+## Idempotent; [method filter_command] calls it, so a style loaded from JSON with only [code]key_preset[/code] works.
 func apply_key_preset() -> void:
 	match key_preset:
 		KeyPreset.FREE:
@@ -287,14 +195,8 @@ func apply_key_preset() -> void:
 
 
 ## Removes the input this style forbids, in place.
-##
-## [b]Must be called on the client and the server, on the same command, before the
-## motor sees it.[/b] Filtering only on the server makes the client predict movement
-## the server will not produce, and the correction arrives a round trip later — which
-## is the worst possible way to tell somebody a key is disabled.
-##
-## Idempotent, which is not incidental: a prediction rewind replays stored commands
-## and this runs again on each of them.
+## [b]Call on client and server, on the same command, before the motor.[/b] Server-only filtering makes the client predict movement the server then corrects.
+## Idempotent, because a rewind replays stored commands through it again.
 func filter_command(command: DotFpsCommand) -> void:
 	if command == null:
 		return
@@ -324,7 +226,6 @@ func filter_command(command: DotFpsCommand) -> void:
 		command.set_button(DotFpsCommand.BUTTON_CROUCH, false)
 
 
-# --- Serialisation ---------------------------------------------------------
 
 ## The style as a plain dictionary, for a config file or the wire.
 func to_dictionary() -> Dictionary:
@@ -390,12 +291,7 @@ static func from_dictionary(data: Dictionary) -> DotFpsStyle:
 
 
 ## Reads an enum out of untrusted data.
-##
-## Spelled as a match rather than as a cast because the value may have come from a
-## JSON file or from a server: an out-of-range int cast to an enum is not caught
-## anywhere and produces a style whose key preset is a number nothing handles, which
-## then falls through every match in [method apply_key_preset] and silently blocks
-## nothing. Unknown values fall back to the neutral member.
+## A match rather than a cast: an out-of-range int would give a preset nothing handles and silently block nothing. Unknown falls back to the neutral member.
 static func _to_toggle(value: Variant) -> Toggle:
 	match int(value):
 		Toggle.OFF:
@@ -422,12 +318,8 @@ static func _to_key_preset(value: Variant) -> KeyPreset:
 			return KeyPreset.FREE
 
 
-## A short hash of everything that changes the simulation.
-##
-## Same job as [method DotFpsTunables.fingerprint] and the same reason: a client and
-## a server on styles that differ by one field produce a correction every tick, and
-## the symptom is indistinguishable from packet loss. Presentation fields are
-## excluded — two servers may colour a style differently and still agree about it.
+## A short hash of everything that changes the simulation, like [method DotFpsTunables.fingerprint].
+## Presentation fields are excluded.
 func fingerprint() -> String:
 	apply_key_preset()
 
@@ -443,13 +335,9 @@ func fingerprint() -> String:
 	]))).substr(0, 16)
 
 
-# --- The styles every timer ships -----------------------------------------
 
 ## The six styles a bhop or surf server is expected to have on day one.
-##
-## Not a hard-coded list the addon uses anywhere: it is what a game copies and edits.
-## Shipping them means a server operator gets a working style table without having to
-## know that "half-sideways" means "forward and one strafe key, no back".
+## Not used by the addon: it is what a game copies and edits.
 static func defaults() -> Array[DotFpsStyle]:
 	var out: Array[DotFpsStyle] = []
 

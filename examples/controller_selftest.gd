@@ -1,16 +1,7 @@
 extends Node
 
-## Exercises dot-player-controller with a stub controller, no physics and no input.
-##
-## The addon is abstract, so what is checkable is the part that is not: intent edges,
-## the look arithmetic every project rewrites, and the switch — including the handover,
-## which is the thing that is wrong in a way nobody reports as a handover bug. A stub
-## controller stands in for a real one, which is also a worked example of the five
-## methods a subclass overrides.
-##
-## [codeblock]
-## godot --headless --path . res://examples/controller_selftest.tscn
-## [/codeblock]
+## Exercises dot-player-controller with a stub controller, no physics and no input. Run: [code]godot --headless --path . res://examples/controller_selftest.tscn[/code]
+## The addon is abstract, so this checks the part that is not: intent edges, the look arithmetic every project rewrites, and the switch handover. The stub is also a worked example of the five methods a subclass overrides.
 
 const SECTIONS := 8
 const CHECKS := 139
@@ -139,7 +130,6 @@ func _stub(id: StringName, under: Node) -> StubController:
 	return c
 
 
-# --- Server rules: the view and solid players ----------------------------------
 
 func _test_rules() -> void:
 	_section("mp_forceview and mp_solidplayers")
@@ -211,7 +201,6 @@ func _test_rules() -> void:
 	hulled.queue_free()
 
 
-# --- Intent -----------------------------------------------------------------
 
 func _test_intent() -> void:
 	_section("intent")
@@ -287,7 +276,6 @@ func _test_wire() -> void:
 	_check(DotPlayerIntent.from_dict({}).tick == 0, "and an empty payload decodes to nothing")
 
 
-# --- Look -------------------------------------------------------------------
 
 func _test_look() -> void:
 	_section("looking")
@@ -408,7 +396,6 @@ func _check_look_vectors(look: DotPlayerLook) -> void:
 	_check(look.describe().contains("yaw"), "and it describes itself")
 
 
-# --- The controller ---------------------------------------------------------
 
 func _test_controller() -> void:
 	_section("a controller")
@@ -480,7 +467,6 @@ func _test_controller() -> void:
 	player.queue_free()
 
 
-# --- The switch -------------------------------------------------------------
 
 func _test_switch() -> void:
 	_section("the switch")
@@ -624,11 +610,8 @@ func _test_handover() -> void:
 		"a game that would rather not carry velocity can say so"
 	)
 
-	# Pitch rather than yaw: a body's yaw travels inside the transform, which is
-	# carried regardless, so turning carry_look off can only withhold the pitch. That
-	# is the honest behaviour — a handover that moved the player without their body
-	# facing the same way would be a spin, not a view change — and asserting on yaw
-	# here would be asserting on something the flag was never going to control.
+	# Pitch rather than yaw: a body's yaw travels in the transform, which is carried regardless, so carry_look off can only withhold the pitch.
+	# That is the honest behaviour (moving the player without their body facing the same way would be a spin), and asserting on yaw would test something the flag never controlled.
 	sw.carry_look = false
 	tp.pitch = 0.0
 	fp.pitch = 1.0
@@ -687,7 +670,6 @@ func _test_hull_body() -> void:
 	_check(not body.sweep(Vector3(0, 1, 0), Vector3(0, 0, 0), 2.0, 0.4).hit, "no motion, no hit")
 
 
-# --- Harness ---------------------------------------------------------------
 
 func _section(title: String) -> void:
 	_section_count += 1

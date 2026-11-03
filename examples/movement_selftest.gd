@@ -1,26 +1,10 @@
 extends "res://examples/movement_selftest_walls.gd"
 
-## Proves the movement simulation does what the netcode needs it to do.
+## Proves the movement simulation does what the netcode needs. Run: [code]godot --headless --path . res://examples/movement_selftest.tscn[/code]; exits non-zero on any failure.
 ##
-## [codeblock]
-## godot --headless --path . res://examples/movement_selftest.tscn
-## [/codeblock]
+## [b]The key test is [method _test_replay_determinism].[/b] Client-side prediction replays stored commands from an authoritative state and expects the server's answer; any divergence (state outside [DotFpsState], a machine-local query, an unrestored accumulator) corrects the client on every snapshot and looks like packet loss.
 ##
-## Exits non-zero on any failure, so it works as a smoke test as-is.
-##
-## [b]The most important test here is [method _test_replay_determinism].[/b]
-## Everything else checks that the movement feels right; that one checks that it can
-## be networked at all. Client-side prediction works by replaying stored commands
-## from an authoritative state and expecting the same answer the server got. If
-## replaying diverges — by a field left outside [DotFpsState], by a query that reads
-## something machine-local, by an accumulator that is not restored — the client is
-## corrected on every snapshot forever, and the symptom looks exactly like packet
-## loss. It is worth an entire test file to know it does not.
-##
-## Most tests run against [DotFpsFlatBody] rather than the physics server: the
-## property under test belongs to [DotFpsMotor], and against analytic geometry a
-## failure has exactly one possible cause. [method _test_physics_body] covers the real
-## implementation separately.
+## Most tests run on [DotFpsFlatBody] so a failure has one possible cause, the [DotFpsMotor]; [method _test_physics_body] covers the real implementation.
 
 const CHECKS := 410
 
@@ -278,10 +262,7 @@ func _test_jump_height() -> void:
 	_done()
 
 
-## The reach arithmetic on DotFpsTunables says what the motor does.
-##
-## Four games carried their own copy of it; the point of it living here is that it is
-## checked against the simulation rather than against another copy.
+## The reach arithmetic on DotFpsTunables says what the motor does, checked against the simulation rather than another copy.
 func _test_jump_reach() -> void:
 	_section("jump reach")
 
@@ -465,10 +446,7 @@ func _test_speed_modifiers() -> void:
 		t.speed_for(DotFpsCommand.BUTTON_WALK), 2.0, 0.001, "walk scales down"
 	)
 
-	# The regression this ordering exists for. The previous controller stored one
-	# multiplier and each modifier reset it to 1 on release, so releasing sprint
-	# while still crouched restored full speed and the player crouch-ran at sprint
-	# pace. Most restrictive wins, so this cannot happen.
+		# Regression: one stored multiplier reset to 1 on release made releasing sprint while crouched restore full speed. Most restrictive wins.
 	_check_near(
 		t.speed_for(DotFpsCommand.BUTTON_CROUCH | DotFpsCommand.BUTTON_SPRINT),
 		4.0,
@@ -1160,10 +1138,7 @@ func _test_stair_step() -> void:
 	var motor := _motor(t, world)
 	var s := _standing(motor)
 
-	# Sampled while the player is over the step rather than at the end of the run:
-	# the step is only four metres deep and at 7 m/s they walk off the far side of it
-	# long before 180 ticks are up. Checking the final position tested where the
-	# level ran out, not whether the step was climbed.
+		# Sampled while over the step: it is four metres deep and at 7 m/s they walk off the far side before 180 ticks, so the final position would test where the level ran out.
 	var height_on_step := -1.0
 
 	for _i in range(180):
@@ -1198,10 +1173,7 @@ func _test_stair_step() -> void:
 
 ## A slope under max_slope is walked up, and a jump started on it still leaves it.
 ##
-## Neither was true: `_categorise_ground` read any upward speed over 0.1 m/s as airborne,
-## so the first tick of any walkable slope put the player in AIR, and `_try_jump` refused
-## to jump while "rising", which on an uphill is always. Measured before the fix on this
-## geometry: the player stalls about a metre up the ramp and never jumps.
+## Regression: any upward speed over 0.1 m/s read as airborne, so the player stalled a metre up the ramp and `_try_jump` refused while "rising".
 func _test_walkable_slope() -> void:
 	_section("walkable slope")
 
@@ -1453,15 +1425,9 @@ func _test_noclip_gating() -> void:
 	_done()
 
 
-## What an administrator does to somebody's movement, and whether the owning client
-## predicts it.
+## What an administrator does to somebody's movement, and whether the owning client predicts it.
 ##
-## [b]The prediction half is the point.[/b] A forced noclip the server applies and the
-## client's replay undoes is a player rubber-banding between flying and falling, and every
-## server-side number in that picture is correct. So this reconciles a client that has NO
-## noclip permission of its own against the server's state and replays the same commands
-## — once with the modifier, once with the naive "set the mode" — and requires the first
-## to agree and the second not to, because a check that cannot fail is not a check.
+## [b]The prediction half is the point.[/b] A forced noclip the client's replay undoes rubber-bands the player. A client with no noclip permission is reconciled with the modifier and with the naive "set the mode"; the first must agree and the second must not, or the check cannot fail.
 func _test_admin_modifiers() -> void:
 	_section("admin modifiers")
 
@@ -1969,13 +1935,8 @@ func _test_fingerprint() -> void:
 	_done()
 
 
-## The property everything else depends on.
+## The property everything else depends on: simulate twice from the same start and require identical results, then snapshot mid-way and replay the rest, as client reconciliation does.
 ##
-## Simulate a command sequence twice from the same start and require identical
-## results; then simulate once, snapshot mid-way, and replay the rest from the
-## snapshot — which is precisely what client-side reconciliation does. If this fails,
-## prediction cannot work, and the failure at runtime looks like packet loss rather
-## than like a bug.
 ## A slide: crouch pressed at a run, lower friction and a burst, and every way it ends.
 func _test_slide() -> void:
 	_section("sliding")
@@ -2264,10 +2225,7 @@ func _test_replay_determinism() -> void:
 
 	var t := _tunables()
 
-	# Surfaces and modifiers are simulation, so the replay has to reproduce them too.
-	# Without them in here, the determinism guarantee would cover the movement and
-	# quietly not cover the two systems most likely to break it — a modifier held
-	# outside the state, or a surface resolved from something machine-local.
+		# Surfaces and modifiers are simulation too; the replay must reproduce them or the guarantee misses the systems likeliest to break it.
 	var patch := DotFpsSurface.make(&"ice")
 	patch.friction_scale = 0.1
 	patch.accelerate_scale = 0.4
@@ -2369,21 +2327,11 @@ func _altered_commands(commands: Array[DotFpsCommand], split: int) -> Array[DotF
 	return altered
 
 
-## A kerb under step_height is stepped onto by a real capsule at walking pace, and one
-## over it is not.
+## A kerb under step_height is stepped onto by a real capsule at walking pace, and one over it is not.
 ##
-## The step's down leg lands the capsule's ROUNDED bottom on the kerb's edge whenever the
-## across leg ends with the axis short of it — which at walking pace is every time, since
-## one tick's motion is a few centimetres — and that contact's normal is the sphere's,
-## 50 to 80 degrees from up, so the landing was refused as "not a floor". Measured on a
-## 0.34 m kerb with step_height 0.45: refused at 3, 5, 7 and 15 m/s, climbed only at
-## 10. The flat body is a box with a flat bottom and cannot see this.
+## The step's down leg lands the capsule's rounded bottom on the kerb edge, whose normal is 50 to 80 degrees from up, so it was refused as "not a floor". The flat body cannot see this.
 ##
-## [b]And the answer to that let a walker over kerbs far higher than a step[/b]: the probe
-## past the edge found the kerb's top and accepted it without asking how high it was, so
-## with step_height 0.45 a walker got over 0.5 m at 3 and 7 m/s and 0.7 m at 7, and was
-## stopped only at 1.0. The corner the capsule lands on is above the lifted feet; the
-## floor beyond it is a floor, and it is out of reach.
+## [b]The fix must not over-reach[/b]: the probe past the edge must ask how high the kerb is, or a walker gets over kerbs far higher than a step.
 func _test_physics_kerb() -> void:
 	_section("kerb, physics body")
 
@@ -2420,11 +2368,7 @@ func _test_physics_kerb() -> void:
 				]
 			)
 
-	# A kerb run over at speed is run over. The step lands the capsule's rounded bottom on
-	# the corner, and the next tick's ground check read the corner's normal, said AIR, and
-	# the air slide turned 15 m/s of run into 5.9 m/s of climb: 1.07 m, 0.73 above the
-	# kerb. The ground check now counts the floor beyond an edge for a player moving onto
-	# it. 7 m/s is the same shape, smaller (0.49).
+		# A kerb run over at speed is run over: the ground check must count the floor beyond an edge for a player moving onto it, or the air slide turns the run into a climb.
 	for speed in [7.0, 15.0]:
 		var run := _walk_kerb(body, 0.0, speed)
 		_check(
@@ -2435,14 +2379,8 @@ func _test_physics_kerb() -> void:
 
 	world.queue_free()
 
-	# A runner spawned exactly on the floor, feet at y 0.0000, is exactly touching it, and
-	# a horizontal sweep from exactly touching reports the floor as an obstacle at fraction
-	# ~0 in about one position in five (none at 0.2 mm clear). The slide then met that
-	# plane twice and stopped every tick with the velocity intact: frozen in front of any
-	# kerb from 0.1 to 0.45 m at 12 and 20 m/s, the speeds whose run never had a tick that
-	# happened to re-seat the feet a skin up. Which positions hit is floating-point luck;
-	# on the floor's centre line, from these round starts, each speed froze at least once.
-	# The lanes' floor must be gone first: two coincident floors are a different contact.
+		# A runner spawned exactly on the floor is exactly touching it, and a horizontal sweep from there sometimes reports the floor as an obstacle at fraction ~0.
+		# The slide then stopped every tick. The lanes' floor must be gone first: two coincident floors are a different contact.
 	await get_tree().process_frame
 	var spawn_world := _kerb_world([0.3] as Array[float])
 	add_child(spawn_world)
@@ -2494,14 +2432,7 @@ func _kerb_wall_checks() -> void:
 
 ## A player landing on a walkable slope while moving uphill is on it, not gliding up it.
 ##
-## An airborne player's ground check used to leave without a query whenever they were
-## moving up faster than LEAVING_SPEED. Landing uphill makes exactly that: the slide
-## clips the velocity onto the face, and walking pace along a 13-degree slope is 0.4 m/s
-## upward — so the player stayed in AIR, gravity took a third of a metre per second off,
-## the next slide put it back, and they glided at air speed (1.7 m/s against a 2.7 m/s
-## walk) until a tick happened to end within the probe's 2 cm. Measured with these
-## tunables (a game's, max_slope_angle 14): 13 airborne ticks from 0.1 m at walking
-## pace, 9 of them touching the slope; reported in that game as over a second.
+## Regression: the airborne ground check skipped its query when moving up faster than LEAVING_SPEED, which landing uphill always is, so the player glided at air speed until a tick ended within the probe.
 func _test_physics_slope_landing() -> void:
 	_section("landing on a walkable slope while moving uphill, physics body")
 
@@ -2578,11 +2509,7 @@ func _test_physics_slope_landing() -> void:
 			]
 		)
 
-	# The other side of the line. A jump up a steep walkable ramp at speed meets the ramp
-	# on its way up, and the slide lays it along the face: a ground check that asked every
-	# rising player would find a floor under a velocity in its plane and land them on the
-	# tick they left. Only a rise under half a jump's launch is asked. Analytic ramp, 40
-	# degrees, 10 m/s: without that line the player is grounded on all 31 ticks.
+		# The other side of the line: a ground check that asked every rising player would land one who just left a steep ramp. Only a rise under half a jump's launch is asked.
 	var jt := _tunables()
 	jt.max_speed = 10.0
 	var ramp := DotFpsFlatBody.with_floor(0.0)
@@ -2611,16 +2538,9 @@ func _test_physics_slope_landing() -> void:
 	_done()
 
 
-## A surfer pressed into a banked ramp keeps moving: never a tick where the position is
-## fixed while the velocity is not.
+## A surfer pressed into a banked ramp keeps moving: never a tick where the position is fixed while the velocity is not.
 ##
-## The duplicate-plane early-out in `_slide` used to break with the rest of the tick
-## unspent. Against a bank the capsule rests on, with a velocity lying in its face, that
-## was the whole tick: the rider hung in mid-air at full speed, not grounded, not counted
-## stuck, only `duplicate_plane_ticks` rising. Real collision, because the flat body
-## never reports the contact that caused it. Numbers are a timer server's: a 60-degree
-## bank, 128 ticks a second, a 0.30 m capsule, riding at 4.2 m/s while holding strafe
-## into the face with a low air-acceleration.
+## Regression: the duplicate-plane early-out in `_slide` broke with the tick unspent, leaving the rider hung in mid-air. Needs real collision; the flat body never reports that contact.
 func _test_physics_bank() -> void:
 	_section("pressed into a bank, physics body")
 

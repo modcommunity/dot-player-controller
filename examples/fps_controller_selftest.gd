@@ -1,17 +1,7 @@
 extends "res://examples/fps_controller_selftest_base.gd"
 
-## Exercises [DotFpsController] as a node in a real scene tree.
-##
-## [codeblock]
-## godot --headless --path . res://examples/controller_selftest.tscn
-## [/codeblock]
-##
-## [method movement_selftest] tests the simulation. This tests the wiring around it:
-## reference resolution, the collider following the crouch, the fixed-step
-## accumulator, the three drive modes, the registry, and the safety gate on noclip.
-## None of that is reachable from the motor alone, and all of it is the part a host
-## game touches first.
-##
+## Exercises [DotFpsController] as a node in a real scene tree. Run: [code]godot --headless --path . res://examples/fps_controller_selftest.tscn[/code]
+## [method movement_selftest] tests the simulation; this tests the wiring around it (reference resolution, collider following the crouch, fixed-step accumulator, drive modes, registry, the noclip safety gate), which a host game touches first.
 ## Scenes are built in code so a failure names a line and an editor change cannot silently pass.
 
 const CHECKS := 116
@@ -395,9 +385,7 @@ func _test_external_drive() -> void:
 	_done()
 
 
-## The mask a game sets on the tunables AFTER setup is the one the body sweeps. Games set it
-## then, because that is when they know their physics layout, and the body used to keep the
-## mask it copied when it was built: game-playground's players walked through every prop.
+## The mask a game sets on the tunables AFTER setup is the one the body sweeps: games know their physics layout only then, and a body that kept the mask copied at build let players walk through every prop.
 func _test_mask_set_after_setup() -> void:
 	_section("a mask set after setup is the one swept")
 
@@ -471,10 +459,7 @@ func _test_collider_follows_crouch() -> void:
 		world.queue_free()
 		return
 
-	# Not the shape the scene supplied. A CapsuleShape3D loaded from a .tscn is
-	# shared between every instance of that scene, so resizing one player's collider
-	# on crouch would resize every player's — a bug that only appears with more than
-	# one player in the level.
+	# Not the shape the scene supplied: a CapsuleShape3D loaded from a .tscn is shared by every instance, so resizing one player's collider on crouch would resize every player's.
 	_check(
 		capsule != null and capsule.resource_path == "",
 		"with a private shape, not one shared across instances"
@@ -793,16 +778,8 @@ func _test_local_drive_accumulator() -> void:
 		"render_state is a copy, so nothing can write back through it"
 	)
 
-	# [b]And it has to do that under EXTERNAL drive, which is the only one a
-	# networked game uses.[/b] It used to refuse anything but LOCAL and return the raw
-	# tick state, so every client of every game in this family drew its own player
-	# quantised to the tick rate — 74 mm on six frames out of seven and 112 mm on the
-	# seventh, at 60 frames against a 128-tick server. The cure was written, documented
-	# and unreachable from the one deployment shape that needed it.
-	#
-	# Asserted with an explicit alpha rather than a frame-timed one: the fraction's
-	# source is the host's business, the blend is this class's, and only the blend can
-	# be checked without a clock.
+	# It has to blend under EXTERNAL drive, the only one a networked game uses: it refused anything but LOCAL and returned the raw tick state, so every client drew its player quantised to the tick rate (74 mm and 112 mm steps at 60 fps against a 128-tick server).
+	# Asserted with an explicit alpha rather than a frame-timed one: the fraction's source is the host's business, the blend is this class's, and only the blend can be checked without a clock.
 	controller.drive = DotFpsController.Drive.EXTERNAL
 	controller._previous_state.copy_from(controller.state)
 	controller._previous_state.position = Vector3(0.0, 0.0, 0.0)
@@ -820,11 +797,8 @@ func _test_local_drive_accumulator() -> void:
 		"and reaches both ends of the tick it is drawn across"
 	)
 
-	# [b]A connected client draws at its clock's alpha, which leaves 0..1 after a slip.[/b]
-	# The clock stretches its ticks while it settles, so a physics frame now and then runs
-	# none or two, and drawn at the engine's fraction the eye stood still or moved double.
-	# Past 1 the drawing goes on along the last step; below 0 it is between the two before.
-	# Armed by clamping the clock's alpha to 0..1: this check fails (10 cm and 0 cm drawn).
+	# A connected client draws at its clock's alpha, which leaves 0..1 after a slip: the clock stretches its ticks while it settles, so a frame runs none or two, and at the engine's fraction the eye stood still or moved double.
+	# Past 1 the drawing goes on along the last step; below 0 it is between the two before. Armed by clamping the clock's alpha to 0..1: this check fails (10 cm and 0 cm drawn).
 	var clock := FakeClock.new()
 	controller._position_two_back = Vector3(0.0, 0.0, -10.0)
 	controller.render_clock = clock
@@ -997,11 +971,8 @@ func _test_wall_run_roll() -> void:
 	_done()
 
 
-## The landing dip, the strafe roll and the widening ([DotFpsViewMotion], which [DotFpsView]
-## and a game writing its own camera share): each eases, none moves the view in one frame.
-## Armed: the landing set the full dip on the landing frame before the spring (the first
-## check fails at 89 mm), and a one-stage roll starts at its full rate (the fourth and fifth
-## fail, 0.15 degrees in one frame).
+## The landing dip, the strafe roll and the widening ([DotFpsViewMotion], shared by [DotFpsView] and a game's own camera): each eases, none moves the view in one frame.
+## Armed: the landing set the full dip before the spring (first check fails at 89 mm), and a one-stage roll starts at its full rate (fourth and fifth fail).
 func _test_view_motion() -> void:
 	_section("camera motion: landing dip, strafe roll, widening")
 	var frame := 1.0 / 144.0
@@ -1088,11 +1059,8 @@ func _test_view_motion() -> void:
 	_check(off.roll() == 0.0 and off.eye_drop() == 0.0 and off.pitch() == 0.0 and off.fov_added() == 0.0,
 		"every amount at 0 moves nothing", str(off.describe()))
 
-	# DotFpsView forwards every field of the motion object. Read by reflection, so a field
-	# added to DotFpsViewMotion later and not to the view fails here rather than leaving a
-	# game on the view stuck at its default. Armed: without the five forwards 824a645 left
-	# out, this names landing_min_speed, landing_pitch, roll_limit, fov_speed_floor and
-	# wall_run_fov_gain.
+	# DotFpsView forwards every field of the motion object, read by reflection, so a field added to DotFpsViewMotion and not to the view fails here instead of leaving a game stuck at the default.
+	# Armed: without the five forwards left out, this names landing_min_speed, landing_pitch, roll_limit, fov_speed_floor and wall_run_fov_gain.
 	var forwarding := DotFpsView.new()
 	var unforwarded := PackedStringArray()
 	var fields := 0

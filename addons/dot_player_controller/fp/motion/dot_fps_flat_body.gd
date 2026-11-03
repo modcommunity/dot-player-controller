@@ -2,25 +2,8 @@ class_name DotFpsFlatBody
 extends DotFpsBody
 
 ## A [DotFpsBody] made of analytic planes and boxes, with no physics server.
-##
-## [b]This exists so the movement can be tested at all.[/b] The determinism the
-## netcode depends on — replaying a command sequence reproduces the simulation
-## exactly — is a property of [DotFpsMotor], not of Godot's physics. Testing it
-## against a real world means a scene, physics ticks, and a frame of latency per
-## query, and a failure could be the motor or could be the physics server. Here it
-## is arithmetic: the test runs headless in milliseconds and a failure has one cause.
-##
-## It is also a working example of implementing [DotFpsBody] against geometry that is
-## not Godot collision shapes, which is what a game with a heightfield or a BSP would
-## do.
-##
-## Not a general collision engine. It handles axis-aligned boxes, an infinite ground
-## plane and arbitrary half-space planes, treats the capsule as a swept box, and is
-## meant for tests and grey-box prototyping.
-##
-## The half-space planes are what surf is tested against. A surf ramp is a single
-## large sloped face and nothing about it needs a physics world — see
-## [method add_ramp].
+## Exists so determinism (replay reproduces the simulation) can be tested headless in milliseconds, with a failure that has one cause; also an example for a heightfield or BSP body.
+## Not a collision engine: axis-aligned boxes, an infinite ground plane and half-space planes, the capsule swept as a box. See [method add_ramp].
 
 ## Ground plane height. Set to -INF for no floor.
 var floor_y: float = 0.0
@@ -29,23 +12,10 @@ var floor_y: float = 0.0
 var boxes: Array[AABB] = []
 
 ## Solid half-spaces: everything BEHIND each plane is solid.
-##
-## Godot's [Plane] is [code]normal · x = d[/code] with the normal pointing out of the
-## solid, which is the same convention [member DotFpsBody.Hit.normal] uses, so a hit
-## reports the plane's normal unchanged.
-##
-## Infinite, deliberately. A surf ramp in a real map is bounded, but a bounded one
-## here would need a convex-hull sweep to test the thing these exist to test — that a
-## player sliding down a steep face keeps their speed, and that two faces meeting at a
-## seam do not stop them. Both are properties of the faces, not of where they end.
+## [Plane] normals point out of the solid, as in [member DotFpsBody.Hit.normal]. Infinite so surf tests need no convex-hull sweep; speed kept down a face is a property of the face.
 var planes: Array[Plane] = []
 
-## Synthetic collider id reported for the ground plane.
-##
-## Not a real instance id — there is no node here — but [DotFpsMotor] resolves the
-## surface under the player from whatever the hit reports, so a body that reported
-## nothing made surfaces untestable without a physics world. Boxes get
-## [code]BOX_ID_BASE + index[/code].
+## Synthetic collider id reported for the ground plane; the motor resolves surfaces from the reported hit, so surfaces would be untestable without one. Boxes get [code]BOX_ID_BASE + index[/code].
 const FLOOR_ID := 1
 const BOX_ID_BASE := 2
 
@@ -87,17 +57,9 @@ func add_plane(plane: Plane) -> DotFpsFlatBody:
 	return self
 
 
-## Adds a surf ramp: a face through [param through], tilted [param angle_degrees]
-## from horizontal, falling away toward [param fall].
-##
-## [param fall] is the horizontal direction the ramp descends in, which is the
-## direction a player on it slides. An angle above
-## [member DotFpsTunables.max_slope_angle] is a ramp; below it, it is a hill the
-## player can walk up, and the distinction is the whole of surf.
-##
-## The surface height along the fall direction is
-## [code]through.y - tan(angle) * distance[/code], which is what a test needs to place
-## a player just above it. See [method ramp_height].
+## Adds a surf ramp: a face through [param through], tilted [param angle_degrees] from horizontal, falling away toward [param fall].
+## [param fall] is the horizontal direction a player on it slides. Above [member DotFpsTunables.max_slope_angle] it is a ramp, below a walkable hill.
+## Height along the fall is [code]through.y - tan(angle) * distance[/code]; see [method ramp_height].
 func add_ramp(
 	through: Vector3,
 	fall: Vector3,
@@ -110,13 +72,8 @@ func add_ramp(
 
 	horizontal = horizontal.normalized()
 
-	# Tilt the up vector TOWARD the fall direction by the ramp angle. At 0° the normal
-	# is straight up and the face is a floor; at 90° it is a wall.
-	#
-	# Toward, not away: a surface descending along `fall` has its height decreasing in
-	# that direction, so its gradient points backwards and its normal leans forwards.
-	# The other sign builds a ramp that rises where it was asked to fall, which a
-	# test then places its player 20 metres underneath.
+	# Tilt the up vector TOWARD the fall direction (0 deg is a floor, 90 a wall). A surface descending along `fall` has a
+	# backward gradient and a forward-leaning normal; the other sign builds a ramp that rises where it should fall.
 	var radians := deg_to_rad(angle_degrees)
 	var normal := (
 		Vector3.UP * cos(radians) + horizontal * sin(radians)
@@ -125,10 +82,7 @@ func add_ramp(
 	return add_plane(Plane(normal, normal.dot(through)))
 
 
-## Height of the plane at [param index] directly above [param at].
-##
-## For placing something on a ramp without re-deriving the plane equation at the call
-## site — which is where the sign of the tilt gets lost.
+## Height of the plane at [param index] directly above [param at], so callers do not re-derive the tilt sign.
 func ramp_height(index: int, at: Vector3) -> float:
 	var plane := planes[index]
 
@@ -167,15 +121,8 @@ func sweep(
 	if motion.y < 0.0 and floor_y > -INF:
 		var feet := from.y - height * 0.5
 
-		# [b]Feet already at or below the floor contact immediately[/b] rather than
-		# being treated as a miss. That is not just robustness: [Vector3] components
-		# are 32-bit while GDScript arithmetic is 64-bit, so a player standing
-		# exactly on y = 0 has feet at -2.4e-8 once the centre has made the round
-		# trip through a Vector3. Requiring feet > floor_y made every ground probe
-		# miss, so nothing was ever grounded — friction and ground acceleration
-		# never ran, the player capped at the air-control speed, and they sank
-		# through the floor at a fixed rate. One epsilon, four symptoms, none of
-		# which pointed here.
+		# Feet already at or below the floor contact immediately: Vector3 is 32-bit while GDScript is 64-bit, so a player on y = 0
+		# has feet at -2.4e-8 after a round trip, and requiring feet > floor_y made every ground probe miss.
 		var t := 0.0
 		if feet > floor_y:
 			t = (floor_y - feet) / motion.y
@@ -213,13 +160,8 @@ func sweep(
 	result.fraction = clampf(best, 0.0, 1.0)
 	result.normal = best_normal
 	result.collider_id = best_id
-	# [b]The contact, not the centre.[/b] [member DotFpsBody.Hit.point] is a point in
-	# world space ON the surface, and the motor reads its height: a step's landing is
-	# refused when what it lands on is more than step_height above the floor it left.
-	# This returned the swept centre until 2026-09-26, half a capsule above any floor,
-	# so every step on this body read as too high the day the motor started asking.
-	# The capsule is a box here, so the contact is the box's support point against the
-	# normal: a face's centre for an axis normal, a corner for a ramp's.
+	# The contact point, not the swept centre: the motor reads its height to refuse steps landing more than step_height above
+	# the floor left. The capsule is a box here, so it is the box's support point against the normal (face centre or corner).
 	var centre := from + motion * result.fraction
 	result.point = centre - Vector3(
 		signf(best_normal.x) * radius,
@@ -273,12 +215,7 @@ func _slab_sweep(start: AABB, motion: Vector3, box: AABB) -> Vector2:
 
 
 ## Swept capsule-as-box against a half-space. Returns the entry fraction, or -1.
-##
-## The capsule is measured by its SUPPORT distance along the plane's normal — how far
-## the box extends toward the plane from its centre — rather than by a radius. A
-## sphere's support is the same in every direction and a capsule's is not, and using a
-## radius makes a player standing on a steep ramp float a third of their height above
-## it, which reads as the ramp being in the wrong place.
+## Measured by SUPPORT distance along the plane normal, not a radius: a radius makes a player on a steep ramp float a third of their height above it.
 func _plane_sweep(
 	from: Vector3,
 	motion: Vector3,
@@ -319,13 +256,7 @@ static func _axis_normal(axis: int, motion: Vector3) -> Vector3:
 
 
 ## The deepest surface the capsule at [param at] is already inside.
-##
-## The analytic counterpart of [method DotFpsPhysicsBody.rest_contact], so the suite
-## can prove the motor's de-penetration against geometry whose answer is known rather
-## than against a physics server whose answer is the thing under suspicion.
-##
-## Boxes report the face the capsule is least far past, which is the one it should
-## leave by; planes are exact. The floor is a plane like any other.
+## The analytic counterpart of [method DotFpsPhysicsBody.rest_contact], so de-penetration is proven against a known answer. Boxes report the face least far past; planes are exact.
 func rest_contact(at: Vector3, height: float, radius: float) -> Hit:
 	var best := Hit.miss()
 	var deepest := 0.0
@@ -351,15 +282,8 @@ func rest_contact(at: Vector3, height: float, radius: float) -> Hit:
 		if not bounds.intersects(box):
 			continue
 
-		# [b]Within ONE box, the axis that separates them soonest[/b] -- anything larger moves
-		# the player further than the overlap, and through whatever is on the far side. This
-		# loop used to keep the LARGEST axis of each box (every axis competed against the
-		# running deepest), the opposite of what this comment said: a capsule 6 mm into a
-		# 64 m wall was "deepest" along the wall, and the motor's depenetration slid it a
-		# step along the wall every tick. A server never ends a tick inside a box, so it
-		# hid; a predicting client does, rounded a few millimetres in by the wire, and
-		# game-arena's launch along a wall drifted 2.8 m from the server
-		# (`[fps-flat-rest-axis-1]`).
+		# Within ONE box take the axis that separates soonest: anything larger moves the player further than the overlap, through
+		# whatever is on the far side. Keeping the largest axis slid a capsule 6 mm into a long wall along it every tick, drifting a predicting client from the server (`[fps-flat-rest-axis-1]`).
 		var least := INF
 		var normal := Vector3.ZERO
 		for axis in range(3):

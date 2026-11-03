@@ -2,17 +2,8 @@ class_name DotFpsPhysicsBody
 extends DotFpsBody
 
 ## [DotFpsBody] backed by Godot's 3D physics server. The implementation a game uses.
-##
-## Queries go through [PhysicsDirectSpaceState3D] with a capsule shape the motor
-## sizes per call, rather than through the player's own [CollisionShape3D]. That
-## matters more than it looks: the motor asks "would I fit standing up here" and
-## "what is under my feet" with sizes and at positions the body does not currently
-## have, and resizing the real collider to answer would make every query a mutation
-## of the thing being measured.
-##
-## The shape is allocated once and reused. A [ConvexPolygonShape3D] rebuilt per query
-## would allocate several times per tick per player, which on a 32-slot server is the
-## largest single cost in the movement code.
+## Queries use a capsule shape the motor sizes per call instead of the player's own [CollisionShape3D], so asking "would I fit standing" never mutates the thing measured.
+## The shape is allocated once and reused; rebuilding one per query was the largest single cost on a 32-slot server.
 
 const CHANNEL := "fps.body"
 
@@ -81,10 +72,7 @@ static func for_node(node: Node3D) -> DotFpsPhysicsBody:
 	return body
 
 
-## Binds to the physics space [param node] lives in.
-##
-## Re-binding on every tick would be wasteful, but the space handle is invalidated by
-## a scene change, so [method is_bound] is checked before use rather than assumed.
+## Binds to the physics space [param node] lives in. A scene change invalidates the handle, so [method is_bound] is checked before use.
 func bind(node: Node3D) -> DotResult:
 	if node == null or not node.is_inside_tree():
 		return DotResult.fail(
@@ -112,19 +100,15 @@ func is_bound() -> bool:
 
 
 func _configure(height: float, radius: float) -> void:
-	# Writing a shape's size re-sends it to the physics server and emits `changed` even
-	# when the value is the same, and a tick asks a dozen questions with two or three
-	# distinct sizes. So the shape is touched only when a size or the exclusion list
-	# actually differs from what it already holds. The mask is a plain int, set always:
-	# [method sweep] overwrites it per query and this has to put it back.
+	# Writing a shape's size re-sends it to the physics server and emits `changed` even when unchanged, and a tick asks a dozen
+	# questions with two or three sizes, so touch the shape only when a size or the exclusion list differs. The mask is set always:
+	# [method sweep] overwrites it per query.
 	var total := maxf(height, radius * 2.0)
 	if radius != _cfg_radius:
 		_shape.radius = radius
 		_cfg_radius = radius
-	# Godot's capsule height is the total including both hemispherical caps, and it
-	# silently clamps to 2 * radius. DotFpsTunables.validate() rejects a configuration
-	# that would hit that clamp, because a collider a different size from the one the
-	# simulation thinks it has is unfindable from the symptom.
+	# Godot's capsule height includes both caps and clamps to 2 * radius; DotFpsTunables.validate() rejects configurations
+	# that would hit the clamp, since a collider of the wrong size is unfindable from the symptom.
 	if total != _cfg_height:
 		_shape.height = total
 		_cfg_height = total
@@ -162,12 +146,7 @@ var _owner: Node3D = null
 
 
 ## Re-binds to the node's current space. Returns whether a space is available.
-##
-## The space handle is fetched once and cached because it is read several times per
-## tick, but it does not survive a scene change — and a body holding a dead handle
-## answers every query with "nothing there", which reads as the player falling
-## through a level that is definitely loaded. Cheaper to re-fetch on the first miss
-## than to debug that once.
+## The handle is cached but does not survive a scene change, and a dead one answers every query "nothing there", which looks like falling through a loaded level.
 func revalidate() -> bool:
 	if _owner == null or not _owner.is_inside_tree():
 		return false
@@ -214,10 +193,8 @@ func sweep(
 	_configure(height, radius)
 	query_count += 1
 
-	# The cast sees players' hulls too, unless the capsule starts inside one: a convex cast
-	# that starts overlapping another convex shape reports it at fraction 0, and two players
-	# on one spot then held each other still for good. Inside one, the cast leaves the
-	# players' layers out until they are apart.
+	# The cast sees players' hulls too, unless the capsule starts inside one: a convex cast starting overlapping another
+	# reports it at fraction 0 and two players on one spot held each other still. Inside one, their layers are left out until apart.
 	_set_mask(collision_mask)
 	_shape_params.transform = Transform3D(Basis.IDENTITY, from)
 	_shape_params.motion = Vector3.ZERO
@@ -229,10 +206,8 @@ func sweep(
 			_set_mask(collision_mask)
 	_shape_params.motion = motion
 
-	# cast_motion returns [safe, unsafe]: the last fraction with no contact and the
-	# first with one. `safe` is what we move by; `unsafe` is where the normal is
-	# sampled, because at `safe` the shapes are not yet touching and there is no
-	# contact to report.
+	# cast_motion returns [safe, unsafe]: the last fraction with no contact and the first with one. Move by `safe`; sample the
+	# normal at `unsafe`, since at `safe` the shapes do not yet touch.
 	var fractions := _q_cast()
 
 	if fractions.is_empty():
@@ -243,11 +218,8 @@ func sweep(
 
 	if safe >= 1.0:
 		_set_mask(collision_mask & ~pass_out_mask)
-		# Nothing along the sweep. That is two different worlds and they need
-		# different answers: genuinely open space, or a collider the sweep refuses to
-		# see because the capsule is already inside it. Ask the resting question
-		# before the ray, because a ramp underfoot answers the ray badly and this
-		# exactly.
+		# Nothing along the sweep: either open space or a collider the sweep refuses to see because the capsule is already inside.
+		# Ask the resting question before the ray; a ramp underfoot answers the ray badly and this exactly.
 		var resting := _blocking_rest_contact(from, motion, height, radius)
 
 		if resting != null:
@@ -274,16 +246,9 @@ func sweep(
 	var contacts := _q_rest()
 
 	if contacts.is_empty():
-		# Contact at `unsafe` but no rest info: the shapes are touching to within
-		# floating point but not overlapping. [b]Ask again a few millimetres deeper
-		# before guessing[/b], because the guess is expensive. Sliding along the
-		# motion's own reverse does not "only cost a tick of movement", as this used
-		# to say: the motor clips the VELOCITY against the normal too, and a velocity
-		# parallel to the motion clipped against its own reverse is zero. A surfer
-		# grazing a bank at 254 u/s stopped dead in mid-air on one such tick and hung
-		# there for good (`[bank-hang-1]`, game-g2gfast surf_g2g_intro bonus 1, line
-		# +48); one millimetre further along, the same query reports the bank's own
-		# normal.
+		# Contact at `unsafe` but no rest info: touching without overlapping. Ask again a few millimetres deeper before guessing,
+		# because sliding along the motion's reverse clips the velocity to zero too, and a surfer grazing a bank hung mid-air
+		# for good (`[bank-hang-1]`); a millimetre further the query reports the bank's own normal.
 		var along := motion.normalized()
 		for depth: float in CONTACT_RETRY_DEPTHS:
 			_shape_params.transform = Transform3D(
@@ -294,36 +259,15 @@ func sweep(
 				break
 
 	if contacts.is_empty() and motion.normalized().dot(Vector3.DOWN) >= 0.7:
-		# [b]Downward, the guess below is a floor made of nothing[/b]
-		# (`[jumping-into-crate-1]`, 2026-10-02). A capsule GRAZING a vertical face --
-		# beside it, a hair from it, moving down -- makes cast_motion report a contact
-		# that no rest query along the motion can name, and the motion's reverse is then
-		# straight UP: a perfect floor. A runner jumping beside a crate stack whose upper
-		# crate sat 2 cm proud of the face was put on the ground by the crate's SIDE at
-		# the jump's apex, jumped again from there, and went up the stack a crate at a time
-		# (mg-buses-from-hell; the 2026-09-26 "jumping reached 2.98 m" on a 3 m stack).
-		# The ray down the axis is the honest question for a floor: it answers a floor
-		# under the player, and a face beside them is not one. Nothing under the axis is
-		# a graze, and a graze does not stop a fall.
+		# Downward, the guess below is a floor made of nothing (`[jumping-into-crate-1]`): a capsule grazing a vertical face makes
+		# cast_motion report a contact no rest query names, so the motion's reverse is straight UP, a perfect floor, and a runner
+		# climbed a crate stack by its sides. A ray down the axis answers floors honestly; nothing under it is a graze.
 		return _downward_ray_fallback(from, motion, height)
 
 	if contacts.is_empty():
-		# [b]Still nothing: ask where the move ENDS, not what it grazed[/b]
-		# (`[fps-face-edge-stop]`, 2026-10-02). This used to answer with the reverse of
-		# the motion, which "cannot let the player through" -- and which the motor clips
-		# the velocity against, and a velocity clipped against its own reverse is zero.
-		# A surfer leaving a rolled, pitched face over its far END grazes the edge
-		# between its top and end faces: cast_motion reports a contact, and no rest
-		# query along the motion can name it, because the motion is leaving it. Every
-		# rider at 30 m/s off a 56/7 degree slab's end stopped dead in mid-air and fell
-		# from rest (surf_physics_selftest's last section).
-		#
-		# A rest query that finds nothing at `unsafe` or a few millimetres past it means
-		# the capsule touches without overlapping there, so nothing thin sits in the
-		# path. What can still be wrong is the end of the move, and that is the question
-		# _end_overlap_fallback already answers for a sweep that saw nothing at all: a
-		# surface the move ends inside and goes into, backed off by its depth; clear
-		# space or a surface being left, a miss.
+		# Still nothing: ask where the move ENDS, not what it grazed (`[fps-face-edge-stop]`); the motion's reverse clipped velocity to zero
+		# and stopped a surfer dead leaving a pitched face over its end edge. Nothing at rest means touching without overlap,
+		# so _end_overlap_fallback answers: back off by the depth of a surface entered, else a miss.
 		var ending := _end_overlap_fallback(from, motion, height, radius)
 		return ending if ending != null else Hit.miss()
 
@@ -347,11 +291,8 @@ func sweep(
 	_turn_round_flipped(result, at_contact, height, radius)
 	result.depth = 0.0
 
-	# [b]A contact reported late.[/b] Against a large convex, cast_motion's `safe` can be
-	# centimetres past the real contact (`[sweep-1]`: a 40 m wall let a capsule 5 cm
-	# into it, a 164 m wall 11 cm). The rest query at `unsafe` knows how deep `unsafe`
-	# is, from the same numbers [method rest_contact] uses. So when that is more than a
-	# rounding error, back off by that depth over the rate of approach.
+	# A contact reported late (`[sweep-1]`): against a large convex, cast_motion's `safe` can be centimetres past the real
+	# contact (a 164 m wall let a capsule in 11 cm). The rest query at `unsafe` knows the depth, so back off by depth over the rate of approach.
 	var approach := -motion.dot(result.normal)
 	if approach > 1e-9:
 		var at_unsafe := from + motion * unsafe
@@ -364,34 +305,9 @@ func sweep(
 	return result
 
 
-## A ray down the capsule's own axis, for when [method PhysicsDirectSpaceState3D.cast_motion]
-## refuses to see the floor.
-##
-## [b]cast_motion skips any collider it believes the shape already overlaps at the
-## start of the sweep[/b] — "ignore objects it's inside of", in the engine's own words
-## — and that judgement comes out of the GJK distance solver. Against a very large
-## convex it is not reliable: measured on 4.7.2 against a 164 m plate, a capsule
-## resting 4.5 mm above the floor was reported as free space by a 22 mm downward
-## sweep, while a ray through the same gap on the same tick found the floor at y = 0.
-## Lifting the start of the sweep does not fix it — the answer flips between hit and
-## miss with no threshold, because it is a convergence failure rather than a margin.
-##
-## The consequence is the worst one this code has: the ground probe misses, the player
-## is declared airborne on a floor they are standing on, they sink, and once they are
-## inside the geometry every subsequent query starts embedded and answers nothing. They
-## leave the level at a constant rate. That is exactly how [code]pg_lobby[/code]'s 164 m
-## plate behaved in game-playground.
-##
-## A ray is analytic against every primitive and has no such failure mode. It is used
-## only as a second opinion when the sweep saw nothing at all, so it can never make the
-## motor collide with less than it did before.
-##
-## [b]Downward motion only, and the restriction is not laziness.[/b] The ray runs down
-## the capsule's axis from its lowest point, so on a floor the distance it reports IS
-## the capsule's contact distance. Sideways, the axis is [member DotFpsTunables.radius]
-## behind the leading edge, so the same trick would report a wall late and embed the
-## player in it. A wall is [method _end_overlap_fallback]'s, and a wall reported late
-## is handled in [method sweep] itself.
+## A ray down the capsule's own axis, for when [method PhysicsDirectSpaceState3D.cast_motion] refuses to see the floor.
+## cast_motion skips colliders it believes the shape already overlaps, unreliable against a very large convex (4.7.2: 4.5 mm above a 164 m plate read free), so the player sank through.
+## Analytic, runs only when the sweep saw nothing. Downward only: a sideways edge would report a wall late; walls are [method _end_overlap_fallback]'s.
 func _downward_ray_fallback(
 	from: Vector3, motion: Vector3, height: float
 ) -> Hit:
@@ -439,20 +355,9 @@ func _downward_ray_fallback(
 	return result
 
 
-## Where the sweep said "nothing", whether the capsule would END inside something it is
-## moving into, and if so how far back along the motion it stops touching it.
-##
-## [b]The sideways half of [method _downward_ray_fallback]'s problem (`[sweep-1]`).[/b]
-## cast_motion's misjudgement is not only downward: measured on 4.7.2, a capsule 0 to
-## 6 mm off a 164 m wall and swept 1 to 12 cm into it was reported free on 299 of 3,000
-## sweeps, the worst ending 11 cm inside it (40 m wall: 5 cm; 4 m wall: under a
-## millimetre). A ray cannot answer this one, because the axis is a radius behind the
-## leading edge. The overlap at the end can: at centimetres of depth there is no
-## convergence question, and [method rest_contact]'s depth is exact along its normal.
-## So the fraction is backed off by that depth over the motion's rate of approach.
-##
-## Like the ray, it only runs when the sweep saw nothing, and it only ever reports a
-## surface the motion is driving into, so it can never make the motor collide with less.
+## Where the sweep said "nothing", whether the capsule would END inside something it moves into, and how far back along the motion it stops touching it.
+## The sideways half of [method _downward_ray_fallback]'s problem (`[sweep-1]`): 299 of 3,000 sweeps 0 to 6 mm off a 164 m wall ended up to 11 cm inside it. A ray cannot answer (axis behind the edge); the end overlap can.
+## Backs the fraction off by that depth over the rate of approach; only reports surfaces being driven into, so it never collides with less.
 func _end_overlap_fallback(
 	from: Vector3, motion: Vector3, height: float, radius: float
 ) -> Hit:  # null for a miss
@@ -480,13 +385,7 @@ func _end_overlap_fallback(
 
 
 ## A [method rest_contact] filtered to surfaces this motion would drive further into.
-##
-## [b]The filter is the whole safety of the change.[/b] A capsule that is inside
-## something is usually also trying to get out of it — the tick after a push, a step
-## up onto a ledge, a crouch under a lip — and reporting a contact whose normal the
-## motion is already moving away from would stop that move dead at fraction 0 and pin
-## the player against the surface they were escaping. Only a surface being entered
-## blocks; one being left is not this query's business.
+## The filter is the safety: a capsule inside something usually tries to leave it (after a push, a step up, a crouch under a lip), and blocking surfaces being left would pin it.
 func _blocking_rest_contact(
 	from: Vector3, motion: Vector3, height: float, radius: float
 ) -> Hit:  # null when nothing blocks, to spare a miss
@@ -517,29 +416,9 @@ func rest_contact(at: Vector3, height: float, radius: float) -> Hit:
 ## Shared by [method rest_contact] and [method sweep], which read the same engine answer.
 func _turn_round_flipped(result: Hit, at: Vector3, height: float, radius: float) -> void:
 
-	# [b]A contact normal can come back pointing INTO the surface the capsule rests on
-	# (`[ramp-pop-1]`, 2026-10-08).[/b] A rider on game-g2gfast's surf_mesa, a skin off a
-	# ramp brush and not moving between the two queries, was reported clear on one tick
-	# and on the next 57 units deep along the face's exact reverse: the same contact
-	# point, the normal flipped. Depth is measured along the normal, so a flipped normal
-	# turns a resting contact into an embed of nearly the capsule's whole thickness, and
-	# [method DotFpsMotor._depenetrate] pushed the player a full step INTO the ramp; the
-	# next tick measured the real 18-unit overlap and pushed them back out. A two-tick dip
-	# that a recording shows as one frame of the view jumping off the face and back, many
-	# times a ride -- "the ramps are jumpy". It fired on 231 of 270 rides in
-	# game-g2gfast's tools/ramp_bump_probe.
-	#
-	# The tell is that the capsule's centre lies past the contact plane: depth over the
-	# support along the normal. A real resting contact never does that, and the reversed
-	# normal then measures [code]2 * support - depth[/code], a shallow contact. But a
-	# genuine embed of more than half the capsule does too, and there the engine's normal
-	# is the right way out. So the reversed answer is TRIED, not assumed: kept only when
-	# the capsule moved out along it is clear of whatever it touched.
-	#
-	# No upper bound on the depth, and the reversed depth floors at zero: the flipped
-	# reports measured a few millimetres PAST the whole capsule (56.99 units against a
-	# 56.8 span), because the contact point sits inside the shapes' margin. The probe below
-	# is what tells a flip from a capsule really buried behind a face, at any depth.
+	# A contact normal can point INTO the surface the capsule rests on (`[ramp-pop-1]`), reading it as embedded and making
+	# [method DotFpsMotor._depenetrate] push riders a full step into the ramp.
+	# A genuinely buried capsule shows the same tell, so the reversed answer is TRIED and kept only if the capsule moved out along it is clear; its depth floors at zero.
 	var support := DotFpsBody.capsule_support(result.normal, height, radius)
 
 	if result.depth <= support:

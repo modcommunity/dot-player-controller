@@ -3,31 +3,15 @@ class_name DotFpsView
 extends Node
 
 ## Everything the player sees, and nothing the simulation depends on.
-##
-## [b]The split this node exists to enforce.[/b] Simulation runs at a fixed tick rate
-## and must be identical on every machine; rendering runs at whatever the display
-## does and may differ freely. Anything cosmetic that leaked into [DotFpsMotor] would
-## become part of the netcode contract — a client with view bob disabled would
-## simulate differently from the server. So the camera height, the pitch, the
-## field of view and the smoothing all live here, are driven [i]from[/i] the state,
-## and never write back to it.
-##
-## That is also why this node runs in [method Node._process] rather than
-## [method Node._physics_process]: interpolating the eye position between ticks is
-## the entire point, and doing it on the tick would quantise the view to the tick
-## rate and undo it.
+## Cosmetic state is driven from the sim state and never written back: anything cosmetic in [DotFpsMotor] would become netcode contract.
+## It runs in [method Node._process], not the physics tick, because interpolating the eye between ticks is its point.
 
 const CHANNEL := "fps.view"
 
 @export_group("Wiring")
 
 ## The node yaw rotates. Usually the player body, so the avatar turns with the view.
-##
-## [b]Rotating the body rather than the camera is a deliberate change from the
-## previous controller[/b], which put both angles on the camera. That works for a
-## single-player first-person game and nothing else: the body never turned, so a
-## third-person view, a shadow, a visible avatar and anything on the server that
-## cared which way a player faced were all wrong.
+## The body rotates rather than the camera, so a third-person view, a visible avatar and server-side facing are right.
 @export var body_ref: DotNodeRef = null
 
 ## The node that carries the eye. Moved vertically for crouching.
@@ -42,9 +26,7 @@ const CHANNEL := "fps.view"
 @export_range(30.0, 140.0, 0.5) var base_fov: float = 90.0
 
 ## Extra degrees of field of view at [member fov_speed_reference].
-##
-## A speed cue, and a cheap one: the periphery moving faster than the centre is most
-## of what makes fast movement feel fast. Zero disables it.
+## A cheap speed cue. Zero disables it.
 @export_range(0.0, 60.0, 0.5) var fov_speed_gain: float = 15.0
 
 ## Horizontal speed at which the full [member fov_speed_gain] is applied, in m/s.
@@ -60,9 +42,7 @@ const CHANNEL := "fps.view"
 @export_group("Feel")
 
 ## How far the camera leans into a turn or a strafe, in degrees. 0 disables it.
-##
-## The cue that makes strafing read as movement rather than as the world sliding.
-## Small: past about four degrees it reads as a tilted horizon.
+## Keep it small: past about four degrees it reads as a tilted horizon.
 @export_range(0.0, 12.0, 0.1) var strafe_roll: float = 1.6
 
 ## Lateral speed at which the full [member strafe_roll] is reached, in m/s.
@@ -72,10 +52,7 @@ const CHANNEL := "fps.view"
 @export_range(0.5, 40.0, 0.5) var strafe_roll_response: float = 7.0
 
 ## How far the view dips on landing, in metres, at [member landing_reference_speed].
-##
-## Scaled by impact and decayed, so stepping off a kerb is a twitch and a long fall
-## is a lurch — the same event carrying its own weight rather than one canned
-## animation for both.
+## Scaled by impact, so stepping off a kerb is a twitch and a long fall a lurch.
 @export_range(0.0, 0.5, 0.005) var landing_dip: float = 0.09
 
 ## Downward speed producing the full [member landing_dip], in m/s.
@@ -96,26 +73,18 @@ const CHANNEL := "fps.view"
 @export_range(0.0, 2.0, 0.05) var landing_strength: float = 1.0
 
 ## Vertical camera travel of the walk cycle, in metres. 0 disables the bob.
-##
-## Off by default. Head bob is divisive and a competitive game usually wants none;
-## it is here so a game that wants it does not implement it against the wrong data.
+## Off by default: head bob is divisive and a competitive game usually wants none.
 @export_range(0.0, 0.15, 0.001) var bob_amount: float = 0.0
 
 ## Extra degrees of field of view while sliding, on top of the speed widening. 0 for none.
-##
-## Read only while [method DotFpsState.is_sliding], which needs
-## [member DotFpsTunables.slide_enabled], so a game without sliding sees nothing from it.
+## Read only while [method DotFpsState.is_sliding], so a game without sliding sees nothing.
 @export_range(0.0, 40.0, 0.5) var slide_fov_gain: float = 8.0
 
 ## Degrees the camera rolls while sliding, eased in and out like the strafe roll. 0 for none.
 @export_range(-20.0, 20.0, 0.5) var slide_roll: float = 3.0
 
-## Degrees the camera rolls away from the wall while wall running, toward the open side.
-## 0 for none.
-##
-## Read only while [method DotFpsState.is_wall_running], which needs
-## [member DotFpsTunables.wall_run_enabled], so a game without wall running sees nothing
-## from it. View only: the simulation never sees it.
+## Degrees the camera rolls away from the wall while wall running. 0 for none.
+## Read only while [method DotFpsState.is_wall_running]. View only: the simulation never sees it.
 @export_range(0.0, 30.0, 0.5) var wall_run_roll: float = 6.0
 
 ## How quickly the wall-run roll eases in and out, per second. Exponential, so it starts
@@ -148,49 +117,32 @@ const CHANNEL := "fps.view"
 @export_range(0.0, 2.0, 0.05) var bob_sway: float = 0.5
 
 ## Bob cycles per metre travelled.
-##
-## Distance-based, not time-based: a bob driven by a timer keeps bobbing while the
-## player stands still and runs at the wrong rate when they walk.
+## Distance-based, not time-based, so it stops when the player stands still.
 @export_range(0.1, 5.0, 0.05) var bob_cycles_per_metre: float = 0.55
 
 @export_group("Smoothing")
 
 ## How quickly the eye follows the simulated eye height, per second.
-##
-## Cosmetic only. The collider resizes at the rate the tunables specify; this is the
-## camera catching up, so a crouch does not snap the view.
+## Cosmetic: the collider resizes per the tunables; this is the camera catching up.
 @export_range(1.0, 60.0, 0.5) var eye_response: float = 18.0
 
 ## Smooth the eye's vertical position when the simulation steps the player up stairs.
-##
-## Without it, every stair tread moves the camera up by the tread height in one
-## frame, which is the staircase stutter familiar from a hand-rolled controller. The
-## step still happens instantly in the simulation; only the view lags.
+## Without it every tread moves the camera in one frame; the sim still steps instantly.
 @export var smooth_step_up: bool = true
 
 ## Seconds over which a step-up is absorbed.
 @export_range(0.0, 0.5, 0.005) var step_smooth_time: float = 0.1
 
 ## Extra offset added to the eye, in metres.
-##
-## Where a prediction correction goes. A [DotFpsController] under dot-net feeds the
-## predictor's decaying offset in here, so the view eases toward the corrected
-## position while the simulation is already using it.
+## Where a prediction correction goes: the view eases to the corrected position while the sim already uses it.
 var external_offset: Vector3 = Vector3.ZERO
 
-## Extra rotation added to the camera, in degrees: x pitch (up positive), y yaw, z roll.
-##
-## Where a weapon's view punch goes. [b]Presentation only[/b] — the simulated pitch and
-## yaw are untouched, so a shot still goes where the command pointed. It exists because
-## [method apply] writes the camera's angles from scratch every frame: anything a weapon
-## added to the camera itself was overwritten before it was ever drawn.
+## Extra rotation added to the camera, in degrees: x pitch (up positive), y yaw, z roll. Where a weapon's view punch goes.
+## Presentation only. [method apply] rewrites the camera angles every frame, so anything added to the camera itself was overwritten.
 var external_angles: Vector3 = Vector3.ZERO
 
-## A multiplier on the field of view, applied after everything else. Where a weapon's aim
-## zoom goes (0.3 is a strong scope), for the same reason as [member external_angles]:
-## [method apply] writes the lens every frame. Applied after the speed widening's smoothing
-## rather than inside it, because the aim eases itself and smoothing it twice makes a scope
-## arrive late.
+## A multiplier on the field of view, applied after everything else; where a weapon's aim zoom goes (0.3 is a strong scope).
+## Applied after the speed widening's smoothing, not inside it: the aim eases itself and smoothing twice makes a scope arrive late.
 var external_fov_scale: float = 1.0
 
 var _body: Node3D = null
@@ -257,9 +209,7 @@ func _resolve() -> void:
 
 
 ## Applies a simulated state to the visible nodes.
-##
-## [param state] is the render state — interpolated between ticks by the controller,
-## not the raw tick state — and [param delta] is the frame time.
+## [param state] is the interpolated render state, not the raw tick state.
 func apply(
 	state: DotFpsState,
 	motor: DotFpsMotor,
@@ -269,11 +219,8 @@ func apply(
 		return
 
 	if _body != null:
-		# Yaw only — pitching the body would tilt the collider with it — and set in
-		# world space, because the controller writes the simulated position to
-		# global_position. Using the local rotation here made the two disagree the
-		# moment a player was parented under anything rotated: the body would move to
-		# the right place and face the wrong way.
+		# Yaw only (pitching would tilt the collider), in world space because the controller writes global_position;
+		# local rotation made a player parented under anything rotated face the wrong way.
 		_body.global_basis = Basis(Vector3.UP, deg_to_rad(state.yaw))
 
 	var target_eye := motor.eye_position(state).y - state.position.y
@@ -323,10 +270,8 @@ func apply(
 	_apply_fov()
 
 
-## The exports above onto [member _motion]. Every frame, because they are exports a game
-## may change at any time, and eighteen assignments cost nothing. Every field of
-## [DotFpsViewMotion] is forwarded: one left out keeps the motion object's default, and a
-## game on this node has no way to change it (five were missing until the selftest checked).
+## The exports above onto [member _motion], every frame because a game may change them any time.
+## Every [DotFpsViewMotion] field must be forwarded; one left out keeps the default with no way to change it.
 func _sync_motion() -> void:
 	_motion.strafe_roll = strafe_roll
 	_motion.strafe_roll_reference = strafe_roll_reference
@@ -387,10 +332,7 @@ func _advance_bob(state: DotFpsState, delta: float) -> void:
 
 
 ## Kicks the view down. Connect to [signal DotFpsController.landed].
-##
-## A kick to the eye's velocity, not its position ([DotFpsViewMotion.note_landing]): the eye
-## goes on down for a few frames and comes back, with no frame where it jumps. It used to be
-## set straight to the full dip and a 6 degree pitch on the landing frame, a snap.
+## A kick to the eye's velocity ([DotFpsViewMotion.note_landing]), so the eye dips and returns with no frame where it jumps.
 func note_landing(impact: float) -> void:
 	_sync_motion()
 	_motion.note_landing(impact)
@@ -403,20 +345,14 @@ func _apply_fov() -> void:
 
 
 ## Tells the view the simulation stepped up by [param height] metres.
-##
-## Called by [DotFpsController] when a tick's vertical gain looks like a stair step
-## rather than a jump. The view absorbs it and pays it back over
-## [member step_smooth_time].
+## Called when a tick's vertical gain looks like a stair step; the view pays it back over [member step_smooth_time].
 func note_step_up(height: float) -> void:
 	if not smooth_step_up or height <= 0.0:
 		return
 	_step_offset = minf(_step_offset + height, 1.0)
 
 
-## Drops all smoothing. Call after a teleport or a respawn.
-##
-## Without it the camera eases across the whole teleport distance, which shows the
-## player the inside of the level on the way.
+## Drops all smoothing. Call after a teleport or respawn, or the camera eases across the whole distance.
 func snap() -> void:
 	_eye_height = 0.0
 	_step_offset = 0.0

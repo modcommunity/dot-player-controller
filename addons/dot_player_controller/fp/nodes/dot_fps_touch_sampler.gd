@@ -1,13 +1,8 @@
 class_name DotFpsTouchSampler
 extends DotFpsSampler
 
-## Produces commands from touch. For phones and for the browser on a tablet.
-##
-## [b]A sampler, not a control scheme.[/b] It turns finger positions into a
-## [DotFpsCommand] and nothing else — no textures, no buttons, no layout. A game
-## draws whatever it wants over the top and calls [method hold] for its own on-screen
-## buttons, because a virtual stick that ships its own art is a virtual stick nobody
-## can restyle.
+## Produces commands from touch, for phones and tablets.
+## A sampler, not a control scheme: no textures or layout. A game draws its own buttons and calls [method hold] for them.
 ##
 ## [codeblock]
 ## var sampler := DotFpsTouchSampler.new(tunables)
@@ -20,29 +15,18 @@ extends DotFpsSampler
 ##     func(): sampler.hold(DotFpsCommand.BUTTON_JUMP, false))
 ## [/codeblock]
 ##
-## [b]The screen is split, not divided into fixed widgets.[/b] A finger landing on
-## the movement side plants a stick wherever it touched rather than at a spot the
-## player has to find; a finger on the look side drags the view. That is the layout
-## every touch shooter converges on, and the reason is that a fixed stick position
-## requires looking at your thumb.
-##
-## Nothing here reaches the simulation: this produces commands, and
-## [DotFpsMotor] cannot tell where they came from. A replay of a touch session and a
-## replay of a keyboard session are the same replay.
+## The screen is split: a finger on the movement side plants a stick where it landed, one on the look side drags the view.
+## Nothing here reaches the simulation, so a touch replay and a keyboard replay are the same replay.
 
 ## Fraction of the screen width used for movement, from the left edge.
 var move_zone: float = 0.5
 
 ## Radius in pixels at which the virtual stick reads as fully deflected.
-##
-## In pixels rather than a fraction of the screen because it corresponds to how far a
-## thumb comfortably travels, which does not change with the display.
+## In pixels because it follows how far a thumb travels, not the display.
 var stick_radius: float = 90.0
 
 ## Deflection below this fraction reads as no input.
-##
-## Larger than a physical stick's dead zone: a thumb resting on glass drifts, and a
-## player who is not moving should not creep.
+## Larger than a physical dead zone: a thumb resting on glass drifts.
 var dead_zone: float = 0.14
 
 ## Degrees of view rotation per pixel dragged.
@@ -56,9 +40,7 @@ var tap_time: float = 0.25
 var tap_slop: float = 18.0
 
 ## Button a tap on the look side presses for one command. 0 disables taps.
-##
-## Defaults to nothing: which action a tap should take is a game's decision, and
-## guessing "fire" would be wrong for half of them.
+## Defaults to nothing: which action a tap takes is the game's decision.
 var tap_button: int = 0
 
 ## Buttons held by the game's own on-screen controls. See [method hold].
@@ -86,10 +68,7 @@ func _init(p_tunables: DotFpsTunables) -> void:
 	super(p_tunables)
 
 
-## Tells the sampler how wide the screen is, so the split lands in the right place.
-##
-## Call on resize. Defaults to Godot's project width, which is right until someone
-## rotates a phone.
+## Tells the sampler how wide the screen is, so the split lands in the right place. Call on resize.
 func set_screen_width(width: float) -> void:
 	_screen_width = maxf(1.0, width)
 

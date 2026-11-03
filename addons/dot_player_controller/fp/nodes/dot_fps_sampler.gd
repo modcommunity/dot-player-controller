@@ -1,22 +1,9 @@
 class_name DotFpsSampler
 extends RefCounted
 
-## Turns devices into a [DotFpsCommand]. The only part of the controller that reads
-## the keyboard.
-##
-## [b]Separate from the motor on purpose.[/b] A server applying a command from the
-## network, a replay, a bot and a demo playback all need commands and none of them
-## have an input device. Keeping sampling out of the simulation is what makes all
-## four possible, and it is what stops [code]Input.is_action_pressed[/code] from
-## being called during a prediction replay — where it would return what the player is
-## holding [i]now[/i] rather than what they held on the tick being replayed, and
-## silently break reconciliation.
-##
-## Action names are configurable rather than fixed, because [code]class_name[/code]
-## is global in Godot and so are input action names: a project that already has
-## [code]move_forward[/code] should not have to add [code]player_f[/code] as well.
-## [method register_default_actions] adds this addon's own set at runtime for a
-## project that has none.
+## Turns devices into a [DotFpsCommand]. The only part of the controller that reads the keyboard.
+## Separate from the motor so a server, replay, bot or demo can produce commands without a device, and so [code]Input.is_action_pressed[/code] is never called during a prediction replay.
+## Action names are configurable because input action names are global; [method register_default_actions] adds this addon's set for a project that has none.
 
 ## Action names, keyed by role. Assign to remap without subclassing.
 var actions: Dictionary = {
@@ -38,10 +25,7 @@ var actions: Dictionary = {
 }
 
 ## Degrees per second at full deflection for the analogue look actions.
-##
-## A rate, not a delta: a stick held over is a continuous input, so the view should
-## turn at a speed. Treating it like mouse motion makes the turn rate depend on the
-## frame rate.
+## A rate, not a delta: treating a held stick like mouse motion would make the turn rate depend on frame rate.
 var look_rate: float = 180.0
 
 var tunables: DotFpsTunables
@@ -50,34 +34,21 @@ var tunables: DotFpsTunables
 var yaw: float = 0.0
 var pitch: float = 0.0
 
-## Ignore devices and emit neutral commands.
-##
-## For a chat box or a menu: the player should stop moving, not keep running because
-## the key was down when the overlay opened.
+## Ignore devices and emit neutral commands, for a chat box or menu.
 var suspended: bool = false
 
 ## Multiplies mouse look: a game sets it to the lens's field-of-view scale while zoomed, so a scope turns the view as far per mouse count as the hip does per pixel. 1 at the hip.
 var look_scale: float = 1.0
 
 ## Mouse motion accumulated since the last [method sample], in pixels.
-##
-## Accumulated rather than applied immediately because mouse events arrive at the
-## device's rate — often several hundred hertz — and applying each one directly makes
-## the view a function of how many events happened to land in a frame.
+## Accumulated because events arrive at the device's rate, which would make the view depend on events per frame.
 var _mouse_delta: Vector2 = Vector2.ZERO
 
 ## Buttons from the previous sample, for edge detection outside the motor.
 var _previous_buttons: int = 0
 
 ## Button presses seen since the last [method sample], as [constant DotFpsCommand] bits.
-##
-## [b]Why a latch.[/b] A mouse wheel tick arrives as a press AND a release in one pair of
-## events, so [code]Input.is_action_pressed[/code] is never true for it at any moment a
-## tick can poll (measured: false in every frame, `is_action_just_pressed` true for one
-## physics frame). The same holds for a key tapped faster than a tick. The press is kept
-## here until the next command takes it, so each one reaches exactly one command as its
-## button bit, which is what the prediction, the server and a replay all see: nothing
-## downstream reads the latch, only the command it went into.
+## A latch because a wheel tick is a press and release in one event pair, so `is_action_pressed` is never true for it at a tick; each press reaches exactly one command.
 var _latched: int = 0
 
 ## The frame [method sample] last polled `is_action_just_pressed` on, so a frame that runs
@@ -102,11 +73,7 @@ func _init(p_tunables: DotFpsTunables) -> void:
 	tunables = p_tunables
 
 
-## Feeds an input event. Call from [method Node._input] (or `_unhandled_input`) with
-## EVERY event, not only mouse motion: a press of a button action is latched until the next
-## [method sample] ([member _latched]), which is the only way a wheel tick bound to jump
-## reaches a command. [DotFpsController] forwards everything; a client driving its own
-## sampler should too.
+## Feeds an input event. Call from [method Node._input] with every event, not only mouse motion: a button press is latched until the next [method sample], which is how a wheel tick bound to jump reaches a command.
 func handle_event(event: InputEvent) -> void:
 	if suspended:
 		return
@@ -124,11 +91,7 @@ func handle_event(event: InputEvent) -> void:
 
 
 ## Builds the command for this tick and clears the accumulated mouse motion.
-##
-## [b]Call this once per simulated tick, not once per frame.[/b] Called per frame at
-## a rate above the tick rate, the mouse motion between two ticks is split across
-## several commands of which only the last is used, and the view lags the mouse by a
-## fraction that changes with the frame rate.
+## Call once per simulated tick, not per frame, or the view lags the mouse by a frame-rate-dependent fraction.
 func sample(delta: float = 0.0) -> DotFpsCommand:
 	var command := DotFpsCommand.new()
 
@@ -154,10 +117,8 @@ func sample(delta: float = 0.0) -> DotFpsCommand:
 	# where the extra √2 of speed would otherwise come from.
 	command.move = move.limit_length(1.0)
 
-	# Held, or pressed since the last sample (the latch), or pressed this frame where nobody
-	# forwarded the event (the poll: a client that passes only mouse motion to
-	# handle_event). The poll is once per frame, so a frame of several ticks gives a press
-	# to the first only; the latch covers a frame that ran no tick at all.
+	# Held, or latched since the last sample, or pressed this frame where the event was not forwarded (the poll).
+	# The poll is once per frame, so a multi-tick frame gives the press to the first tick only.
 	var frame := Engine.get_physics_frames() if Engine.is_in_physics_frame() else -1 - Engine.get_process_frames()
 	var poll := frame != _polled_frame
 	_polled_frame = frame
@@ -186,10 +147,7 @@ func _apply_sprint_toggle(command: DotFpsCommand, move: Vector2) -> void:
 	command.set_button(DotFpsCommand.BUTTON_SPRINT, _sprint_on)
 
 
-## Turns the view from the analogue look actions, if a project binds them.
-##
-## [param delta] is the tick duration. Zero disables it, which is what a caller that
-## has only a mouse passes.
+## Turns the view from the analogue look actions, if bound. A [param delta] of zero disables it.
 func _apply_analogue_look(delta: float) -> void:
 	if delta <= 0.0:
 		return
@@ -247,21 +205,9 @@ func _strength(role: String) -> float:
 	return Input.get_action_strength(action)
 
 
-## Folds the mouse motion that has arrived since the last [method sample] into
-## [member yaw] and [member pitch] now, and returns them as (yaw, pitch) in degrees.
-##
-## [b]For drawing the view once per FRAME, which the tick cannot do.[/b] A renderer that
-## draws the simulated state's angles turns the camera only on frames a tick ran on. With
-## the display faster than the tick rate some frames run none -- one in nine at 144 Hz
-## against 128 ticks, nearly half at 240 -- and on those the view does not move while the
-## mouse does, then moves twice as far on the next: measured in game-g2gfast's
-## `headless_feel` as 96 of 864 frames frozen and 96 doubled at 144 Hz. Calling this
-## once a frame and drawing what it returns turns the view on every frame.
-##
-## The commands do not change: the angles are cumulative, so motion folded in here is
-## carried by the next [method sample] exactly as it would have been, and no tick ever
-## sees a different yaw. Suspended, it folds nothing, as [method handle_event] takes
-## nothing.
+## Folds the mouse motion that has arrived since the last [method sample] into [member yaw] and [member pitch] now, and returns them as (yaw, pitch) in degrees.
+## For drawing the view once per frame: with the display faster than the tick rate some frames run no tick, so the camera froze and then doubled (96 of 864 frames each at 144 Hz).
+## The commands do not change: the angles are cumulative, so the next [method sample] carries this motion exactly as before. Suspended, it folds nothing.
 func look_now() -> Vector2:
 	if not suspended:
 		_apply_mouse()
@@ -276,9 +222,7 @@ func look_at_angles(p_yaw: float, p_pitch: float) -> void:
 
 
 ## Which of this addon's actions the project is missing.
-##
-## Worth calling at startup: a missing action is not an error in Godot, it is silence,
-## and the symptom is a controller that runs perfectly and does not move.
+## Call at startup: a missing action is silence in Godot, and the symptom is a controller that does not move.
 func missing_actions() -> PackedStringArray:
 	var out := PackedStringArray()
 	for role in actions:
@@ -288,12 +232,8 @@ func missing_actions() -> PackedStringArray:
 	return out
 
 
-## Registers this addon's default bindings for any action the project lacks.
-##
-## WASD, space, ctrl, shift, alt, and V for noclip. Added at runtime rather than
-## shipped in a [code]project.godot[/code], because an addon cannot merge input maps
-## into a host project and a game that has its own bindings should keep them —
-## existing actions are never touched.
+## Registers this addon's default bindings for any action the project lacks: WASD, space, ctrl, shift, alt, V for noclip.
+## Added at runtime because an addon cannot merge input maps into a host project; existing actions are never touched.
 static func register_default_actions(sampler: DotFpsSampler = null) -> PackedStringArray:
 	var defaults := {
 		"left": KEY_A,

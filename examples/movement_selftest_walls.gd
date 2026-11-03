@@ -2,7 +2,6 @@ extends "res://examples/movement_selftest_physics.gd"
 
 ## The wall-running and wall-jumping sections of the movement self-test.
 
-# --- Wall running and wall jumping ------------------------------------------
 
 func _test_wall_run() -> void:
 	_section("wall running")

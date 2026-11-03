@@ -1,22 +1,8 @@
 extends Node
 
-## A playable course for feeling the movement out. Not a test.
-##
-## [codeblock]
-## godot --path . res://examples/sandbox.tscn
-##
-## # Exit on its own, so a sweep can open it:
-## godot --headless --path . res://examples/sandbox.tscn -- --seconds 3
-## [/codeblock]
-##
-## Stairs of increasing height, a surf ramp, and an open floor. WASD to move, space
-## to jump, ctrl to crouch, shift to sprint, alt to walk, V to noclip, F1 to dump the
-## controller's state to the console, escape to release the mouse.
-##
-## The controller is wired by nothing: [code]player.tscn[/code] sets no
-## [DotNodeRef]s at all, and the view finds the camera and the controller finds the
-## collider and the view by type. An inspector-configured project overrides any of
-## them; this is what the default costs.
+## A playable course for feeling the movement out. Not a test. Run: [code]godot --path . res://examples/sandbox.tscn[/code], add [code]-- --seconds 3[/code] to exit on its own.
+## Stairs of increasing height, a surf ramp and an open floor. WASD move, space jump, ctrl crouch, shift sprint, alt walk, V noclip, F1 dumps the controller's state, escape releases the mouse.
+## Nothing is wired: [code]player.tscn[/code] sets no [DotNodeRef]s, and the view and controller find the camera, collider and view by type. This is what the default costs.
 
 @onready var _controller: DotFpsController = $Player/Controller
 @onready var _readout: Label = $UI/Container/Port/Readout
@@ -51,10 +37,7 @@ func _ready() -> void:
 
 
 ## Marks the level's geometry with surface ids.
-##
-## Done in code here so the sandbox is one file to read. A real level sets the same
-## metadata in the editor — the resolver does not care which, and both are scene data
-## that a client and a server load identically, which is the requirement.
+## Done in code so the sandbox is one file to read; a real level sets the same metadata in the editor, which a client and a server load identically.
 func _mark_surfaces() -> void:
 	var ramp := get_node_or_null("World/Area_One/SurfRamp")
 	if ramp != null:
@@ -143,15 +126,8 @@ func _on_surface_changed(_from: StringName, to: StringName) -> void:
 
 
 ## Runs for `--seconds N` and then exits 0. Zero, the default, means forever.
-##
-## This scene is interactive: it waits for a person, so a blanket "run every example"
-## sweep stalls here and the scene is therefore opened by nothing. That is the state a
-## load-time regression hides in — a renamed node or a moved resource breaks it and no
-## suite in the repository notices. Bounding it is what makes it sweepable, the same
-## way dot-auth's issuer example is.
-##
+## An interactive scene stalls a blanket "run every example" sweep, which is where a load-time regression (a renamed node, a moved resource) hides; bounding it makes it sweepable.
 ## Not a self-test: reaching the timeout only proves the scene loaded and ran frames.
-## It exits 0 for exactly that claim and no larger one.
 func _arm_exit_timer() -> void:
 	var argv := OS.get_cmdline_user_args()
 	var at := argv.find("--seconds")

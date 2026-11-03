@@ -4,10 +4,8 @@ extends "dot_fps_motor_base.gd"
 ## [DotFpsMotor] to keep that file under the size gate; it is the layer between them.
 
 
-## How finely a wall's heading is counted for [member DotFpsTunables.wall_jump_max_per_wall]:
-## eighths of a turn, the width of its replicated field. Coarse, and it does not need to be
-## finer: two walls at a right angle are always two headings apart, so a corner is two
-## walls, and a single wall is never counted as two however its normal rounds.
+## How finely a wall's heading is counted for [member DotFpsTunables.wall_jump_max_per_wall]: eighths of a turn, the replicated field's width.
+## Two walls at a right angle are always two headings apart, and one wall is never two.
 const WALL_HEADINGS := 8
 
 ## The wall counters' ceiling, the width of their replicated field.
@@ -37,17 +35,8 @@ func _wall_probe_directions(state: DotFpsState) -> Array[Vector3]:
 
 
 ## The wall beside the player this tick, or null. Also writes [member DotFpsState.wall_normal].
-##
-## [b]Asked fresh every tick, never remembered.[/b] Whether the wall is still there is a
-## question about the world, and the world answers it the same way on both machines; a
-## normal carried over from the last tick would be one more thing a rewind has to restore.
-##
-## Probed only when something will use the answer: a run in progress, a run that could
-## start (airborne, fast enough, not spent), or a jump press a wall jump could spend. A
-## short sideways sweep (`wall_reach`) to each side of the velocity, then along the view's
-## four flat directions, and the nearest wall steep enough wins. Every direction is
-## needed: a run keeps the wall beside the velocity, while a player touching a wall from a
-## standstill has only the view to say where it is.
+## Asked fresh every tick: the world answers the same on both machines, and a remembered normal is one more thing a rewind must restore.
+## Probed only when the answer will be used (a run, a possible start, or a wall-jump press): a short sideways sweep (`wall_reach`) to each side of the velocity, then the view's four flat directions; the nearest steep enough wall wins.
 func _wall_contact(state: DotFpsState, command: DotFpsCommand) -> DotFpsBody.Hit:
 	if (
 		not tunables.wall_run_enabled
@@ -91,9 +80,7 @@ func _wall_contact(state: DotFpsState, command: DotFpsCommand) -> DotFpsBody.Hit
 	var steepest := cos(deg_to_rad(90.0 - tunables.wall_max_angle_from_vertical))
 	var best: DotFpsBody.Hit = null
 
-	# A run keeps the wall beside it: while running, a wall found by the two sideways probes wins
-	# over anything nearer behind or ahead (a ledge's end face has no "along" speed and ended
-	# the run under nearest-wins).
+	# A run keeps the wall beside it: while running, the two sideways probes win over anything nearer, since a ledge's end face has no "along" speed and ended runs under nearest-wins.
 	var sideways := 2 if state.is_wall_running() and directions.size() == 6 else 0
 	var beside: DotFpsBody.Hit = null
 
@@ -140,14 +127,8 @@ static func _same_wall(a: int, b: int) -> bool:
 
 
 ## Starts, carries and ends a wall run.
-##
-## [b]Entered only from the air[/b], beside a wall steep enough, moving along it at
-## [member DotFpsTunables.wall_run_min_speed] or more and not into it head-on, not falling
-## fast, with forward held (when required), and not after a run already ended in this
-## airborne stretch. While it lasts the speed along the wall is left alone (nothing here
-## writes the horizontal velocity) and gravity is reduced, in [method _wall_run_vertical].
-## It ends on the time cap, on losing the wall, on slowing down, on releasing forward, on
-## landing, and on any jump or launch, a wall jump included.
+## Entered only from the air, beside a steep enough wall, moving along it at [member DotFpsTunables.wall_run_min_speed] or more, not falling fast, forward held when required, and not after a run already ended this airborne stretch.
+## Speed along the wall is left alone and gravity reduced ([method _wall_run_vertical]). Ends on the time cap, losing the wall, slowing, releasing forward, landing, or any jump or launch.
 func _update_wall_run(
 	state: DotFpsState,
 	command: DotFpsCommand,
@@ -442,14 +423,8 @@ func _speed_along_wall(state: DotFpsState, wall: DotFpsBody.Hit) -> float:
 	return (flat - normal * flat.dot(normal)).length()
 
 
-## The vertical half of a wall run, in place of gravity.
-##
-## Gravity scaled by [member DotFpsTunables.wall_run_gravity_scale] (and by a modifier,
-## as everywhere), and the vertical speed eased toward zero at
-## [member DotFpsTunables.wall_run_vertical_damping] per second. [b]Eased, never set[/b]:
-## a player who jumped onto the wall rises a little further and levels off, one who was
-## falling is caught over a few ticks, and nothing changes by more than a tick's worth of
-## acceleration, at the start, during, or when the run ends and full gravity returns.
+## The vertical half of a wall run, in place of gravity: scaled by [member DotFpsTunables.wall_run_gravity_scale] and eased toward zero at [member DotFpsTunables.wall_run_vertical_damping] per second.
+## Eased, never set, so nothing changes by more than a tick's gravity at the start, during, or at the end.
 func _wall_run_vertical(state: DotFpsState, delta: float) -> void:
 	state.velocity.y -= tunables.gravity * tunables.wall_run_gravity_scale * _effects.gravity * delta
 	state.velocity.y *= exp(-tunables.wall_run_vertical_damping * delta)
@@ -477,11 +452,8 @@ func _wall_slides(state: DotFpsState, command: DotFpsCommand, wall: DotFpsBody.H
 	return wish.normalized().dot(-_flat_normal(wall.normal)) > 0.5
 
 
-## The wall slide, after gravity: a fall that reaches [member DotFpsTunables.wall_slide_speed]
-## stops gaining speed there, and one that arrived faster is eased down to it,
-## exponentially at [member DotFpsTunables.wall_run_vertical_damping], with no gravity on
-## top. Never cut to the cap in one tick: the change is at most the tick's gravity or the
-## easing's step. [param falling_at] is the vertical speed before this tick's gravity.
+## The wall slide, after gravity: a fall reaching [member DotFpsTunables.wall_slide_speed] stops gaining speed, and a faster one eases down to it exponentially at [member DotFpsTunables.wall_run_vertical_damping].
+## Never cut to the cap in one tick. [param falling_at] is the vertical speed before this tick's gravity.
 func _wall_slide_vertical(state: DotFpsState, falling_at: float, delta: float) -> void:
 	var cap := -tunables.wall_slide_speed
 	if state.velocity.y >= cap:
@@ -494,17 +466,8 @@ func _wall_slide_vertical(state: DotFpsState, falling_at: float, delta: float) -
 
 
 ## A jump off a wall the player is touching or running on. Returns whether it fired.
-##
-## On the jump press (buffered like a ground jump, never held: holding jump with
-## [member DotFpsTunables.auto_hop] on would otherwise wall-jump the instant a wall came
-## within reach), in the air, beside a wall steep enough, and not past
-## [member DotFpsTunables.wall_jump_max_per_wall] jumps off that wall since the ground.
-##
-## [b]The speed along the wall is kept[/b] and the push is added on top, so a jump out of a
-## run carries the run. The push leans from the wall's normal toward the view by
-## [member DotFpsTunables.wall_jump_look_blend], with the part of the look that points
-## into the wall dropped first, so the jump always leaves the wall and goes roughly where
-## the player is looking. The upward speed replaces a lower one, like the launch's.
+## On the buffered jump press, never held (holding with [member DotFpsTunables.auto_hop] would wall-jump the instant a wall came in reach), in the air, beside a steep enough wall, under [member DotFpsTunables.wall_jump_max_per_wall].
+## Speed along the wall is kept and the push added; the push leans from the normal toward the view by [member DotFpsTunables.wall_jump_look_blend] with the into-wall part dropped, so it always leaves the wall. Upward speed replaces a lower one, like the launch's.
 func _try_wall_jump(
 	state: DotFpsState,
 	command: DotFpsCommand,
@@ -579,24 +542,9 @@ func _try_wall_jump(
 	return true
 
 
-## A sweep that always leaves [member DotFpsTunables.skin_width] between the player
-## and whatever it hit.
-##
-## [b]Resting exactly on a surface is a degenerate state and every collision backend
-## handles it differently.[/b] Godot's [method PhysicsDirectSpaceState3D.cast_motion]
-## reports [i]no collision[/i] when a move ends with the shapes precisely touching —
-## which is reasonable, since touching is not overlapping. The consequence is not: a
-## player who lands so that their feet come to rest at exactly the floor's height is
-## then in a position where every subsequent downward sweep also reports nothing, so
-## they are never grounded again and sink through the world at a constant rate. It
-## takes one tick where the fall distance happens to equal the remaining gap, which at
-## 60 Hz happens within a second or two of ordinary play.
-##
-## So every query sweeps [member DotFpsTunables.skin_width] further than asked and
-## gives the extra distance back. Contact is detected slightly early, the player is
-## left slightly clear, and the exactly-coincident case never arises. The returned
-## fraction is rescaled to the motion the caller asked about, so call sites read as
-## though none of this were happening.
+## A sweep that always leaves [member DotFpsTunables.skin_width] between the player and whatever it hit.
+## [method PhysicsDirectSpaceState3D.cast_motion] reports no collision when a move ends exactly touching, so a player resting at precisely the floor height is never grounded again and sinks at a constant rate (within seconds at 60 Hz).
+## Every query therefore sweeps skin_width further and gives it back; the returned fraction is rescaled to the asked motion, so call sites read as if none of this happened.
 func _sweep(
 	centre: Vector3,
 	motion: Vector3,
@@ -638,12 +586,7 @@ class ViewBasis extends RefCounted:
 	var up: Vector3
 
 
-## [b][param state].position is the player's feet[/b], not the capsule's centre.
-##
-## Feet-relative because that is where a scene places a character's origin, so the
-## host's node transform and the simulated position are the same number and no call
-## site has to remember to convert. Everything that talks to [DotFpsBody] converts
-## here, in one place.
+## [param state].position is the player's feet, not the capsule's centre: that is where a scene places a character's origin, so the node transform and simulated position are the same number. Everything talking to [DotFpsBody] converts here.
 func _capsule_centre(feet: Vector3, height: float) -> Vector3:
 	return feet + Vector3.UP * (height * 0.5)
 

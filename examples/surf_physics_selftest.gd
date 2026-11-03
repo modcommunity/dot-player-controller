@@ -1,30 +1,8 @@
 extends "res://examples/surf_physics_selftest_base.gd"
 
-## Surf, against the physics server the games actually run on.
-##
-## [codeblock]
-## godot --headless --path . res://examples/surf_physics_selftest.tscn
-## [/codeblock]
-##
-## [b]Why this exists when surf_selftest already covers surf.[/b] That suite runs
-## against [DotFpsFlatBody], deliberately and for good reasons — analytic geometry,
-## one possible cause per failure, no scene, no physics step. It proved every surf
-## property this motor has and it was all true, and a player on a real map still sank
-## through the ramp, because the bug was never in the motor. It was in the one
-## component that suite replaces: a swept query against Godot's physics server does
-## not see a collider the capsule is already touching, so from first contact onward
-## the ramp did not exist.
-##
-## A suite that substitutes the component under suspicion cannot see a bug in it. So
-## this file builds real [StaticBody3D] geometry and runs the same motor against
-## [DotFpsPhysicsBody] — and every check here is one that passed in the analytic
-## suite while the game was visibly broken.
-##
-## Cheap to state, expensive to learn: [b]penetration is the measurement, not
-## speed.[/b] A player sinking through a ramp still has plausible speed, plausible
-## position and a clean [member DotFpsMotor.stuck_ticks]. What they do not have is
-## clearance, and nothing but a geometric test of the capsule against the face they
-## are on can tell you so.
+## Surf, against the physics server the games actually run on. Run: [code]godot --headless --path . res://examples/surf_physics_selftest.tscn[/code]
+## surf_selftest runs against [DotFpsFlatBody] and all its checks passed while a player on a real map sank through the ramp: a swept query against Godot's physics server does not see a collider the capsule already touches. A suite that substitutes the component under suspicion cannot see a bug in it.
+## So this builds real [StaticBody3D] geometry and runs the same motor against [DotFpsPhysicsBody]. Penetration is the measurement, not speed: a sinking player has plausible speed, position and [member DotFpsMotor.stuck_ticks], and only a geometric test of the capsule against the face shows it.
 
 const CHECKS := 52
 
@@ -81,7 +59,7 @@ func _run() -> void:
 	get_tree().quit(1 if _failed > 0 else 0)
 
 
-# --- The query the whole bug lived in --------------------------------------
+# The query the whole bug lived in
 
 func _test_rest_contact_sees_what_a_sweep_cannot() -> void:
 	_section("a resting query sees a surface the sweep has stopped reporting")
@@ -131,7 +109,7 @@ func _test_rest_contact_sees_what_a_sweep_cannot() -> void:
 	_done()
 
 
-# --- The symptom -----------------------------------------------------------
+# The symptom
 
 func _test_a_surfer_stays_on_the_ramp() -> void:
 	_section("a surfer stays on the ramp rather than inside it")
@@ -308,16 +286,13 @@ func _test_leaving_a_surface_is_not_blocked() -> void:
 	_done()
 
 
-# --- The far end of a face (`[fps-face-edge-stop]`) -------------------------
+# The far end of a face (`[fps-face-edge-stop]`)
 
 func _test_a_surfer_leaves_a_face_over_its_far_end() -> void:
 	_section("a surfer leaving a rolled, pitched face over its far end keeps its speed")
 
-	# Three rides that each stopped DEAD on the edge tick: cast_motion grazed the edge
-	# between the slab's top and end faces, no rest query along the motion could name a
-	# surface the motion was leaving, and sweep answered with the motion's reverse --
-	# which the slide clips the velocity against, to exactly zero. 93 of 800 rides in a
-	# sweep over pitch, line, speed and a second face did it.
+	# Three rides that each stopped DEAD on the edge tick: cast_motion grazed the edge between the slab's top and end faces, no rest query could name a surface the motion was leaving,
+	# and sweep answered with the motion's reverse, which the slide clips the velocity against to exactly zero (93 of 800 rides over pitch, line, speed and a second face).
 	var rides: Array[Vector3] = [
 		Vector3(7.0, 0.0, 28.0), Vector3(5.0, 0.0, 36.0), Vector3(5.0, 6.0, 28.0),
 	]
@@ -344,14 +319,13 @@ func _test_a_surfer_leaves_a_face_over_its_far_end() -> void:
 	_done()
 
 
-# --- A rest normal pointing into the face ([ramp-pop-1]) -------------------
+# A rest normal pointing into the face ([ramp-pop-1])
 
 func _test_a_reversed_rest_normal_is_turned_round() -> void:
 	_section("a rest normal reported into the face is turned round, and nobody is pushed through")
 
 	await _clear()
-	# A thin slab, the shape an imported ramp brush is: Godot's resting query reverses
-	# the normal for some capsules resting on it (game-g2gfast surf_mesa, 2026-10-08).
+	# A thin slab, the shape an imported ramp brush is: Godot's resting query reverses the normal for some capsules resting on it.
 	var r := deg_to_rad(52.0)
 	var normal := _normal_for(52.0)
 	var sb := StaticBody3D.new()
@@ -399,7 +373,7 @@ func _test_a_reversed_rest_normal_is_turned_round() -> void:
 	_done()
 
 
-# --- An acute corner: a wall and an open door's panel (`[hns-door-wedge-1]`) ---------
+# An acute corner: a wall and an open door's panel (`[hns-door-wedge-1]`)
 
 func _test_a_body_falls_out_of_an_acute_corner() -> void:
 	_section("a body hopping into the corner of a wall and an open door comes down")
@@ -414,11 +388,8 @@ func _test_a_body_falls_out_of_an_acute_corner() -> void:
 	t.step_height = 0.4
 	var motor := DotFpsMotor.new(t, DotFpsPhysicsBody.for_node(self))
 
-	# Where the bot froze, moved to this wall: touching the wall's face to 15 micrometres and
-	# the panel to under a millimetre, at the top of an unstick hop, still pushing at the panel.
-	# Before the fix: the slide met the wall face at fraction ~0 twice, called it a duplicate
-	# plane, and the leg off it ran into the panel, so the move stopped every tick with the
-	# fall speed kept: hanging at 0.6 m for the rest of the round.
+	# Where the bot froze, moved to this wall: touching the wall's face to 15 micrometres and the panel to under a millimetre, at the top of an unstick hop, still pushing at the panel.
+	# Without the fix the slide met the wall at fraction ~0 twice, called it a duplicate plane, and the move stopped every tick with the fall speed kept (hanging at 0.6 m).
 	var s := DotFpsState.new()
 	s.mode = DotFpsState.Mode.AIR
 	s.position = Vector3(-0.4742, 0.6136, 0.350015)
@@ -452,10 +423,8 @@ func _test_a_body_falls_out_of_an_acute_corner() -> void:
 		"and stands there, and says how it got out",
 		"mode %d, %d split legs, %d crease legs" % [s.mode, motor.split_leg_ticks, motor.crease_leg_ticks])
 
-	# The second wedge the school's doors found: three planes at once, the classic slide's
-	# "stop dead". Measured in a room's corner under a window: the side wall, an upright
-	# edge and a downward-leaning edge of the window's boxes, with a push into the corner
-	# and gravity. Straight down leaves all three, so the answer must not be zero.
+	# The second wedge the school's doors found: three planes at once, where the classic slide stops dead (a room's corner under a window: side wall, an upright edge and a downward-leaning edge, pushed into the corner under gravity).
+	# Straight down leaves all three, so the answer must not be zero.
 	var corner: Array[Vector3] = [Vector3(-1.0, 0.0, 0.0), Vector3(0.0, -0.140875, -0.990027).normalized(),
 		Vector3(0.142474, 0.0, -0.989798).normalized()]
 	var out := motor._resolve_planes(corner, Vector3(0.013258, -0.004883, 0.013258))
@@ -469,13 +438,10 @@ func _test_a_body_falls_out_of_an_acute_corner() -> void:
 	_done()
 
 
-# --- The simulator a bot plans with --------------------------------------------
+# The simulator a bot plans with
 
-## DotFpsSimulator is a second motor over a copy of the body. What a surf bot stands on: a ride
-## simulated ahead is the ride the player will have, and simulating it changes nothing live.
-## Armed by dropping the tunables duplicate (the sim then shares the live ones; the counter
-## check still passes) and by making copy_for_simulation return the live body itself (the
-## query-count check fails).
+## DotFpsSimulator is a second motor over a copy of the body, what a surf bot stands on: a ride simulated ahead is the ride the player will have, and changes nothing live.
+## Armed by dropping the tunables duplicate (the sim then shares the live ones; the counter check still passes) and by making copy_for_simulation return the live body (the query-count check fails).
 func _test_a_simulator_is_the_motor() -> void:
 	_section("a simulator rides a ramp exactly as the live motor does, and touches nothing live")
 
@@ -546,16 +512,11 @@ func _test_a_simulator_is_the_motor() -> void:
 	_done()
 
 
-# --- The crease of two surf slabs ------------------------------------------------
+# The crease of two surf slabs
 
-## `g2gfast-surf-crease-hang-1`: in the V of two 50 degree slabs the capsule sits in both
-## faces at once, equally deep, and which one the physics server's rest query names is its
-## own business. game-g2gfast's surf bonus rider froze there, speed kept, for 32 to 1,469
-## ticks or for good, and which depended only on the absolute tick the ride began on. Here the
-## same geometry is ridden from 48 starts (two places in the world, six along the crease, four
-## micrometre offsets across it), because each start is a different tie. Armed: with
-## [method DotFpsMotor._leave_crease] skipped, all 48 starts freeze at some point, the worst for 218
-## ticks, and the shortest ride covers 3.1 m of 23.
+## `g2gfast-surf-crease-hang-1`: in the V of two 50 degree slabs the capsule sits in both faces equally deep, and which one the rest query names is the physics server's business.
+## Ridden here from 48 starts (two places in the world, six along the crease, four micrometre offsets across it), because each start is a different tie.
+## Armed: with [method DotFpsMotor._leave_crease] skipped, all 48 freeze at some point (worst 218 ticks) and the shortest ride covers 3.1 m of 23.
 func _test_a_surfer_rides_the_crease_of_two_slabs() -> void:
 	_section("a surfer in the crease of two slabs rides along it, whatever it starts from")
 

@@ -2,31 +2,8 @@ class_name DotFpsStats
 extends RefCounted
 
 ## What a movement run looked like: jumps, strafes, sync, perfect hops, speed.
-##
-## [b]The numbers a bhop or surf player judges a run by.[/b] A timer says how long it
-## took; this says how it was done, and on a surf or bhop server the second is what
-## people actually talk about. Sync in particular is the single most-watched number on
-## a bhop HUD: it is the fraction of strafe ticks where the player's mouse was turning
-## the same way as their strafe key, which is the mechanic the whole movement rests on
-## ([method DotFpsMotor.accelerate]) rendered as one percentage.
-##
-## [codeblock]
-## var stats := DotFpsStats.new()
-## # once per simulated tick, after the motor has run
-## stats.observe(state, command, previous_command, delta)
-## [/codeblock]
-##
-## [b]Fed from the simulation, never from the frame loop.[/b] Every counter here is
-## per-tick, so a player on a 144 Hz monitor and a player on a 60 Hz one get the same
-## sync for the same run. Reading input in [code]_process[/code] to compute this — the
-## obvious shortcut — makes the number a property of the monitor.
-##
-## [b]Not part of [DotFpsState], and deliberately.[/b] Statistics are not an input to
-## the simulation, so putting them in the state would put them in the prediction
-## rewind and on the wire for no reason. The consequence is that a client's own
-## statistics are computed over its predicted ticks and the server's over the ticks it
-## simulated, and the two can differ by the handful of commands a correction discarded.
-## The server's copy is the one a record is filed with.
+## Sync is the fraction of strafe ticks where the mouse turned the same way as the strafe key. Fed per simulated tick via [method observe], never per frame.
+## Not part of [DotFpsState]: it is no input to the simulation.
 
 ## Ticks observed.
 var ticks: int = 0
@@ -34,16 +11,10 @@ var ticks: int = 0
 ## Jumps that left the ground.
 var jumps: int = 0
 
-## Jumps taken on the tick the player landed. The definition of a perfect hop.
-##
-## Requires [member DotFpsState.ground_ticks], which is why that counter is in the
-## state and counted in ticks rather than seconds.
+## Jumps taken on the tick the player landed, the definition of a perfect hop. Needs [member DotFpsState.ground_ticks].
 var perfect_jumps: int = 0
 
-## Jumps that were close enough to a landing to have been aiming for a perfect one.
-##
-## The denominator for the perfect-jump percentage. Without it a player who takes one
-## deliberate standing jump at the start of a run has their score halved by it.
+## Jumps close enough to a landing to have been aiming for a perfect one; the denominator, so a standing jump does not halve the score.
 var measured_jumps: int = 0
 
 ## How many ticks of the run were counted as a perfect-hop opportunity.
@@ -79,10 +50,7 @@ var _had_yaw: bool = false
 var _was_grounded: bool = false
 
 
-## Folds one simulated tick in. Call after [method DotFpsMotor.simulate].
-##
-## [param previous] is the command from the tick before, for edge detection. Null on
-## the first tick.
+## Folds one simulated tick in. Call after [method DotFpsMotor.simulate]; [param previous] is null on the first tick.
 func observe(
 	state: DotFpsState,
 	command: DotFpsCommand,
@@ -95,12 +63,7 @@ func observe(
 	_speed_sum += horizontal
 	max_speed = maxf(max_speed, horizontal)
 
-	# --- Jumps ------------------------------------------------------------
-	#
-	# Detected from the state transition rather than from the button, because a
-	# button press that was refused — cooldown, no ground, a modifier denying it —
-	# is not a jump and counting it would let a player inflate their hop count by
-	# holding the key.
+	# Detected from the state transition, not the button: a refused press (cooldown, no ground) is not a jump.
 	var grounded := state.is_grounded()
 
 	if _was_grounded and not grounded and state.velocity.y > 0.0:
@@ -115,7 +78,6 @@ func observe(
 			if state.ground_ticks <= 1:
 				perfect_jumps += 1
 
-	# --- Strafes and sync -------------------------------------------------
 	var strafe := 0
 
 	if command.move.x > 0.01:
@@ -136,11 +98,8 @@ func observe(
 		# otherwise lose a chunk of sync for a turn they made correctly.
 		var turn := wrapf(command.yaw - _last_yaw, -180.0, 180.0)
 
-		# Right strafe (+x) accelerates while the view turns right. Godot's yaw is
-		# counter-clockwise about +Y, so turning right is DECREASING yaw — the sign
-		# here is the one thing in this file that is easy to get backwards, and
-		# getting it backwards produces a plausible-looking number that is 100 minus
-		# the truth.
+		# Right strafe (+x) accelerates while the view turns right. Yaw is counter-clockwise about +Y, so turning right is
+		# DECREASING yaw; getting this sign wrong yields a plausible number that is 100 minus the truth.
 		if absf(turn) > 0.0001 and signf(-turn) == float(strafe):
 			sync_hits += 1
 
@@ -153,10 +112,7 @@ func observe(
 	_was_grounded = grounded
 
 
-## Fraction of strafe ticks that were in sync, 0..1. 1 when nothing was measured.
-##
-## One rather than zero for an unmeasured run: a player who walked the whole map
-## without strafing did not strafe badly.
+## Fraction of strafe ticks that were in sync, 0..1; 1 when nothing was measured, since not strafing is not strafing badly.
 func sync() -> float:
 	if sync_measures <= 0:
 		return 1.0

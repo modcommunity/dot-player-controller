@@ -1,23 +1,8 @@
 class_name DotFpsNetSync
 extends RefCounted
 
-## What a networked player has to replicate, and how to get it in and out of a
-## [DotFpsState].
-##
-## [b]dot-net is not a dependency and is not imported here.[/b] The family rule is
-## that only dot-core is a hard dependency and everything else is discovered at
-## runtime — and in GDScript that is not merely a preference: a script that
-## [i]mentions[/i] a [code]class_name[/code] the project does not have fails to
-## parse, and takes every other script that references it down with it. The same
-## reason [code]DotTransportENet[/code] reaches ENet through [method ClassDB.instantiate]
-## rather than by name, so that dot-core still compiles on a web export where the
-## class does not exist.
-##
-## So dot-player-controller compiles and runs with dot-core alone, and the thirty-line
-## [code]DotNetBehaviour[/code] that joins the two lives in the host game. This class
-## is everything that bridge would otherwise have to work out for itself: which
-## properties to replicate, how precisely, and how to move them between the wire and
-## a [DotFpsState].
+## What a networked player has to replicate, and how to get it in and out of a [DotFpsState].
+## dot-net is not a dependency and is not imported here: a script that mentions a missing `class_name` fails to parse, so the thin `DotNetBehaviour` that joins the two lives in the host game.
 ##
 ## [codeblock]
 ## class_name PlayerNet extends DotNetBehaviour
@@ -51,14 +36,10 @@ extends RefCounted
 ##     DotFpsNetSync.push(self, controller.state)
 ## [/codeblock]
 ##
-## The full worked example, including the [code]DotNetInput[/code] subclass, is in
-## this project's docs/networking.md.
+## The full worked example is in docs/networking.md.
 
 ## Bits the movement mode occupies in the packed flags. See [method pack_flags].
-##
-## Wide enough for [constant DotFpsState.MAX_MODES], because a game registers its own
-## modes and the id is what travels — a mode that did not fit would be received as a
-## different one, and the player would be swimming on the other machine.
+## Wide enough for [constant DotFpsState.MAX_MODES]: the id travels, so a mode that did not fit would arrive as a different one.
 const MODE_BITS := 4
 const MODE_MASK := (1 << MODE_BITS) - 1
 
@@ -66,19 +47,8 @@ const MODE_MASK := (1 << MODE_BITS) - 1
 const FLAG_CROUCH_HELD := 1 << MODE_BITS
 
 ## The slide and launch timers, packed above the crouch bit, in sixty-fourths of a second.
-##
-## [b]Replicated, unlike the jump timers, and the reason is measured.[/b] A rewind restores
-## what the snapshot carries and replays from it, and everything else keeps the client's
-## CURRENT value. For the launch that is fatal: the client predicts the launch and starts
-## its cooldown, a snapshot from before the launch arrives, the replay reaches the press
-## with the cooldown already running and refuses it — and the client sits on the ground
-## while the server's player is four metres up. game-arena's net suite measured 3.2 m of
-## it before these bits existed. A slide in progress is the same shape at lower stakes.
-##
-## [b]In the flags word rather than a new property[/b], because every game that wires this
-## declares [code]net_flags[/code] already and reads its width from here; a new property
-## would be a new [code]var[/code] in every game's net behaviour. 1/64 s is a tick at the
-## family's usual rate, so a cooldown counted down a tick at a time quantises exactly.
+## Replicated, unlike the jump timers: a rewind keeps the client's current cooldown, so a snapshot from before a predicted launch replayed the press with the cooldown running and refused it (3.2 m of drift measured).
+## In the flags word, not a new property, so no game's net behaviour needs a new var.
 const TIMER_SCALE := 64.0
 
 ## The scale in use: [constant TIMER_SCALE] at 64 Hz and above, so the wire is unchanged there, and
@@ -96,37 +66,17 @@ const LAUNCH_SHIFT := MODE_BITS + 1
 const SLIDE_SHIFT := LAUNCH_SHIFT + LAUNCH_BITS
 const SLIDE_COOLDOWN_SHIFT := SLIDE_SHIFT + SLIDE_BITS
 
-## The buttons of the command the snapshot's tick applied, which is what every press is
-## detected against ([member DotFpsState.previous_buttons]). [b]Not sending it was the
-## second half of the same bug[/b]: a rewind kept the client's CURRENT buttons, so with the
-## key still held the replayed press tick saw no edge at all and the launch (or a buffered
-## jump, or a slide) never happened in the replay.
+## The buttons of the command the snapshot's tick applied, which every press is detected against ([member DotFpsState.previous_buttons]).
+## Without it a rewind kept the current held buttons and the replayed press saw no edge.
 const BUTTONS_SHIFT := SLIDE_COOLDOWN_SHIFT + SLIDE_COOLDOWN_BITS
 
 ## The dash's cooldown, the launch's reason and width.
 const DASH_BITS := 12
 const DASH_SHIFT := BUTTONS_SHIFT + DotFpsCommand.BUTTON_BITS
 
-## The wall run and wall jump, the last fields in the word (2026-10-10), so an encoding
-## from before them reads as "not running, no wall jumps" rather than as garbage.
-##
-## [b]The run's field is one number with two sentinels[/b]: 0 is ready, 1 is a run spent
-## this airborne stretch ([member DotFpsState.wall_run_spent]), and 2 and up is a run in
-## progress, its time in sixty-fourths plus two. Zero has to mean the idle state, because
-## zero is what every older encoding has there. 125 sixty-fourths is the longest run the
-## field holds, which is where [constant DotFpsTunables.WALL_RUN_TIME_LIMIT] comes from.
-##
-## [b]Why these travel[/b]: a rewind that kept the client's own copies would replay the
-## rest of a wall run as a fall (no run), or refuse a wall jump the server allowed because
-## the client's counter had already counted it. The heading names which wall the per-wall
-## counter counts, in eighths of a turn; the simulation keeps it quantised too, so the
-## field is exact.
-##
-## [b]The two jump counters share three bits.[/b] Both run 0..3, and the per-wall one is
-## never more than the airborne total and never 0 when the total is not (the last jump was
-## off the last wall), so the pairs that can happen are seven: (0,0), (1,1), (2,1), (2,2),
-## (3,1), (3,2), (3,3). Seven fit in three bits where two separate fields need four, and
-## the word had thirteen bits left.
+## The wall run and wall jump, the last fields in the word, so an older encoding reads as "not running, no wall jumps".
+## The run field is one number: 0 ready, 1 spent this airborne stretch ([member DotFpsState.wall_run_spent]), 2 and up a run in progress (sixty-fourths plus two); 125 is the longest it holds ([constant DotFpsTunables.WALL_RUN_TIME_LIMIT]).
+## The heading names the wall the per-wall counter counts, in eighths of a turn. The two jump counters share three bits: only seven pairs can occur, (0,0) (1,1) (2,1) (2,2) (3,1) (3,2) (3,3).
 const WALL_RUN_BITS := 7
 const WALL_RUN_READY := 0
 const WALL_RUN_SPENT := 1
@@ -148,16 +98,8 @@ const MODIFIER_BITS := 48
 
 
 ## What a networked player replicates.
-##
-## Types are named rather than referenced so this file never mentions
-## [code]DotNetVar[/code]. A bridge resolves them with
-## [code]DotNetVar.Type[spec.type][/code], which is an ordinary dictionary lookup on
-## the enum.
-##
-## [b]Velocity is on the list, and it is not redundant.[/b] Interpolation between two
-## positions is a straight line; with velocity a receiver can curve the path and can
-## extrapolate correctly when a packet is late. It is also what a late-joining
-## observer needs to avoid seeing every moving player stutter into place.
+## Types are named, not referenced, so this file never mentions [code]DotNetVar[/code]; a bridge resolves them with [code]DotNetVar.Type[spec.type][/code].
+## Velocity is not redundant: it lets a receiver curve the path, extrapolate a late packet and place a late joiner without a stutter.
 static func state_specs() -> Array[Dictionary]:
 	return [
 		{
@@ -208,17 +150,8 @@ static func state_specs() -> Array[Dictionary]:
 			"source": "flags",
 		},
 		{
-			# A mask of active modifier indices, not the modifiers themselves: the
-			# definitions are configuration both machines already hold, so only
-			# membership has to travel.
-			#
-			# [b]The expiry tick does not travel[/b], and that is a deliberate
-			# trade. Sending it would make the client predict the exact tick a boost
-			# ends; without it the client holds the modifier until the next snapshot
-			# says otherwise, so the end can be late by up to one snapshot interval
-			# — 50 ms at the default rate. The effect while it is active is
-			# predicted exactly, which is the part a player feels. Revisit if a game
-			# ever has a modifier whose expiry frame matters.
+			# A mask of active modifier indices: the definitions are configuration both machines hold, so only membership travels.
+			# The expiry tick does not travel, so the client may hold a modifier up to one snapshot interval (50 ms at the default rate) past its end; the effect while active is predicted exactly.
 			"property": &"net_modifiers",
 			"type": "UINT",
 			"bits": MODIFIER_BITS,
@@ -336,10 +269,7 @@ static func pack_modifiers(state: DotFpsState) -> int:
 
 
 ## Rebuilds the active set from a mask, preserving order.
-##
-## Expiries come back as "until removed" because they were not sent. The server drops
-## the modifier when it ends and the next snapshot carries that; see the note on
-## [code]net_modifiers[/code] in [method state_specs].
+## Expiries come back as "until removed" because they were not sent; see [code]net_modifiers[/code] in [method state_specs].
 static func unpack_modifiers(state: DotFpsState, mask: int) -> void:
 	state.modifiers.clear()
 
@@ -351,9 +281,7 @@ static func unpack_modifiers(state: DotFpsState, mask: int) -> void:
 
 
 ## Copies a state onto a replicating object, ready to be sent.
-##
-## [param target] is typed [Variant] for the same reason as everything else here: it
-## is a [code]DotNetBehaviour[/code] in practice and this file cannot say so.
+## [param target] is a [Variant] because it is a [code]DotNetBehaviour[/code] in practice and this file cannot name it.
 static func pull(state: DotFpsState, target: Variant) -> void:
 	target.set(&"net_position", state.position)
 	target.set(&"net_velocity", state.velocity)
@@ -437,14 +365,8 @@ static func _timer_value(code: int) -> float:
 	return 1000.0 if c == 0 else float(c - 1) / JUMP_TIMER_SCALE
 
 
-## Copies received values back into a state.
-##
-## On a predicting client this runs as the rewind half of reconciliation: the server's
-## answer is adopted wholesale and every unacknowledged command is replayed on top.
-## [b]Everything the simulation reads has to be restored here[/b] — a field left
-## behind makes the replay start from a state the server never computed, and the
-## correction is then measured against a fiction. That is the whole reason
-## [DotFpsState] is one object rather than fields spread across the controller.
+## Copies received values back into a state; on a predicting client this is the rewind half of reconciliation.
+## Everything the simulation reads must be restored here, or the replay starts from a state the server never computed.
 static func push(source: Variant, state: DotFpsState) -> void:
 	state.position = source.get(&"net_position")
 	state.velocity = source.get(&"net_velocity")
@@ -461,22 +383,14 @@ static func push(source: Variant, state: DotFpsState) -> void:
 		unpack_stamina(state, int(stamina))
 
 
-# --- Configuration agreement ----------------------------------------------
 
 ## Whether two peers will simulate the same way.
-##
-## [b]Worth calling at connect time, every time.[/b] A client whose tunables differ
-## from the server's diverges on every tick, and the symptom — small, constant
-## corrections — is indistinguishable from packet loss. Teams lose weeks to this. One
-## comparison at connect turns it into a log line.
+## Call it at connect time: differing tunables show up as small constant corrections, indistinguishable from packet loss.
 static func agrees(mine: DotFpsTunables, theirs_fingerprint: String) -> bool:
 	return mine != null and mine.fingerprint() == theirs_fingerprint
 
 
 ## Explains a fingerprint mismatch by naming the properties that differ.
-##
-## Cheap, and the difference between "movement config mismatch" and "the server has
-## sv_airaccelerate 100 and you have 10".
 static func differences(
 	mine: DotFpsTunables,
 	theirs: DotFpsTunables

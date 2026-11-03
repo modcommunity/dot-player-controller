@@ -13,30 +13,10 @@ extends "dot_fps_controller_signals.gd"
 ##  └── FpsControl  (DotFpsController)   body_ref -> parent
 ## [/codeblock]
 ##
-## [b]A component, not a base class.[/b] The same reasoning as [DotNetIdentity]: a
-## host game's player already extends whatever that game needs, and demanding it
-## extend ours instead is the one change that cannot be worked around. Everything it
-## touches in the host scene goes through a [DotNodeRef], so the layout above is a
-## suggestion and not a requirement.
-##
-## [b]Two ways to drive it.[/b] In [constant Drive.LOCAL] it samples the keyboard and
-## ticks itself, which is single-player and the editor. In
-## [constant Drive.EXTERNAL] it does neither, and something else — a
-## [code]DotNetBehaviour[/code] under dot-net, a replay, a bot — feeds it commands
-## with [method apply_command] and advances it with [method simulate_tick]. The
-## simulation is identical in both; the only difference is who supplies the commands
-## and when.
-##
-## dot-net is not imported and is not required. See [DotFpsNetSync] and the worked
-## bridge in this project's docs/networking.md.
-##
-## [b]It extends [DotPlayerController], which changes nothing about how it is used.[/b]
-## Everything above still works with no dot-player node anywhere in the scene: the base
-## adds an identity ([member controller_id]), a way for a
-## [DotPlayerControllerSwitch] to hand a player between this and a third-person
-## controller, and five small methods that let the handover carry position, velocity
-## and view angles across. A game that has never heard of dot-player is unaffected,
-## because every one of those is inert without a [DotPlayer] ancestor.
+## A component, not a base class: a host's player already extends what it needs. Everything it touches goes through a [DotNodeRef], so the layout above is a suggestion.
+## [constant Drive.LOCAL] samples the keyboard and ticks itself; [constant Drive.EXTERNAL] is fed by a net behaviour, replay or bot through [method apply_command] and [method simulate_tick]. The simulation is identical.
+## dot-net is not required; see [DotFpsNetSync] and docs/networking.md.
+## It extends [DotPlayerController] for an identity and handover by a [DotPlayerControllerSwitch]; all of it is inert without a [DotPlayer] ancestor.
 
 const CHANNEL := "fps"
 const SERVICE := &"dot_fps_controller"
@@ -48,9 +28,7 @@ enum Drive {
 	## Someone else calls [method apply_command] and [method simulate_tick].
 	EXTERNAL,
 	## Simulate nothing; only apply state written from elsewhere.
-	##
-	## What a remote player's copy uses: their position arrives over the network and
-	## running the motor on it locally would fight the incoming state.
+	## For a remote player's copy: running the motor on arriving network state would fight it.
 	REMOTE,
 }
 
@@ -59,20 +37,14 @@ enum Drive {
 @export var drive: Drive = Drive.LOCAL
 
 ## Simulation ticks per second in [constant Drive.LOCAL].
-##
-## Ignored in the other modes, where the tick rate is whatever the driver uses — under
-## dot-net, [code]DotNetConfig.tick_rate[/code]. [b]It must match on the client and
-## the server[/b]: delta is an input to the simulation, so two peers stepping at
-## different rates reach different answers from the same commands.
+## Ignored in the other modes, where the driver sets the rate (dot-net: [code]DotNetConfig.tick_rate[/code]). It must match on client and server: delta is an input to the simulation.
 @export_range(1, 240, 1) var tick_rate: int = 60
 
 ## [member DotFpsMotor.static_world]: nothing the body queries moves between ticks. Off by default.
 @export var static_world: bool = false
 
 ## Register in [DotRegistry] under [constant SERVICE] so other systems can find this.
-##
-## Off by default: registering is a global name, and a scene with several players
-## would have them overwrite each other. Set [member service_scope] for that case.
+## Off by default: it is a global name and several players would overwrite each other. Set [member service_scope] for that case.
 @export var register_service: bool = false
 
 ## Suffix for the registry name, so several controllers can coexist.
@@ -89,23 +61,15 @@ enum Drive {
 @export var surfaces: DotFpsSurfaceSet = null
 
 ## The movement style in force for this player, or null for the base tunables.
-##
-## Assign in the inspector or through [method set_style], never by writing this
-## property at runtime: the motor holds a reference to the tunables it was built
-## with, so a style swapped in without rebuilding it changes nothing and looks like
-## the style system not working. [method set_style] does both halves.
+## Assign in the inspector or through [method set_style], never at runtime: the motor holds the tunables it was built with, so a bare assignment changes nothing.
 @export var style: DotFpsStyle = null
 
 ## JSON file layered over the exported defaults. Empty disables the file layer.
-##
-## Deployment configuration, so it participates in the usual layering: exported
-## defaults, then this file, then [code]DOT_FPS_*[/code], then [code]--fps-*[/code].
+## Layering order: exported defaults, this file, [code]DOT_FPS_*[/code], [code]--fps-*[/code].
 @export var config_file: String = ""
 
 ## Apply the environment and command-line layers.
-##
-## Wanted on a dedicated server and usually not in a client, where an ambient
-## variable silently changing movement is a support call rather than a feature.
+## Wanted on a dedicated server, not in a client, where an ambient variable silently changing movement is a support call.
 @export var load_layered_config: bool = false
 
 @export_group("Wiring")
@@ -114,10 +78,7 @@ enum Drive {
 @export var body_ref: DotNodeRef = null
 
 ## The collision shape resized when crouching. Optional but strongly recommended.
-##
-## Without it the simulation crouches and the host's collider does not, so anything
-## else in the game that queries the player — a bullet trace, a trigger volume — sees
-## a standing player who is visibly crouched.
+## Without it the simulation crouches and the host's collider does not, so a bullet trace sees a standing player.
 @export var collider_ref: DotNodeRef = null
 
 ## The view. Optional: a headless server has nothing to look through.
@@ -126,22 +87,11 @@ enum Drive {
 @export_group("Safety")
 
 ## Whether this instance honours the noclip button at all.
-##
-## Separate from [member DotFpsTunables.can_noclip] and deliberately redundant. The
-## tunables are shared configuration that a client also holds a copy of; this is a
-## property of one controller on one machine. A server sets it per player from its own
-## permissions and does not have to trust either the client's copy of the config or
-## the bit the client set in the command.
+## Deliberately redundant with [member DotFpsTunables.can_noclip]: that is shared config the client also holds; this is one controller's property, which a server sets from its own permissions.
 @export var allow_noclip: bool = false
 
-## Register [DotFpsAdminModifiers] — forced noclip, freeze, and the speed and gravity
-## steps — so a server can apply them to this player and the owning client predicts them.
-##
-## [b]Set it on every machine or on none.[/b] The modifiers are registered straight after
-## [method _register_extensions], and a registration order is part of the wire contract:
-## a server with this on and a client with it off disagree about which modifier every
-## replicated index means. Off by default because a game that never uses them should not
-## carry thirteen definitions for nothing.
+## Register [DotFpsAdminModifiers] (forced noclip, freeze, speed and gravity steps) so a server can apply them and the owning client predicts them.
+## Set it on every machine or on none: registration order is the wire contract, and a mismatch makes each replicated index mean a different modifier.
 @export var admin_abilities: bool = false
 
 ## Register this addon's default input bindings if the project has none.
@@ -160,18 +110,11 @@ var view: DotFpsView = null
 var current_command: DotFpsCommand = null
 
 ## Movement statistics for the current run: jumps, strafes, sync, speed.
-##
-## Folded once per simulated tick, and NOT during a prediction replay — a replayed
-## tick is the same tick simulated again, and counting it twice would give a client
-## under packet loss a jump count that climbs on its own.
+## Folded once per simulated tick and not during a replay, or a client under packet loss would count jumps that climb on their own.
 var stats := DotFpsStats.new()
 
 ## The tunables before the style was applied. See [method set_style].
-##
-## Kept so a style change derives from the original rather than from the previous
-## style's output — otherwise two style changes compound their scales and a player
-## who switched to low-gravity and back lands in a third of the gravity they started
-## with.
+## A style derives from the original, not the previous style's output, or two changes compound their scales.
 var _pass_out_mask: int = 0
 var _extra_exclude: Array[RID] = []
 var _base_tunables: DotFpsTunables = null
@@ -190,20 +133,9 @@ var _previous_state: DotFpsState = DotFpsState.new()
 ## (a [member render_clock] alpha below 0). NAN until a tick has run since the last reset.
 var _position_two_back: Vector3 = Vector3(NAN, NAN, NAN)
 
-## The clock this controller's ticks are counted on, for a client predicting it: anything
-## with a [code]render_alpha() -> float[/code] (dot-net's [code]DotNetClock[/code]), asked by
-## name so this addon needs no dot-net. Null draws at the engine's physics fraction, which is
-## right offline and on a server. See [method render_state].
-##
-## [b]Because a connected client's ticks are the clock's, not the engine's.[/b] The clock
-## stretches or shrinks its ticks while it settles on the server, so now and then a physics
-## frame runs no tick and a later one two. Drawn at the engine's fraction, the frame after one
-## with none goes back over the step it drew (the eye stands still) and the frame after one
-## with two moves double: game-arena measured 4 to 8 frames in 5 s 10 to 16 cm off at 60 Hz.
-## The clock's alpha carries the slip and takes it back slowly, from -1 to 2 for a moment.
-##
-## Set it, rather than passing an alpha, by [code]controller.set(&"render_clock", clock)[/code]
-## from a game pack: a shell carrying an older copy of this addon then ignores it.
+## The clock this controller's ticks are counted on, for a client predicting it: anything with a [code]render_alpha() -> float[/code] (dot-net's [code]DotNetClock[/code]), asked by name so this addon needs no dot-net. Null draws at the engine's physics fraction. See [method render_state].
+## A connected client's ticks are the clock's: it stretches them while it settles, so a physics frame runs no tick and a later one two, and drawing at the engine's fraction jumped the eye 10 to 16 cm on 4 to 8 frames in 5 s at 60 Hz.
+## Set it by [code]controller.set(&"render_clock", clock)[/code] from a game pack, so a shell with an older copy of this addon ignores it.
 var render_clock: Object = null
 
 ## collider instance id -> surface id. See _resolve_surface_id.
@@ -220,7 +152,6 @@ var _started: bool = false
 var _registered_name: StringName = &""
 
 
-# --- Lifecycle -------------------------------------------------------------
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
@@ -268,11 +199,8 @@ func setup() -> DotResult:
 		if not valid.ok:
 			return valid.wrap("Movement configuration is not usable.")
 
-	# The noclip gate is applied per tick, not here — see _gate_abilities. Applying
-	# it once at setup looks equivalent and is not: the tunables are a Resource the
-	# host keeps a reference to, so anything that assigns can_noclip afterwards
-	# re-opens a gate that was supposed to be closed. A server that reloads its
-	# config mid-round does exactly that.
+	# The noclip gate is applied per tick, not here (see _gate_abilities): the tunables are a Resource the host keeps,
+	# so anything assigning can_noclip later (a server reloading config mid-round) would re-open a gate set once at setup.
 	_gate_abilities()
 
 	var wired := _resolve_nodes()
@@ -373,11 +301,7 @@ func _resolve_nodes() -> DotResult:
 			body_ref.describe()
 		)
 
-	# Unset refs fall back to "the obvious node under the body". Wiring every
-	# reference by hand is the price of never hardcoding a scene path, and for the
-	# conventional layout it is a price with nothing bought: a player has one
-	# collider and one view. An explicit ref always wins, so a game with two
-	# colliders still says which.
+	# Unset refs fall back to "the obvious node under the body": a player has one collider and one view. An explicit ref always wins.
 	if collider_ref == null:
 		collider_ref = _descendant_ref(&"CollisionShape3D")
 
@@ -421,9 +345,7 @@ func _resolve_nodes() -> DotResult:
 
 
 ## A ref that finds the nearest descendant of a type, or nothing.
-##
-## [constant DotNodeRef.OnMissing.NULL] rather than FAIL: these are the defaults for
-## optional wiring, and "no view" is a headless server, not an error.
+## [constant DotNodeRef.OnMissing.NULL], not FAIL: "no view" is a headless server, not an error.
 static func _descendant_ref(type: StringName) -> DotNodeRef:
 	var ref := DotNodeRef.new()
 	ref.mode = DotNodeRef.Mode.DESCENDANT_OF_TYPE
@@ -433,13 +355,7 @@ static func _descendant_ref(type: StringName) -> DotNodeRef:
 
 
 ## Registers this game's movement modes and modifiers. Override and call the motor.
-##
-## [b]Called before the first tick and in a fixed order, on every machine.[/b] That
-## matters: [method DotFpsMotor.register_mode] and
-## [method DotFpsMotor.register_modifier] hand out ids by registration order, and the
-## id is what travels on the wire. Registering conditionally — only on the server,
-## only when a game mode is active — gives two peers different ids for the same
-## modifier, and the symptom is a power-up that works for some players.
+## Called before the first tick in a fixed order on every machine: ids are handed out by registration order and travel on the wire, so conditional registration gives two peers different ids.
 ##
 ## [codeblock]
 ## func _register_extensions() -> void:
@@ -457,11 +373,7 @@ var extra_modes: Array[DotFpsMoveMode] = []
 
 
 ## Maps a collider to a surface id, for the motor.
-##
-## Reads scene metadata rather than anything derived from the physics handle, because
-## a collider's instance id differs between the client's process and the server's and
-## the surface has to resolve identically on both. Cached, because the answer only
-## changes when the player steps onto a different collider.
+## Reads scene metadata, not the physics handle, whose instance id differs between client and server. Cached until the player steps onto a different collider.
 func _resolve_surface_id(collider_id: int) -> StringName:
 	if _surface_cache.has(collider_id):
 		return _surface_cache[collider_id]
@@ -484,31 +396,20 @@ func _resolve_surface_id(collider_id: int) -> StringName:
 	return resolved
 
 
-## Called before the motor runs, on the tick that is about to be simulated.
-##
-## Override for anything that has to happen inside the simulation — applying a
-## modifier from a trigger volume, switching to a custom mode. [b]It runs during
-## prediction replays too[/b], so it is bound by the same determinism rule as
-## [method DotFpsMotor.simulate]: no wall clock, no unseeded random, nothing that
-## differs between the client and the server.
+## Called before the motor runs, on the tick about to be simulated.
+## Override for anything inside the simulation. It runs during replays too, so it is bound by the determinism rule of [method DotFpsMotor.simulate]: no wall clock, no unseeded random.
 func _on_pre_simulate(_tick: int, _delta: float) -> void:
 	pass
 
 
 ## Called after the motor runs and the scene has been updated.
-##
-## The place for anything cosmetic or non-simulated — a footstep, a trigger query.
-## Also runs during a replay, so anything with a side effect outside the simulation
-## should check [method is_replaying] first.
+## For cosmetic or non-simulated work; it also runs during a replay, so check [method is_replaying] before a side effect.
 func _on_post_simulate(_tick: int, _delta: float) -> void:
 	pass
 
 
 ## Whether the tick being simulated is a prediction replay rather than a fresh one.
-##
-## A replay re-runs ticks the player has already seen. Anything that fires a sound,
-## spawns a particle or sends a message must not do it again — the player would hear
-## six footsteps for one step, once per correction.
+## Anything that fires a sound or sends a message must not repeat it on a replay.
 func is_replaying() -> bool:
 	return _replaying
 
@@ -523,15 +424,11 @@ func end_replay() -> void:
 
 
 ## Whether a command should be simulated at all. Override to veto input.
-##
-## For a cutscene, a respawn freeze, or a server refusing input from a player who
-## should not have any. Returning false substitutes a neutral command rather than
-## skipping the tick, because skipping a tick desynchronises the tick counter.
+## Returning false substitutes a neutral command, because skipping a tick desynchronises the tick counter.
 func _accept_command(_command: DotFpsCommand) -> bool:
 	return true
 
 
-# --- Modes and modifiers ---------------------------------------------------
 
 ## Applies a modifier. Server-side in a networked game; replicated to the owner.
 func add_modifier(id: StringName) -> bool:
@@ -546,19 +443,9 @@ func has_modifier(id: StringName) -> bool:
 	return motor != null and motor.has_modifier(state, id)
 
 
-## Puts this player on a movement style, rebuilding everything that depends on it.
-##
-## [b]Rebuilds the motor.[/b] The tunables are an input the motor holds a reference
-## to, so assigning [member style] alone changes nothing — which is the single most
-## likely way to use this wrongly, and the symptom is a style that appears to be set
-## and has no effect.
-##
-## Pass null to go back to the unstyled tunables.
-##
-## [b]Not safe to call mid-run in a timed game[/b], and the timer treats it as
-## stopping the run: the tunables are an input to the simulation, so changing them
-## changes what every subsequent tick produces, and a record whose first half was set
-## under one style is not a record on either.
+## Puts this player on a movement style, rebuilding everything that depends on it. Pass null to go back to the unstyled tunables.
+## Rebuilds the motor: it holds the tunables, so assigning [member style] alone changes nothing.
+## Not safe mid-run in a timed game: it changes what every later tick produces, so the timer treats it as stopping the run.
 func set_style(new_style: DotFpsStyle) -> DotResult:
 	if _base_tunables == null:
 		_base_tunables = tunables
@@ -582,13 +469,8 @@ func set_style(new_style: DotFpsStyle) -> DotResult:
 
 
 ## The collision layers this player's movement sweeps, set so it survives a style.
-##
-## [b]Use this rather than writing `tunables.collision_mask`.[/b] A style rebuilds
-## [member tunables] from the base copy taken at the first setup, so a mask written on the
-## live tunables lasts until the next [method set_style] and then reverts to whatever the
-## base had: game-playground's connected clients had their style set straight after the
-## join and walked through every prop for it (game-g2gfast kept a base copy of its own to
-## avoid exactly this). The base, the live tunables and the body all take it.
+## Use this, not `tunables.collision_mask`: a style rebuilds [member tunables] from the base copy, so a mask on the live tunables reverts at the next [method set_style].
+## The base, the live tunables and the body all take it.
 func set_collision_mask(mask: int) -> void:
 	if _base_tunables != null:
 		_base_tunables.collision_mask = mask
@@ -629,11 +511,9 @@ func set_mode(mode: int) -> void:
 		motor.set_mode(state, mode)
 
 
-## A [DotFpsSimulator] of this player's movement: a second motor with copies of its tunables
-## and body and its modifiers and modes, which a bot runs ahead on copies of [member state].
-## [param p_body] replaces the copy of [member body] (a game body that cannot copy itself).
-## Null before [method setup], or when the body cannot be copied. Build a new one after a style
-## or the map changes this controller's tunables or body; it does not follow them.
+## A [DotFpsSimulator] of this player's movement: a second motor with copies of its tunables, body, modifiers and modes, which a bot runs ahead on copies of [member state].
+## [param p_body] replaces the copy of [member body]. Null before [method setup] or when the body cannot be copied.
+## Build a new one after a style or map changes the tunables or body; it does not follow them.
 func simulator(p_body: DotFpsBody = null) -> DotFpsSimulator:
 	if motor == null:
 		return null
@@ -663,7 +543,6 @@ func _exit_tree() -> void:
 		_registered_name = &""
 
 
-# --- Local driving ---------------------------------------------------------
 
 func _input(event: InputEvent) -> void:
 	if drive == Drive.LOCAL and sampler != null:
@@ -674,11 +553,7 @@ func _physics_process(delta: float) -> void:
 	if not _started or drive != Drive.LOCAL:
 		return
 
-	# A fixed step accumulated from the frame time, rather than simulating with the
-	# frame's own delta. The whole determinism argument depends on the step being a
-	# constant both peers agree on, and it is worth honouring in single-player too:
-	# a controller tuned against a variable step behaves differently on a machine
-	# that renders faster.
+	# A fixed step accumulated from the frame time, not the frame's own delta: determinism needs a constant step both peers agree on, and a variable one tunes differently on a faster-rendering machine.
 	var step := 1.0 / float(maxi(1, tick_rate))
 	_accumulator += delta
 
@@ -717,23 +592,17 @@ func _process(delta: float) -> void:
 		view.apply(drawn, motor, delta)
 
 
-# --- Driving from outside --------------------------------------------------
 
 ## Sets the command the next [method simulate_tick] will use.
-##
-## Sanitised here rather than at the call site so a driver cannot forget: on a server
-## every field arrived from a client and can be anything the wire format allows.
+## Sanitised here so a driver cannot forget: on a server every field arrived from a client.
 func apply_command(command: DotFpsCommand) -> void:
 	if command == null:
 		return
 
 	command.sanitise(tunables.pitch_min, tunables.pitch_max)
 
-	# Before the motor, on BOTH machines, and in place. Filtering only on the server
-	# makes the client predict movement the server will not produce, and the
-	# correction lands a round trip later — the worst possible way to tell somebody a
-	# key is disabled. In place, and idempotent, because a prediction replay runs
-	# this again over the stored commands.
+	# Before the motor, on both machines, in place and idempotent: filtering only on the server makes the client predict movement the server will not produce,
+	# and a replay runs this again over the stored commands.
 	if style != null:
 		style.filter_command(command)
 
@@ -741,10 +610,7 @@ func apply_command(command: DotFpsCommand) -> void:
 
 
 ## Advances the simulation by one tick.
-##
-## [param delta] must be the fixed tick duration, not a frame time. Under dot-net
-## this is called from [code]_net_simulate[/code], on both the server and the
-## predicting client, with the identical command — which is what makes them agree.
+## [param delta] must be the fixed tick duration, not a frame time. Under dot-net it runs on the server and the predicting client with the identical command.
 func simulate_tick(tick: int, delta: float) -> void:
 	if not _started or drive == Drive.REMOTE:
 		return
@@ -826,10 +692,7 @@ func simulate_tick(tick: int, delta: float) -> void:
 
 
 ## Emits the change signals for anything the tick altered.
-##
-## Diffed here rather than polled by whoever cares, so a game gets one edge per
-## change instead of comparing state every frame and disagreeing about when it
-## happened.
+## Diffed here so a game gets one edge per change instead of polling.
 func _report_changes(
 	before_crouched: bool,
 	before_surface: StringName
@@ -840,18 +703,9 @@ func _report_changes(
 	if state.surface != before_surface:
 		surface_changed.emit(before_surface, state.surface)
 
-	# Modifiers are diffed against a baseline that persists across ticks, not against
-	# one captured at the top of this one.
-	#
-	# [b]The difference is not cosmetic.[/b] A modifier applied between ticks — which
-	# is every modifier a trigger volume or a server-side rule applies — is already
-	# present by the time the next tick starts, so a same-tick baseline sees no
-	# change and the "added" edge is never reported. Only expiry was, which made the
-	# pair look like it fired for some modifiers and not others.
-	#
-	# It also means the signal reports state as of a tick boundary, which is where
-	# the replicated copy changes too, so a client and a server agree about when a
-	# modifier started rather than differing by one tick.
+	# Modifiers are diffed against a baseline that persists across ticks, not one captured at the top of this one:
+	# a modifier applied between ticks is already present when the next starts, so a same-tick baseline never reports "added".
+	# It also reports state at a tick boundary, where the replicated copy changes, so client and server agree when it started.
 	if state.modifiers == _last_modifiers:
 		return
 
@@ -881,12 +735,7 @@ static func _contains_modifier(entries: Array[Vector2i], index: int) -> bool:
 
 
 ## Closes off anything this instance is not permitted to do.
-##
-## [b]Two gates, deliberately.[/b] [member DotFpsTunables.can_noclip] is shared
-## configuration — the client holds a copy of it, and the noclip bit in a command is
-## set by the client. [member allow_noclip] is a property of one controller on one
-## machine, so a server can grant it per player from its own permissions without
-## trusting either.
+## Two gates: [member DotFpsTunables.can_noclip] is shared config the client holds and sets the command bit for; [member allow_noclip] is one controller's property a server grants per player.
 func _gate_abilities() -> void:
 	if tunables != null and not allow_noclip:
 		tunables.can_noclip = false
@@ -946,12 +795,8 @@ func _apply_collider(from: DotFpsState) -> void:
 	var height := tunables.height_at(from.crouch_fraction)
 	var shape_height := maxf(height, tunables.radius * 2.0)
 
-	# Written only when it differs from what the shape holds, as the physics body does for
-	# its query shape (`DotFpsPhysicsBody._configure`): assigning a size, even the same
-	# one, makes the shape emit `changed` and re-send itself to the physics server. A
-	# player standing or strafing has the same two sizes every tick, so this was two
-	# server updates per player per tick for nothing. Compared against the shape itself,
-	# not a cached copy, so a size changed from outside is still put back.
+	# Written only when it differs from the shape: assigning a size, even the same one, makes the shape emit `changed` and re-send itself to the physics server
+	# (the physics body does the same in `DotFpsPhysicsBody._configure`). Compared against the shape itself, so a size changed from outside is still put back.
 	if _capsule.height != shape_height:
 		_capsule.height = shape_height
 
@@ -965,46 +810,16 @@ func _apply_collider(from: DotFpsState) -> void:
 			_collider.position.y = centre
 
 
-# --- Rendering -------------------------------------------------------------
 
 ## The state to render this frame, interpolated between the last two ticks.
+## Rendering the tick state directly quantises motion to the tick rate. Purely cosmetic: the returned state is a copy and nothing writes it back.
+## [param alpha] is how far this frame sits between the last two ticks; left at -1 it is derived from who drives:
 ##
-## Simulation runs at the tick rate and rendering does not, so rendering the tick
-## state directly quantises all motion to the tick rate — visible as stutter at any
-## tick rate a game can afford. Purely cosmetic: the returned state is a copy and
-## nothing writes it back.
-##
-## [b]This used to refuse every drive but [constant Drive.LOCAL], which is the one no
-## networked game uses.[/b] Under dot-net a controller is [constant Drive.EXTERNAL] —
-## the netcode owns the tick — so the guard turned the whole function into a return of
-## the raw tick state for every client anybody has ever connected to a server, and
-## [member _accumulator] is never advanced in that mode either, so the alpha it derived
-## would have been a constant zero. The family's own recurring shape, twice over: the
-## cure for a stutter, written and documented, reachable only from the one deployment
-## shape that does not stutter enough to notice.
-##
-## [param alpha] is how far this frame sits between the last two ticks. Left at -1 it
-## is derived, and where it comes from depends on who drives:
-##
-## - [constant Drive.LOCAL] ticks itself out of its own accumulator, so that is the
-##   fraction.
-## - [constant Drive.EXTERNAL] is stepped once per physics frame by its host, so the
-##   engine's own physics interpolation fraction is exactly it. [b]That is only true
-##   while the engine's physics rate equals the tick rate[/b]: with the engine on 60
-##   against a 128-tick server the host runs two ticks on one physics frame and three
-##   on the next, and a fraction through the physics frame does not describe a
-##   fraction through a tick at all. Measured at 60-against-128, the drawn position
-##   still moved 74 mm on six frames out of seven and 112 mm on the seventh — a 47%
-##   change in apparent speed, eight times a second, which is the whole of the jitter.
-##   Putting the engine on the server's rate is [method G2GNetBridge._adopt_tick_rate]'s
-##   job and this is the half that reads it. With a [member render_clock] set (a
-##   connected client) the clock's [code]render_alpha()[/code] replaces the engine's
-##   fraction, and runs from -1 to 2 for a moment after a physics frame that ran no
-##   tick or two: past the newest tick the drawing goes on along the last step, below
-##   the previous one it is between the two before it.
-## - [constant Drive.REMOTE] is not simulated here at all. Its position arrives over
-##   the network already interpolated by [DotNetInterpolator] and blending toward a
-##   [member _previous_state] nothing updates would drag it backwards every frame.
+## - [constant Drive.LOCAL] ticks from its own accumulator, so that is the fraction.
+## - [constant Drive.EXTERNAL] is stepped once per physics frame by its host, so the engine's interpolation fraction is it, but only while the physics rate equals the tick rate:
+##   at 60 against a 128-tick server the drawn position moved 74 mm on six frames in seven and 112 mm on the seventh. Put the engine on the server's rate ([method G2GNetBridge._adopt_tick_rate]).
+##   With a [member render_clock] set, its [code]render_alpha()[/code] replaces the fraction and runs from -1 to 2 after a frame with no tick or two.
+## - [constant Drive.REMOTE] is not simulated here; its position arrives already interpolated by [DotNetInterpolator], and blending toward a [member _previous_state] nothing updates would drag it backwards.
 func render_state(alpha: float = -1.0) -> DotFpsState:
 	if drive == Drive.REMOTE or tick_rate <= 0:
 		return state
@@ -1041,20 +856,14 @@ func render_state(alpha: float = -1.0) -> DotFpsState:
 		_previous_state.crouch_fraction, state.crouch_fraction, alpha
 	)
 
-	# View angles are not interpolated: blending toward the previous tick would add a
-	# frame of latency to aiming, which is the one place it is felt. They are the last
-	# tick's, which on a frame that ran no tick is a frame behind the mouse; a renderer
-	# draws `DotFpsSampler.look_now()` over them for the player it owns.
+	# View angles are not interpolated: blending toward the previous tick adds a frame of latency to aiming.
+	# They are the last tick's, a frame behind the mouse on a frame with no tick; a renderer draws `DotFpsSampler.look_now()` over them for its own player.
 	return blended
 
 
-# --- Teleporting -----------------------------------------------------------
 
 ## Moves the player, discarding velocity and smoothing.
-##
-## Under dot-net this is a server-authoritative action: a client that teleported
-## itself would be corrected on the next snapshot, having briefly been somewhere it
-## was not allowed to be.
+## Under dot-net this is server-authoritative: a client that teleported itself is corrected on the next snapshot.
 func teleport(
 	position: Vector3,
 	yaw: float = NAN,
@@ -1084,7 +893,6 @@ func teleport(
 		view.snap()
 
 
-# --- Diagnostics -----------------------------------------------------------
 
 func describe() -> Dictionary:
 	return {
@@ -1125,24 +933,12 @@ func describe_lines() -> PackedStringArray:
 	return out
 
 
-# --- The DotPlayerController contract ---------------------------------------
-#
-# Five small methods and one translation. None of them is used unless a
-# DotPlayerControllerSwitch is handing this controller a player, and none of them
-# changes how the controller behaves when it is driven the way it always has been.
+# The DotPlayerController contract: five small methods and one translation, unused unless a DotPlayerControllerSwitch hands this controller a player.
 
 
 ## Translates a generic intent into this controller's own command, and ticks once.
-##
-## [b]The translation is lossy in one direction only, and deliberately.[/b]
-## [DotPlayerIntent] is the part every controller in the family agrees about — a move
-## vector, a look, a set of buttons — while [DotFpsCommand] carries what this movement
-## model needs. Everything in the intent has a counterpart here; what the intent does
-## not carry is this model's own extras, and those keep their defaults.
-##
-## A game that only ever uses this controller should go on calling
-## [method apply_command] and [method simulate_tick] with a real [DotFpsCommand]. This
-## exists so a switch can drive it without knowing which controller it has.
+## [DotPlayerIntent] is what every controller agrees on (move, look, buttons); the extras of this movement model keep their defaults.
+## A game that only uses this controller should keep calling [method apply_command] and [method simulate_tick].
 func _apply_intent(intent: DotPlayerIntent, delta: float) -> void:
 	if intent == null:
 		return
@@ -1161,12 +957,8 @@ func _apply_intent(intent: DotPlayerIntent, delta: float) -> void:
 	_tick += 1
 
 
-## [b]The state's angles are DEGREES, and everything on the base is radians.[/b]
-##
-## `DotFpsState.yaw` says so in its own documentation, and the conversion is easy to
-## forget in exactly the place it matters: a handover between this controller and a
-## third-person one would rotate the player by a factor of 57 and land them facing a
-## direction no input produced. Every one of the five overrides below converts.
+## The state's angles are degrees and everything on the base is radians.
+## Every override below converts; a handover to a third-person controller would otherwise rotate the player by a factor of 57.
 func _read_transform() -> Transform3D:
 	return Transform3D(Basis(Vector3.UP, deg_to_rad(state.yaw)), state.position)
 
@@ -1196,16 +988,8 @@ func _write_angles(yaw: float, pitch: float) -> void:
 	state.pitch = clampf(rad_to_deg(pitch), tunables.pitch_min, tunables.pitch_max)
 
 
-## Where the camera is, which is not where the feet are.
-##
-## Overridden because the base's default is the body transform, and a first-person
-## camera derived from a capsule's origin is at the knees — which is the exact mistake
-## dot-spectate's pose_fn documentation warns about.
-##
-## [b]The height comes from the motor, not from the tunables.[/b] `eye_position` accounts
-## for the current stance — a crouched player's eyes are not at standing height — and a
-## caller that read `stand_height` would put a spectator's camera above a crouching
-## runner's head, in a game where crouching under things is the point.
+## Where the camera is, which is not where the feet are: the base default is the capsule origin, at the knees.
+## The height comes from the motor's `eye_position`, which accounts for the current stance, not from `stand_height`.
 func eye_transform() -> Transform3D:
 	var height := (
 		motor.eye_position(state).y - state.position.y if motor != null

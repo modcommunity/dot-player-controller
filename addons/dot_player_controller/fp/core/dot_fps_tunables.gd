@@ -2,28 +2,9 @@
 class_name DotFpsTunables
 extends "dot_fps_tunables_base.gd"
 
-## Every number the movement simulation reads. Layered like every [DotConfig]:
-## exported defaults, then a JSON file, then [code]DOT_FPS_*[/code] environment
-## variables, then [code]--fps-*[/code] arguments.
-##
-## [b]Why a config resource and not exports on the controller.[/b] A dedicated
-## server has to be able to run a mode with different movement without an editor and
-## without a rebuild — the same reason those engines expose [code]sv_accelerate[/code] and
-## [code]sv_airaccelerate[/code] as cvars rather than compile-time constants. Making
-## this a [Resource] also means a game can ship several (`movement_default.tres`,
-## `movement_lowgrav.tres`) and swap them per map or per round.
-##
-## [b]These values must be identical on the client and the server.[/b] They are an
-## input to the simulation, so a client running different ones diverges from the
-## server every tick and reconciliation corrects it forever. A server should send its
-## own set at connect time rather than trusting the client's copy; see
-## [method fingerprint].
-##
-## The defaults are the classic competitive-shooter profile ([constant PROFILE_CLASSIC]):
-## every number is that genre's, converted from its 0.01905 m units, so ground friction with
-## a stop speed, a low-wish-speed air cap and strafe-jumping behave as players know them.
-## [constant PROFILE_LEGACY] is the movement-shooter set this class shipped before; see
-## [method apply_profile]. Every number is also a server cvar ([method cvar_specs]).
+## Every number the movement simulation reads, layered like every [DotConfig]: exported defaults, JSON file, [code]DOT_FPS_*[/code] environment, [code]--fps-*[/code] arguments.
+## Must be identical on client and server or reconciliation corrects forever; see [method fingerprint].
+## Defaults are [constant PROFILE_CLASSIC]; [constant PROFILE_LEGACY] is the older set ([method apply_profile]). Every number is also a cvar ([method cvar_specs]).
 
 ## One source unit in metres (16 units to the foot, 0.75 scale): what a map made in them
 ## and every value in [method cvar_specs] is converted by.
@@ -208,10 +189,7 @@ func validate() -> DotResult:
 			"crouch %.2f, stand %.2f" % [crouch_height, stand_height]
 		)
 
-	# A capsule whose total height is under twice its radius has no cylindrical
-	# section, and Godot silently grows it — so the collider the simulation thinks it
-	# has is not the one the physics server uses, and the player sinks into floors
-	# only while crouched.
+	# A capsule under twice its radius tall has no cylindrical section and Godot silently grows it, so the player sinks into floors only while crouched.
 	if crouch_height < radius * 2.0:
 		return DotResult.fail(
 			DotError.CODE_INVALID,
@@ -267,10 +245,7 @@ func height_at(crouch_fraction: float) -> float:
 	return lerpf(stand_height, crouch_height, clampf(crouch_fraction, 0.0, 1.0))
 
 
-## Ground speed for the modifiers held in [param buttons].
-##
-## Most restrictive wins. See [member crouch_speed_scale] for why this is derived
-## rather than stored.
+## Ground speed for the modifiers held in [param buttons]. Most restrictive wins; see [member crouch_speed_scale].
 func speed_for(buttons: int, load_fraction: float = 0.0) -> float:
 	var scale := 1.0
 
@@ -289,10 +264,7 @@ func speed_for(buttons: int, load_fraction: float = 0.0) -> float:
 # How far these numbers carry a player, so a map sizes a gap or ledge against the class and not its own copy of the formula.
 
 ## How much of the apex a climb is asked to use.
-##
-## A player landing at exactly [member jump_height] arrives with no vertical speed at the
-## one instant of the arc where a tick either side of it is short: a ledge that works when
-## the tick lands right and not when it does not. Nine tenths works every time.
+## A player landing exactly at [member jump_height] has no vertical speed at the arc's slowest instant, so a ledge works only when the tick lands right; 0.9 always works.
 const CLIMB_MARGIN := 0.9
 
 ## The longest [member wall_run_max_time] can be, in seconds: what the run's replicated
@@ -301,15 +273,9 @@ const CLIMB_MARGIN := 0.9
 const WALL_RUN_TIME_LIMIT := 1.9
 
 
-## Seconds from take-off to landing [param rise] metres higher (negative for lower), for a
-## jump of [param p_jump_height] under [param p_gravity]. -1.0 when no jump reaches that
-## high, or gravity is not positive.
-##
-## [b]The landing height is the point.[/b] The airtime everybody writes down is the time
-## to fall back to the height you left, and it is the wrong one for anything that climbs:
-## with a 1.15 m jump under 20 m/s² a player is airborne 0.68 s flat and 0.53 s onto a
-## step 0.8 m up. A course sized with the first number is 30% longer than the movement.
-## Static, so a map holding its own constants can ask without building a tunables.
+## Seconds from take-off to landing [param rise] metres higher (negative for lower), for a jump of [param p_jump_height] under [param p_gravity]. -1.0 when unreachable or gravity is not positive.
+## The landing height matters: a 1.15 m jump under 20 m/s² is airborne 0.68 s flat but 0.53 s onto a step 0.8 m up.
+## Static so a map can ask without building a tunables.
 static func airtime_for(p_gravity: float, p_jump_height: float, rise: float) -> float:
 	if p_gravity <= 0.0:
 		return -1.0
@@ -346,15 +312,9 @@ func jump_airtime(rise: float = 0.0) -> float:
 	return airtime_for(gravity, jump_height, rise)
 
 
-## The clear air a player crosses in one jump landing [param rise] metres higher, at
-## [param speed] ([member max_speed] when negative), in metres. 0.0 if unreachable.
-##
-## Ground speed held through the air, which is what holding forward does: air
-## acceleration is capped at [member max_air_wish_speed] along the wish direction, so it
-## adds nothing to a player already moving faster than that. Strafing adds more and a
-## landing cap ([member bhop_speed_cap_scale]) takes some away; both are a game's
-## question about skill, not this one. Measured from the player's centre, lip to lip,
-## with no credit for the capsule's radius — that is the margin.
+## The clear air a player crosses in one jump landing [param rise] metres higher, at [param speed] ([member max_speed] when negative), in metres. 0.0 if unreachable.
+## Assumes ground speed held through the air (air acceleration adds nothing above [member max_air_wish_speed]); strafing and [member bhop_speed_cap_scale] are skill questions.
+## Measured centre to centre, lip to lip, with no credit for the capsule radius: that is the margin.
 func jump_reach(rise: float = 0.0, speed: float = -1.0) -> float:
 	return reach_for(max_speed if speed < 0.0 else speed, gravity, jump_height, rise)
 
@@ -367,14 +327,8 @@ func climb_limit(margin: float = CLIMB_MARGIN) -> float:
 
 
 ## A short hash of every value that affects the simulation.
-##
-## [b]The point of this is to fail loudly.[/b] A client whose tunables differ from
-## the server's diverges every tick, and the symptom — constant small corrections —
-## looks exactly like ordinary packet loss. Comparing fingerprints at connect time
-## turns three days of "the netcode feels bad" into one line in a log.
-##
-## Look-only values are excluded: mouse sensitivity is a per-player preference and
-## does not enter the simulation.
+## Differing tunables look exactly like packet loss (constant small corrections); compare fingerprints at connect to fail loudly.
+## Look-only values (mouse sensitivity) are excluded.
 func fingerprint() -> String:
 	var parts := PackedStringArray()
 

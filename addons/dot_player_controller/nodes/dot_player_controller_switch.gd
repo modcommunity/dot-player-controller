@@ -2,16 +2,8 @@ class_name DotPlayerControllerSwitch
 extends DotPlayerComponent
 
 ## Exactly one controller drives the player, and the handover carries what matters.
-##
-## [b]This is the component that makes having two controllers possible.[/b] Without it,
-## a game with a first-person and a third-person controller has two nodes both reading
-## input, both writing the body's transform, and the result depends on child order —
-## which nobody will ever guess from the symptom.
-##
-## The other half is the handover. Switching controllers must not teleport the player,
-## must not stop them dead in mid-air, and must not spin their view: position, velocity
-## and look angles are carried across. The [i]state[/i] is not, and that is deliberate —
-## getting out of a vehicle should not restore the air-strafe you were in the middle of.
+## Without it, two controllers both read input and write the body's transform, and the result depends on child order.
+## Position, velocity and look angles are carried across a switch; the state is not, so leaving a vehicle does not restore a mid-air strafe.
 ##
 ## [codeblock]
 ## DotPlayer
@@ -20,10 +12,7 @@ extends DotPlayerComponent
 ##   DotTpsController              controller_id = &"tp"
 ## [/codeblock]
 
-## Not [code]CHANNEL[/code]. dot-player-controller's controller has had a
-## [code]CHANNEL[/code] of its own since before this base existed, and a constant that
-## shadows a parent's is a parse error rather than an override. The base gives up the
-## obvious name so the leaf can keep it.
+## Not [code]CHANNEL[/code]: the first-person controller declares its own, and a constant that shadows a parent's is a parse error.
 const CONTROLLER_CHANNEL := "player.controller"
 
 ## The active controller changed.
@@ -36,15 +25,11 @@ signal switch_refused(to: StringName, why: String)
 @export var default_controller: StringName = &""
 
 ## Whether to look for controllers among this node's siblings as well as its children.
-##
-## On, because the scene above puts them side by side under the player, which reads
-## better than nesting every controller inside the switch.
+## On, because the scene puts them side by side under the player.
 @export var include_siblings: bool = true
 
 ## Whether velocity is carried across a switch.
-##
-## On. A player switching from a first-person view to a third-person one mid-jump who
-## stopped dead in the air would report it as the game freezing.
+## On: stopping dead in mid-air on a view switch reads as the game freezing.
 @export var carry_velocity: bool = true
 
 ## Whether look angles are carried across.
@@ -64,7 +49,6 @@ func _ready() -> void:
 	call_deferred("_activate_default")
 
 
-# --- Collecting -------------------------------------------------------------
 
 ## Re-finds the controllers. Call after adding one at runtime.
 func refresh() -> void:
@@ -116,7 +100,6 @@ func _activate_default() -> void:
 	var _res := activate(wanted)
 
 
-# --- Switching --------------------------------------------------------------
 
 ## Hands the player to a controller, carrying position, velocity and look.
 func activate(id: StringName) -> DotResult:
@@ -141,10 +124,7 @@ func activate(id: StringName) -> DotResult:
 	var was := _active
 	_active = id
 
-	# Activated first, then given the state: a controller's _on_activated is where it
-	# resets its own motor, and handing the state over before that would have it
-	# overwritten by the reset. This ordering is the whole reason the two are separate
-	# calls rather than one.
+	# Activated first, then given the state: _on_activated resets the controller's motor and would overwrite a state handed over earlier.
 	incoming.activate()
 
 	if not state.is_empty():
@@ -184,9 +164,7 @@ func simulate(intent: DotPlayerIntent, delta: float) -> bool:
 
 
 ## Freezes or unfreezes every controller at once.
-##
-## Every one, not just the active one: a player who switches view while frozen must
-## still be frozen, and a flag set on one node is a flag the other does not have.
+## Every one, so a player who switches view while frozen is still frozen.
 func set_input_enabled(enabled: bool) -> void:
 	for key: Variant in _controllers.keys():
 		var c: DotPlayerController = _controllers[key]
@@ -211,7 +189,6 @@ func place(to: Transform3D, keep_velocity: bool = false) -> void:
 		c.place(to, keep_velocity)
 
 
-# --- Reading ----------------------------------------------------------------
 
 func active_id() -> StringName:
 	return _active
@@ -231,10 +208,7 @@ func controller(id: StringName) -> DotPlayerController:
 
 
 ## Every controller id, in declared order.
-##
-## Declared order rather than dictionary order: a cycle key that visited the views in a
-## different sequence on two machines is a small, maddening bug, and this is the only
-## place the order is decided.
+## Declared, not dictionary, order, so a cycle key visits the views in the same sequence on every machine.
 func available() -> Array[StringName]:
 	var out: Array[StringName] = []
 

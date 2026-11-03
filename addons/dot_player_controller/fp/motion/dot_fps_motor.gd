@@ -1,32 +1,16 @@
 class_name DotFpsMotor
 extends "dot_fps_motor_walls.gd"
 
-## The movement simulation. Deterministic, engine-independent, and the only place
-## movement rules live.
+## The movement simulation. Deterministic, engine-independent, and the only place movement rules live.
 ##
 ## [codeblock]
 ## var motor := DotFpsMotor.new(tunables, body)
 ## motor.simulate(state, command, 1.0 / 60.0)
 ## [/codeblock]
 ##
-## [b]The contract, and why it is worth the discipline.[/b] Given the same
-## [DotFpsState], the same [DotFpsCommand], the same delta and the same world,
-## [method simulate] produces the same result on every machine. That single property
-## is what lets a client predict its own movement and a server correct it: the client
-## applies input immediately, the server applies the identical input a round trip
-## later, and the two agree — so nothing has to be corrected and the player sees no
-## rubber-banding. Break it and reconciliation corrects every tick forever, which
-## feels exactly like packet loss and is diagnosed as such for weeks.
-##
-## Concretely, nothing in here may read the keyboard, the wall clock, an unseeded
-## random stream, the frame rate, or any node's transform. Time comes from
-## [param delta]; intent comes from the command; the world comes from [DotFpsBody].
-## Every timer in [DotFpsState] is counted in simulated seconds for the same reason.
-##
-## [b]The movement model is the classic one.[/b] Ground acceleration toward a wish
-## direction with friction, and airborne acceleration capped at a small absolute
-## speed — which is not a limitation but the entire mechanism behind air-strafing and
-## bunny-hopping. See [method accelerate].
+## The contract: the same [DotFpsState], [DotFpsCommand], delta and world give the same result on every machine, which is what lets a client predict and a server agree. Break it and reconciliation corrects every tick like packet loss.
+## So nothing here may read the keyboard, wall clock, unseeded random, frame rate or any node's transform: time is [param delta], intent is the command, the world is [DotFpsBody].
+## The model is the classic one: ground acceleration with friction, and air acceleration capped at a small absolute speed, which is what air-strafing and bunny-hopping are. See [method accelerate].
 
 
 func _init(p_tunables: DotFpsTunables, p_body: DotFpsBody) -> void:
@@ -36,10 +20,7 @@ func _init(p_tunables: DotFpsTunables, p_body: DotFpsBody) -> void:
 
 
 ## Switches mode, running the exit and enter hooks.
-##
-## The only supported way to change [member DotFpsState.mode] — assigning it directly
-## skips the hooks, so a mode that allocated something in [method DotFpsMoveMode._enter]
-## never gets told to release it.
+## The only supported way to change [member DotFpsState.mode]: assigning it skips the hooks, so a mode that allocated something in [method DotFpsMoveMode._enter] is never told to release it.
 func set_mode(state: DotFpsState, id: int) -> void:
 	if state.mode == id:
 		return
@@ -56,13 +37,7 @@ func set_mode(state: DotFpsState, id: int) -> void:
 
 
 ## Advances [param state] by one tick under [param command].
-##
-## The order of operations is the classic one and is not arbitrary: the ground is
-## categorised before acceleration so that friction and the acceleration constant are
-## chosen for the surface the player is actually on, and again after the move so the
-## next tick's ground state reflects where the player ended up. Swapping them makes
-## the first airborne tick use ground friction, which is the difference between a
-## jump that gains speed and one that does not.
+## The order is load-bearing: the ground is categorised before acceleration so friction fits the surface stood on, and again after the move for the next tick. Swapped, the first airborne tick uses ground friction and a jump gains no speed.
 func simulate(
 	state: DotFpsState,
 	command: DotFpsCommand,
@@ -125,10 +100,8 @@ func _simulate(
 
 	_update_crouch(state, command, delta)
 
-	# Before the ground is categorised, because a probe that starts inside geometry
-	# reports nothing and the answer it produces is the one this whole tick is built
-	# on. Unconditional rather than gated on a mode: the case it exists for is a
-	# player in AIR on a ramp, which is exactly the case every earlier guard excluded.
+	# Before the ground is categorised, because a probe starting inside geometry reports nothing and the whole tick is built on that answer.
+	# Unconditional: the case it exists for is a player in AIR on a ramp, which every earlier guard excluded.
 	_depenetrate(state, _height(state))
 
 	var start_settled := _reuse_rest(state)
@@ -171,7 +144,8 @@ func _simulate(
 		# than as a velocity so it composes with friction instead of fighting it.
 		if _surface.push != Vector3.ZERO:
 			state.velocity += _surface.push * delta
-			# Environment motion is not wall-creep: let the cap rise by what the push added.
+			# Environment motion is not wall-creep: let the cap rise by the horizontal push
+			# only; a vertical component cannot move the walker along the ground.
 			if _ground_cap > 0.0:
 				_ground_cap += _surface.push.length() * delta
 	elif state.is_wall_running():
@@ -185,18 +159,9 @@ func _simulate(
 	_clamp_velocity(state)
 	var settled := _move(state, delta, jumped or launched)
 
-	# After the move, so the next tick starts from the truth rather than from where
-	# the player was before sliding into a wall or off a ledge.
-	#
-	# [b]Unless the move's own check already is that truth.[/b] A grounded walker's
-	# [method _move] categorises after the slide (for the ground snap), and nothing runs
-	# between that and here. When that check changed nothing but the ground fields and left
-	# the player GROUNDED as it found them, running it again is the same function of the
-	# same inputs: it would make the same queries, get the same answers and write the same
-	# fields. [method _categorise_ground_settled] says when that is provable; it is one
-	# ground probe a tick (plus four quarter probes against a wall) for every walker.
-	# Likewise a walker who did not move this tick: the start's check was a fixed point, and
-	# mode, position, velocity and height are as it left them, so it would repeat exactly.
+	# After the move, so the next tick starts from the truth, unless the move's own check already is that truth:
+	# a grounded walker's [method _move] categorises after the slide, and if that changed only the ground fields and left it GROUNDED, running it again repeats the same queries ([method _categorise_ground_settled]).
+	# Likewise a walker who did not move: the start's check was a fixed point. It saves one ground probe a tick per walker.
 	if settled or (
 		start_settled and state.mode == DotFpsState.Mode.GROUND
 		and state.position == start_position and state.velocity == start_velocity
@@ -237,10 +202,8 @@ func _ground_node(id: int) -> Node3D:
 	return body.collider_node(id) if id != 0 else null
 
 
-## Whether the state is the one the last tick ended on after a settled ground check, so that
-## the start-of-tick check would repeat its queries and write the same values. The one thing
-## that can differ is the world between the two ticks; the stamp is dropped on any other
-## change to the state, so a mover that carries its rider (position changes) is still probed.
+## Whether the state is the one the last tick ended on after a settled ground check, so the start-of-tick check would repeat its queries.
+## Only the world can differ between ticks; the stamp is dropped on any other change, so a mover carrying its rider is still probed.
 func _reuse_rest(state: DotFpsState) -> bool:
 	if not _rest_valid:
 		return false
@@ -337,11 +300,8 @@ func _tick_stamina(state: DotFpsState, command: DotFpsCommand, delta: float) -> 
 
 
 func _update_noclip(state: DotFpsState, command: DotFpsCommand) -> void:
-	# Before the ability gate, because this is the case where somebody else decided. An
-	# administrator's noclip arrives as a modifier (DotFpsModifier.forces_noclip), which
-	# is in the replicated state — so this line runs identically on the server and in the
-	# client's replay, and the button, which the player still holds, is ignored while it
-	# is in force.
+	# Before the ability gate, because here somebody else decided: an administrator's noclip arrives as a modifier ([code]forces_noclip[/code]) in replicated state,
+	# so this runs identically on the server and in a replay, and the held button is ignored while it is in force.
 	if _effects.force_noclip:
 		if state.mode != DotFpsState.Mode.NOCLIP:
 			state.mode = DotFpsState.Mode.NOCLIP
@@ -403,13 +363,7 @@ func _simulate_noclip(
 
 
 ## Moves the crouch fraction toward what the player is holding, if it fits.
-##
-## [b]The standing-up test is the part that matters.[/b] The previous controller
-## lerped a camera offset and never resized the collider or checked for headroom, so
-## releasing crouch under a low ceiling pushed the player through it. Here standing up
-## is attempted, tested, and abandoned for this tick if it does not fit — so a player
-## holding a wall of geometry above them simply stays crouched and stands the moment
-## they step clear.
+## Standing up is attempted, tested and abandoned for this tick if it does not fit, so a player under a low ceiling stays crouched and stands once clear.
 func _update_crouch(
 	state: DotFpsState,
 	command: DotFpsCommand,
@@ -455,11 +409,7 @@ func _update_crouch(
 
 
 ## Applies a new crouch fraction, moving the body to keep the right end fixed.
-##
-## On the ground the feet stay put and the head moves — the player does not sink into
-## the floor. Airborne the head stays put and the feet come up, which is the
-## crouch-jump: it clears a ledge a standing jump cannot, and players who have played
-## a shooter expect it to work.
+## On the ground the feet stay put and the head moves; airborne the head stays put and the feet come up (the crouch-jump, which clears a ledge a standing jump cannot).
 func _set_crouch(state: DotFpsState, fraction: float, airborne: bool) -> void:
 	state.position = _position_for_crouch(state, fraction, airborne)
 	state.crouch_fraction = fraction
@@ -482,26 +432,13 @@ func _position_for_crouch(
 
 
 ## Decides whether the player is standing on something.
-##
-## A short downward sweep rather than a contact list, because contacts are a property
-## of the last physics step and this has to be answerable at any point in the tick,
-## including mid-slide.
+## A short downward sweep, not a contact list: contacts belong to the last physics step and this must answer mid-slide.
 func _categorise_ground(state: DotFpsState) -> void:
 	_categorise_ground_settled(state)
 
 
-## [method _categorise_ground], answering whether this call was a FIXED POINT: whether a
-## second call on the state it leaves would make exactly the same queries and write exactly
-## the same values. True only on the floor branch, for a player who was GROUNDED on entry
-## and whose position and velocity it did not touch (no [method _keep_skin] lift, no slide
-## onto the floor). The argument, because it is what makes skipping the second call safe:
-## the function reads the mode, position, velocity, crouch height and -- only in the rising
-## branch -- the ground normal. Mode, position, velocity and height are unchanged, so the
-## probe, [method _standable_normal] and the quarter probes repeat exactly, against a world
-## nothing has stepped. The ground normal is now the floor's, and the rising branch then
-## tests [code]velocity . floor <= LEAVING_SPEED[/code], which held here or the slide onto
-## the floor would have changed the velocity. Every other branch -- AIR, the embedded
-## recovery, an unstandable surface -- answers false and is simply run again.
+## [method _categorise_ground], answering whether this call was a fixed point: a second call on the state it leaves would make the same queries and write the same values.
+## True only on the floor branch, for a player GROUNDED on entry whose position and velocity it did not touch (no [method _keep_skin] lift, no slide onto the floor); every other branch answers false and is run again.
 func _categorise_ground_settled(state: DotFpsState) -> bool:
 	if state.mode == DotFpsState.Mode.NOCLIP:
 		return false
@@ -511,27 +448,9 @@ func _categorise_ground_settled(state: DotFpsState) -> bool:
 	var velocity_in := state.velocity
 	var rising := state.velocity.y > LEAVING_SPEED
 
-	# Moving upward fast enough to have left the ground is not on it, whatever is
-	# under the feet. Without this the tick a jump starts still counts as grounded,
-	# gravity is skipped, ground friction applies, and the jump loses most of its
-	# height for no visible reason.
-	#
-	# [b]Upward is not the same as away from the ground[/b], and this used to treat
-	# them as one: `velocity.y > 0.1` put every player walking up any walkable slope in
-	# AIR on the first tick of it — 18 degrees at 6.5 m/s is 2 m/s upward ALONG the
-	# surface — so nothing in the family could walk up a ramp. A grounded player is asked
-	# the question below, after the probe, against the plane.
-	#
-	# [b]And so is an airborne one that is only rising slowly.[/b] Landing while moving
-	# uphill makes exactly the same velocity: the slide clips it onto the face, and
-	# walking pace along 13 degrees is 0.4 m/s upward. Leaving here without a query kept
-	# that player in AIR; gravity took a third of a metre per second off, the next slide
-	# put it back, and they glided up the slope at air speed until a tick happened to end
-	# inside the probe's two centimetres — over a second, in one game. Only a rise of more
-	# than half a jump's launch skips the query: that is a jump or a launch, the classic
-	# movement model draws its own line at the same ratio, and it is what keeps a jump
-	# into a steep uphill from landing on the tick it leaves, and a bunny-hopper crossing a
-	# walkable ramp at speed from being put on it.
+	# Moving upward fast enough to have left the ground is not on it, or the tick a jump starts counts as grounded and the jump loses most of its height.
+	# Upward is not away from the ground: walking up 18 degrees at 6.5 m/s is 2 m/s upward ALONG the surface, so a grounded player is asked against the plane, and a slow airborne rise (0.4 m/s on 13 degrees) is probed too.
+	# Only a rise of more than half a jump's launch skips the query, which keeps a bunny-hopper crossing a walkable ramp from being put on it.
 	if rising and not was_grounded and (
 		state.velocity.y > maxf(tunables.jump_velocity() * 0.5, LEAVING_SPEED)
 	):
@@ -547,15 +466,9 @@ func _categorise_ground_settled(state: DotFpsState) -> bool:
 	var hit := _ground_probe(centre, probe, height)
 	var floor_normal := _standable_normal(state, hit)
 
-	# [b]A face too steep to stand on is asked again, in quarters[/b] (`[steep-climb-1]`).
-	# A capsule pressed against a face that leans back touches it with its rounded
-	# bottom, so the probe reports the face and not the floor the player is standing on,
-	# and a walker was put in AIR at the foot of it. Air acceleration into the face then
-	# carried them 2.5 m up a 70 degree wall, where they hung. The classic movement code
-	# has the same problem with its box and answers it by tracing four quarter-boxes when
-	# the whole one hits a steep plane: a quarter away from the face still finds the
-	# floor. Four half-radius capsules, each offset toward one quarter, do the same here,
-	# over the same probe distance, and only a floor counts.
+	# A face too steep to stand on is asked again, in quarters (`[steep-climb-1]`): a capsule pressed against a leaning face touches it with its rounded bottom,
+	# so the probe reports the face, not the floor, and air acceleration carried the walker 2.5 m up a 70 degree wall.
+	# Four half-radius capsules each offset toward one quarter find the floor a quarter away from the face; only a floor counts.
 	if floor_normal == Vector3.ZERO and hit.hit and not _is_floor(hit.normal):
 		var quarter := _quadrant_floor(centre, probe, height)
 		if quarter.hit:
@@ -563,13 +476,9 @@ func _categorise_ground_settled(state: DotFpsState) -> bool:
 			floor_normal = quarter.normal
 
 	if rising:
-		# Moving up, and either grounded last tick or airborne and rising slowly (above).
-		# That is a walk up a slope, or a landing on one, when the velocity lies in the
-		# ground plane — along the floor under the feet now, or the one stood on last
-		# tick, which is the crest of a ramp (UP for an airborne player, so never) — and a
-		# launch when it points out of both. A jump never reaches this: [method _try_jump] puts the player in AIR
-		# itself, and its launch is `jump_velocity * normal.y` out of any floor, which is
-		# metres per second against a tenth. So is anything a game throws them with.
+		# Moving up, and either grounded last tick or airborne and rising slowly: a walk up a slope or a landing on one when the velocity lies in the ground plane
+		# (the floor now, or last tick's at a ramp's crest; UP for an airborne player, so never), and a launch when it points out of both.
+		# A jump never reaches this: [method _try_jump] puts the player in AIR itself, with a launch of metres per second against a tenth.
 		var walking := (
 			floor_normal != Vector3.ZERO
 			and (
@@ -584,10 +493,8 @@ func _categorise_ground_settled(state: DotFpsState) -> bool:
 			state.ground_id = 0
 			return false
 
-		# Along the floor they are on now. At a ramp's crest the velocity still points
-		# up the ramp, and leaving it there makes the next tick see 2 m/s away from the
-		# flat top and throw a walker a tenth of a metre into the air. Changes nothing
-		# on the slope itself, where it is already in the plane.
+		# Along the floor now: at a ramp's crest the velocity still points up the ramp, and the next tick would throw a walker a tenth of a metre into the air.
+		# Changes nothing on the slope itself.
 		state.velocity = state.velocity.slide(floor_normal)
 
 	if floor_normal != Vector3.ZERO:
@@ -612,47 +519,13 @@ func _categorise_ground_settled(state: DotFpsState) -> bool:
 		_keep_skin(state, hit, probe)
 		return was_grounded and state.position == position_in and state.velocity == velocity_in
 
-	# The recovery path, and the reason it is worth an extra query.
-	#
-	# A swept query cannot report anything useful about a shape that starts inside
-	# geometry — Godot's returns "no collision", which is technically about the sweep
-	# and reads as "nothing below me". A player who is embedded by a fraction of a
-	# millimetre therefore looks airborne, falls, embeds further, and leaves the
-	# level. Every collision backend has some version of this and none of them fail
-	# safely.
-	#
-	# So a player who was on the ground and now appears not to be is asked the one
-	# question a swept query cannot answer: are we inside something? If so they stay
-	# grounded and keep their previous floor normal. The cost is one overlap test on
-	# the tick a player leaves the ground, which is rare; the alternative is an
-	# occasional, unreproducible fall through the world.
+	# The recovery path: a swept query on a shape starting inside geometry returns "no collision", so a player embedded by a fraction of a millimetre looks airborne, falls and leaves the level.
+	# A player who was grounded and now appears not to be is asked the one question a sweep cannot answer, whether they are inside something; if so they stay grounded with the previous normal.
+	# One overlap test on the tick a player leaves the ground, against an occasional unreproducible fall through the world.
 	if was_grounded and body.overlaps(centre, height, tunables.radius):
 		embedded_ticks += 1
-		# [b]And then get them OUT, which is the half that was missing.[/b] Staying
-		# grounded stops the fall out of the level and does nothing at all about being
-		# inside the floor: the probe above still starts in geometry next tick, still
-		# reports nothing, and still arrives here — so this branch answers GROUND for
-		# ever, keeps a stale [member DotFpsState.ground_normal], and skips the one
-		# call that could have lifted the player out, because [method _move] runs
-		# [method _snap_to_ground] only when this function says they are NOT grounded.
-		#
-		# It is an absorbing state. Every route into it is a bug somewhere else — a
-		# grazing landing at bhop speed leaves about a millimetre of vertical clearance,
-		# and the snap's 35 cm sweep is a 7 mm margin against a backend tolerance nobody
-		# measured — but the reason it is *noticed* is that there is no route out. A
-		# player goes through the floor and is then stuck under it until they respawn,
-		# which is exactly how it was reported.
-		#
-		# So: lift them clear first, and keep the old answer only if that fails. A
-		# player who is not embedded any more is one the ordinary probe can find a floor
-		# for on the very next tick.
-		# [b]Only when the probe saw nothing.[/b] A probe that reported a steep surface
-		# at fraction 0 has found a WALL the capsule is a hair inside — a step that
-		# dropped back beside a kerb leaves it 0.1 mm into the face — and straight up is
-		# not out of a wall: it lifted a walker held against a 0.46 m kerb 0.13 m into
-		# the air, and from there the next step cleared the kerb. [method _depenetrate]
-		# leaves a wall along its own normal at the start of the next tick; until then
-		# the old answer stands.
+		# Then get them out: staying grounded stops the fall, but the next probe still starts in geometry and [method _snap_to_ground] runs only when NOT grounded, so the stale [member DotFpsState.ground_normal] stood for ever. Lift clear first; keep the old answer only if that fails.
+		# Only when the probe saw nothing: a steep surface at fraction 0 is a wall the capsule is a hair inside, and straight up is not out of a wall (it lifted a walker 0.13 m over a 0.46 m kerb). [method _depenetrate] handles that next tick.
 		if not hit.hit and _lift_clear(state, height):
 			lifted_ticks += 1
 			DotLog.debug(
@@ -699,10 +572,7 @@ func _is_floor(normal: Vector3) -> bool:
 
 
 ## Applies a jump if one is owed. Returns whether it fired.
-##
-## Coyote time and jump buffering are both here because both are about a press
-## landing slightly outside the window where it is strictly legal, and a player reads
-## either failure as the game dropping the input rather than as their own timing.
+## Coyote time and jump buffering both cover a press landing slightly outside the legal window, which a player reads as the game dropping the input.
 func _try_jump(
 	state: DotFpsState,
 	command: DotFpsCommand,
@@ -735,13 +605,8 @@ func _try_jump(
 	if not can:
 		return false
 
-	# Only while descending or level. Without this a player under a ceiling can jump
-	# repeatedly on the way up and climb it.
-	#
-	# Level with the ground they are standing on, not with the horizon: a player walking
-	# up a slope is moving upward and is on the ground, and asking `velocity.y` refused
-	# every jump on every uphill. Airborne (coyote time) the normal is UP, so it is the
-	# same question it always was.
+	# Only while descending or level, or a player under a ceiling jumps repeatedly on the way up and climbs it.
+	# Level with the ground stood on, not the horizon: `velocity.y` refused every jump on every uphill. Airborne (coyote time) the normal is UP.
 	var normal := state.ground_normal if state.mode == DotFpsState.Mode.GROUND else Vector3.UP
 	if state.velocity.dot(normal) > LEAVING_SPEED:
 		return false
@@ -750,18 +615,12 @@ func _try_jump(
 		tunables.jump_velocity() * _surface.jump_scale * _effects.jump
 	)
 
-	# A surface or a modifier can make jumping impossible, and that has to mean the
-	# jump does not happen rather than a jump of zero height: a jump of zero still
-	# leaves the ground for a tick, which loses ground friction and reads as the
-	# player twitching in place while stuck to flypaper.
+	# A surface or modifier that forbids jumping must mean no jump, not a jump of zero height, which still leaves the ground for a tick and loses ground friction.
 	if launch <= 0.0:
 		return false
 
-	# The landing cap, applied BEFORE the launch so it measures the
-	# speed the player arrived with rather than one the jump has already changed.
-	# Off by default: with it on there is no bunny-hopping, which is the whole point
-	# of the cvar in those shooters and the whole point of turning it off on a bhop
-	# server.
+	# The landing cap runs BEFORE the launch, so it measures the speed the player arrived with.
+	# Off by default: with it on there is no bunny-hopping, which is the point of the cvar.
 	if tunables.bhop_speed_cap_scale > 0.0:
 		var cap := tunables.max_speed * tunables.bhop_speed_cap_scale
 		var horizontal := Vector2(state.velocity.x, state.velocity.z)
@@ -780,10 +639,8 @@ func _try_jump(
 	state.mode = DotFpsState.Mode.AIR
 	state.time_since_jump = 0.0
 
-	# Coyote time is spent, not refreshed. Leaving it at zero would leave the window
-	# open for another jump in mid-air; today the upward-velocity check above happens
-	# to close it first, but that is a coincidence of the default jump height and
-	# gravity, and it stops being true the moment either is tuned.
+	# Coyote time is spent, not refreshed, or the window stays open for another jump in mid-air.
+	# The upward-velocity check above closes it only by coincidence of the default jump height and gravity.
 	state.time_since_grounded = 1000.0
 
 	# Consumed, so one press cannot be spent twice through the buffer.
@@ -792,16 +649,9 @@ func _try_jump(
 	return true
 
 
-## The launch ability: [member DotFpsTunables.launch_button] throws the player upward.
-##
-## [b]On the press, not the hold[/b], and read from [member DotFpsState.previous_buttons]
-## like the jump buffer, so a replay of the same commands launches on the same tick. The
-## upward speed REPLACES a lower one rather than adding to it: added, a launch at the top
-## of a jump would go half again as high as one from the ground, and the height of an
-## escape would depend on when in a jump it was pressed.
-##
-## A stun ([code]deny_jump[/code] or [code]deny_move[/code]) refuses it, for the reason a
-## stun refuses a jump: an ability that escapes a freeze is a way out of every freeze.
+## The launch ability: [member DotFpsTunables.launch_button] throws the player upward, on the press so a replay launches on the same tick.
+## The upward speed REPLACES a lower one instead of adding, or a launch at the top of a jump would go half again as high.
+## A stun refuses it, as it refuses a jump: an ability that escapes a freeze is a way out of every freeze.
 func _try_launch(state: DotFpsState, command: DotFpsCommand) -> bool:
 	if not tunables.launch_enabled or tunables.launch_button <= 0:
 		return false
@@ -887,21 +737,9 @@ func _try_dash(state: DotFpsState, command: DotFpsCommand) -> bool:
 	return false
 
 
-## Starts, carries and ends a slide.
-##
-## [b]A slide is a crouch with different friction and steering, and nothing else.[/b] The
-## collider is the crouched one because the crouch button is held — [method _update_crouch]
-## already did that this tick — so a slide goes under what a crouch goes under and stands
-## up where a crouch does. What changes is [member DotFpsTunables.slide_friction] in place
-## of [member DotFpsTunables.friction] and [member DotFpsTunables.slide_accelerate] in
-## place of [member DotFpsTunables.accelerate], read by [method _apply_friction] and
-## [method _apply_wish_move] from [method DotFpsState.is_sliding].
-##
-## It starts on the crouch PRESS, grounded, at [member DotFpsTunables.slide_min_speed] or
-## more: holding crouch and then running is a crouch-walk, which is what anybody holding
-## crouch expects. It ends on releasing crouch, on leaving the ground, at
-## [member DotFpsTunables.slide_duration], or below [member DotFpsTunables.slide_end_speed];
-## whatever crouch is still held carries on as an ordinary crouch.
+## Starts, carries and ends a slide: a crouch with different friction and steering, nothing else.
+## The collider is the crouched one ([method _update_crouch] already did that), so a slide fits where a crouch fits.
+## It starts on the crouch PRESS, grounded, at [member DotFpsTunables.slide_min_speed] or more, and ends on release, leaving the ground, [member DotFpsTunables.slide_duration] or below [member DotFpsTunables.slide_end_speed].
 func _update_slide(
 	state: DotFpsState,
 	command: DotFpsCommand,
@@ -1069,18 +907,8 @@ func _apply_wish_move(
 
 
 ## The classic acceleration function, and the reason air-strafing exists.
-##
-## Speed is only ever added along [param direction], and only up to
-## [param wish_speed] [i]measured as a projection of current velocity onto that
-## direction[/i]. On the ground that is an ordinary speed limit.
-##
-## Airborne, [param cap] clamps the target to about a metre per second while the
-## acceleration constant stays large. Turn the view while holding strafe and the wish
-## direction is nearly perpendicular to motion, so the projection of a fast velocity
-## onto it is near zero — the cap is not reached, the full increment is added, and it
-## goes sideways. Repeat every tick and the speed compounds. Nothing here special-cases
-## it; it falls out of the projection, which is why it has survived thirty years of
-## engines re-implementing this function.
+## Speed is only added along [param direction], up to [param wish_speed] measured as the projection of current velocity onto it.
+## Airborne, [param cap] clamps that target to about a metre per second while the constant stays large: turn the view while strafing and the projection of a fast velocity is near zero, so the full increment is added sideways and compounds.
 func accelerate(
 	state: DotFpsState,
 	direction: Vector3,
@@ -1089,13 +917,8 @@ func accelerate(
 	delta: float,
 	cap: float = -1.0
 ) -> void:
-	# The cap applies to the target, not to the increment: `add` is measured against
-	# the capped speed while `step` is scaled by the uncapped one. Capping both
-	# removes air control entirely, and it is the single most common mistake in a
-	# re-implementation of this function.
-	# Negative means no cap. Zero is a real value and means no air control at all,
-	# which a game that does not want this movement configures deliberately —
-	# treating it as "unlimited" gave exactly the opposite of what was asked for.
+	# The cap applies to the target, not the increment: [code]add[/code] uses the capped speed, [code]step[/code] the uncapped one. Capping both removes air control entirely.
+	# Negative means no cap; zero is a real value (no air control). Reading zero as "unlimited" did the opposite of what was asked.
 	var target := wish_speed if cap < 0.0 else minf(wish_speed, cap)
 
 	var current := state.velocity.dot(direction)
@@ -1138,11 +961,8 @@ func _clamp_velocity(state: DotFpsState) -> void:
 	state.velocity = state.velocity.limit_length(tunables.max_velocity)
 
 
-## The first of four half-radius capsules, one in each quarter of the player, that finds
-## a FLOOR along [param probe]. See [method _categorise_ground]. Each sits half a radius
-## out along its diagonal, so all four stay inside the player's own footprint, as the
-## classic quarter-boxes do: a quarter that poked outside would start its sweep inside
-## the very face that made it necessary, or find floor the player is not over.
+## One of four half-radius capsules, one per quarter of the player, that finds a FLOOR along [param probe]. See [method _categorise_ground].
+## Each sits half a radius out along its diagonal, inside the player's footprint: one poking outside would start inside the very face that made it necessary, or find floor the player is not over.
 func _quadrant_floor(centre: Vector3, probe: Vector3, height: float) -> DotFpsBody.Hit:
 	if not static_world:
 		return _quadrant_floor_probe(centre, probe, height)
@@ -1296,19 +1116,9 @@ func _move(state: DotFpsState, delta: float, jumped: bool) -> bool:
 		duplicate_plane_ticks += 1
 
 	if was_grounded and not jumped and tunables.ground_snap:
-		# Categorise first and snap only if the player actually left the ground.
-		#
-		# [b]Not just an optimisation.[/b] The snap probe is the longest query in the
-		# tick — 35 cm against a 12 cm slide step — and a swept query's precision is
-		# proportional to its length, so running it on a player who is already
-		# standing still meant re-deriving a position that was already correct from
-		# the least precise measurement available. Each tick moved them a fraction of
-		# a millimetre further down; after a few dozen they were below the surface,
-		# and from there every query starts inside geometry and reports nothing.
-		# The player then fell out of the level, half a second after landing on it.
-		#
-		# It also removes the most expensive query in the frame from the common case,
-		# which on a server simulating thirty players is the whole point.
+		# Categorise first and snap only if the player left the ground. The snap probe is the longest query in the tick, and a swept query's precision is proportional to its length:
+		# run on a standing player it re-derived a correct position from the least precise measurement, sank them a fraction of a millimetre a tick, and they fell out of the level.
+		# It also drops the most expensive query from the common case.
 		if _categorise_ground_settled(state):
 			return true
 
@@ -1323,11 +1133,8 @@ func _prefer_step(
 	state: DotFpsState, plain: MoveResult, motion: Vector3, height: float,
 	walking: bool, hull_only: bool
 ) -> MoveResult:
-	# Stepping is tried only when it could help: on the ground, actually blocked, and
-	# not on the tick a jump left the surface. Attempting it every tick would double
-	# the query cost of the most expensive part of the frame for nothing.
-	# A step cannot travel further than the horizontal motion, so when the plain slide is
-	# already within the acceptance margin of it the step could never win; skip its queries.
+	# Stepping is tried only when it could help: grounded, blocked, and not the tick a jump left the surface.
+	# A step cannot travel further than the horizontal motion, so when the slide is already within the acceptance margin of it, skip its queries.
 	if (
 		walking and plain.blocked and tunables.step_height > 0.0
 		and not hull_only
@@ -1336,12 +1143,8 @@ func _prefer_step(
 	):
 		var stepped := _slide_with_step(state.position, state.velocity, motion, height)
 
-		# Only if it genuinely got further. A step that gains nothing but ends
-		# slightly higher would ratchet the player up a wall over many ticks.
-		#
-		# [b]And by more than a skin.[/b] Raised to step height, the capsule's rounded
-		# bottom can slide a millimetre past a kerb's top corner that its straight side
-		# could not; dropped back to the floor, that millimetre is inside the kerb's face.
+		# Only if it got further, or a step that gains nothing but ends higher would ratchet the player up a wall.
+		# And by more than a skin: raised to step height, the rounded bottom can slide a millimetre past a kerb's top corner that dropped back is inside the kerb's face.
 		if stepped.travelled > plain.travelled + tunables.skin_width * 2.0:
 			return stepped
 
@@ -1352,14 +1155,9 @@ func _prefer_step(
 func _strip_steep_lift(
 	state: DotFpsState, plain: MoveResult, velocity_in: Vector3, stood_on: Vector3, walking: bool
 ) -> void:
-	# [b]A walker is not lifted by a face they cannot stand on[/b] (`[steep-climb-1]`).
-	# Sliding along a face that leans back turns a walk into it partly UP it, and that
-	# lift then reads as leaving the floor. The classic walk move zeroes the vertical
-	# before it moves and again once the player is still on the ground, so a walk never
-	# climbs. Here only the lift the slide ADDED along the floor's normal goes, and only
-	# when a steep face did it: a walkable ramp's lift is the floor's own, and a jump
-	# never reaches this. With the quarter probes in [method _categorise_ground], this is
-	# the other half; either alone still let a walker up a 70 degree face.
+	# A walker is not lifted by a face they cannot stand on (`[steep-climb-1]`). The classic walk move zeroes the vertical before and after, so a walk never climbs.
+	# Here only the lift the slide ADDED along the floor's normal goes, and only when a steep face did it; a walkable ramp's lift is the floor's own, and a jump never reaches this.
+	# With the quarter probes in [method _categorise_ground] this is the other half; either alone still let a walker up a 70 degree face.
 	if walking and plain.met_steep_face:
 		var lift := state.velocity.dot(stood_on) - maxf(velocity_in.dot(stood_on), 0.0)
 		if lift > 0.0:
@@ -1375,11 +1173,7 @@ class MoveResult extends RefCounted:
 	## Iterations were exhausted with motion remaining: a wedge the slide gave up on.
 	var ran_out: bool = false
 	## The move stopped early because it met a plane it had already resolved against.
-	##
-	## Not a failure — see the comment on that branch — but the rest of the tick's motion
-	## goes unspent, so a player meeting one every tick keeps their velocity and covers
-	## less ground than it implies. Counted separately because telling the two apart is
-	## the only reason to count either.
+	## Not a failure, but the tick's remaining motion goes unspent. Counted apart from running out of iterations because telling the two apart is the point of counting either.
 	var stopped_on_duplicate: bool = false
 	## Whether the move met a face too steep to stand on that leans back toward the
 	## sky. Sliding along one of those turns a push into a climb.
@@ -1387,15 +1181,8 @@ class MoveResult extends RefCounted:
 
 
 ## Collide and slide: move, and on contact continue along the surface.
-##
-## Velocity is slid as well as motion, so running into a wall at an angle keeps the
-## component along it instead of stopping dead — and so the [i]next[/i] tick starts
-## from a velocity consistent with what actually happened.
-##
-## [b]Every plane touched during one move is remembered[/b], and the direction chosen
-## after each contact has to satisfy all of them at once. See [method _resolve_planes]
-## — that is the part surf depends on, and the part a naive collide-and-slide gets
-## wrong.
+## Velocity is slid as well as motion, so running into a wall at an angle keeps the component along it, and the next tick starts from a velocity consistent with what happened.
+## Every plane touched during one move is remembered and the direction must satisfy all of them; see [method _resolve_planes], which surf depends on.
 func _slide(
 	from: Vector3,
 	velocity: Vector3,
@@ -1408,13 +1195,8 @@ func _slide(
 
 	var start := from
 
-	# The move is carried as (direction-and-speed, fraction of the tick left) rather
-	# than as one shrinking "remaining" vector, because the crease resolution below
-	# re-derives the direction from the ORIGINAL motion every bump. The classic
-	# implementations do the
-	# same, and for the same reason: deriving it from the already-clipped vector makes
-	# the answer depend on the order the planes happened to be hit in, so a player
-	# entering a seam from the left and from the right comes out differently.
+	# The move is carried as direction-and-speed plus the fraction of the tick left, because crease resolution re-derives the direction from the ORIGINAL motion every bump.
+	# Deriving it from the already-clipped vector makes the answer depend on the order planes were hit in.
 	var current := motion
 	var time_left := 1.0
 
@@ -1451,30 +1233,15 @@ func _slide(
 		var outcome := _remember_plane(planes, hit.normal)
 
 		if outcome == PLANE_FULL:
-			# A genuine five-plane corner. There is no direction out, and the classic
-			# implementations
-			# stops here too: carrying on finds one that leaves the player inside the
-			# geometry rather than outside it.
+			# A genuine five-plane corner: no direction out. Carrying on finds one that leaves the player inside the geometry.
 			current = Vector3.ZERO
 			result.velocity = Vector3.ZERO
 			break
 
 		if outcome == PLANE_DUPLICATE:
-			# [b]Spend the rest of the tick along the plane, a skin off it, and stop.[/b]
-			# The same plane again at the start of a leg is a capsule resting on it with
-			# a velocity that already lies in it — a surfer pressed into a bank. Breaking
-			# with nothing more spent none of the tick: the first leg ended touching the
-			# face, the second met it again at fraction zero, and the player hung in
-			# mid-air with its speed intact — 697 of 1,786 ticks of one bank in
-			# game-g2gfast, and every tick of some lines. Lifting the leg off the face
-			# by a skin (the classic slide move's one-unit nudge, for the same reason)
-			# makes it a leg that leaves the face instead of grazing it.
-			#
-			# One leg, not a return to the loop: carrying on collects the near-copies
-			# of the face a real contact reports, fills the plane list, and zeroes the
-			# velocity in a corner that is not there — measured, a surfer stopped dead
-			# after 38 ticks. The velocity is not touched; whatever this leg meets is
-			# next tick's business.
+			# Spend the rest of the tick along the plane, a skin off it, and stop. The same plane again at the start of a leg is a capsule resting on it with a velocity already in it (a surfer pressed into a bank);
+			# breaking there spent none of the tick, and the player hung in mid-air with its speed intact (697 of 1,786 ticks of one bank).
+			# One leg, not a return to the loop: carrying on fills the plane list with near-copies and zeroes the velocity in a corner that is not there. The velocity is not touched.
 			var rest := current * time_left + hit.normal * tunables.skin_width
 			var clear := _sweep(_capsule_centre(result.position, height), rest, height)
 			var spent := 1.0 if not clear.hit else clear.fraction
@@ -1490,18 +1257,9 @@ func _slide(
 					)
 				time_left = 0.0
 				break
-			# [b]Still nothing: step off the face first, then go along it[/b]
-			# (`[arrive-3]`). A capsule exactly touching a face is blocked at the
-			# first step of cast_motion's bisection by ANY move that starts there,
-			# even one leaving the face — and that is where a grazing contact leaves
-			# it, since the skin is taken along the motion, not the normal. Measured
-			# on a surf_summit displacement, triangles a fraction of a degree apart:
-			# the rest query names the face underneath, the plane list calls it a
-			# duplicate, and a rider hung there at 75 u/s for good. Lifted a
-			# millimetre, the same leg ran 40 cm clear.
-			#
-			# A wedge first, though: when the face the queries keep naming is one of two
-			# the capsule is in, none of the legs below can leave it ([method _leave_crease]).
+			# Still nothing: step off the face first, then go along it (`[arrive-3]`). A capsule exactly touching a face is blocked at the first bisection step by ANY move starting there, even one leaving it,
+			# and a grazing contact leaves it there since the skin is taken along the motion, not the normal; a rider hung at 75 u/s for good. Lifted a millimetre, the same leg ran 40 cm clear.
+			# A wedge first: when the face the queries keep naming is one of two the capsule is in, none of the legs below can leave it ([method _leave_crease]).
 			if _leave_crease(result, planes, motion, velocity, time_left, hit.normal, height):
 				time_left = 0.0
 				break
@@ -1512,34 +1270,16 @@ func _slide(
 				time_left = 0.0
 				break
 			result.stopped_on_duplicate = true
-			# The same plane again. The velocity has already been resolved against
-			# it, so resolving again is a no-op and the loop would spin until it ran
-			# out of iterations. Stop the move and KEEP the velocity.
-			#
-			# [b]Keeping it is the whole point.[/b] Zeroing here looks tidy, and it
-			# is how a player who starts a tick a millimetre inside a surf ramp —
-			# which happens on every spawn onto one and after every correction —
-			# comes to a dead stop on a surface they should be accelerating down. The
-			# first version of this did exactly that and cost a surfer every metre
-			# per second they had.
+			# The same plane again: the velocity is already resolved against it, so resolving again is a no-op and the loop would spin. Stop the move and KEEP the velocity.
+			# Zeroing looks tidy but stops a player who starts a tick a millimetre inside a surf ramp (every spawn onto one, every correction) dead on a surface they should accelerate down.
 			break
 
 		current = _resolve_planes(planes, motion)
 		result.velocity = _resolve_planes(planes, velocity)
 
-	# Motion left over means the move did not complete. [b]That is two different things
-	# and this counted them as one.[/b] The duplicate-plane break above leaves exactly
-	# this state on purpose — time left, velocity kept — and is documented twenty lines
-	# up as the correct outcome; running out of iterations is a player wedged in geometry
-	# the slide gave up on. Both set `ran_out`, so [member stuck_ticks] has counted the
-	# intended path as a fault since it was written.
-	#
-	# It matters because that counter is the only instrument anybody would reach for. On
-	# an imported map it reads 10% to 14% of all ticks — which looks like a serious
-	# collision failure, is almost entirely the early-out working as designed, and hid
-	# the genuine figure, which is ONE tick in fifteen thousand. Raising
-	# `max_slide_iterations` from 5 to 20 moved it not at all, and that experiment is
-	# what separates them.
+	# Motion left over means the move did not complete, which is two things: the duplicate-plane break above leaves this state on purpose (time left, velocity kept),
+	# while running out of iterations is a player wedged in geometry. Counting both in [member stuck_ticks] read 10% to 14% of ticks on imported maps and hid the real figure, one tick in fifteen thousand.
+	# Raising max_slide_iterations from 5 to 20 moved it not at all, which is what separates them.
 	if time_left > 1e-6 and current.length_squared() > 1e-12 and not result.stopped_on_duplicate:
 		result.ran_out = true
 
@@ -1550,14 +1290,9 @@ func _slide(
 	return result
 
 
-## The duplicate-plane leg's last resort: lift straight off [param normal] by one, two,
-## then four skins, and spend [param leg] from there. True and [param result] moved if
-## any of them got anywhere; false and untouched if none did (a real pocket, or a
-## ceiling a skin away), which leaves the old answer — stop, keep the velocity.
-##
-## Bounded on purpose: at most four skins off a face the player is already touching,
-## along its own normal, so a wrong answer is a few millimetres of air that gravity
-## takes back on the next tick. The velocity is not touched.
+## The duplicate-plane leg's last resort: lift straight off [param normal] by one, two, then four skins and spend [param leg] from there.
+## True and [param result] moved if any got anywhere; false and untouched if none did, which leaves the old answer (stop, keep the velocity).
+## Bounded on purpose: a wrong answer is a few millimetres of air that gravity takes back next tick.
 func _leave_face(
 	result: MoveResult, leg: Vector3, normal: Vector3, height: float
 ) -> bool:
@@ -1579,23 +1314,9 @@ func _leave_face(
 	return false
 
 
-## The duplicate-plane leg's answer in a wedge (`g2gfast-surf-crease-hang-1`, 2026-10-15): find
-## the second face, and spend the leg along the crease of the two. True and [param result]
-## moved (velocity laid along the crease too) if that got anywhere; false and untouched if
-## there is no second face or no way along it.
-##
-## [b]Two faces equally deep, and the queries name one of them every time.[/b] A surfer
-## sliding down the V of two 50 degree slabs sits in both, a fraction of a millimetre deep.
-## The rest query reports one contact, and which of two equal ones it picks is the physics
-## server's business: in game-g2gfast it changed with how many physics frames had run before
-## the ride, from the same state. Named the faces in turn, the plane list learns both and
-## [method _resolve_planes] goes along the crease. Named the same face twice, the leg along it
-## (which runs into the other), the lift off it and both halves of the split all start into
-## the unnamed face and stop at fraction zero, and the rider hung there with its speed for
-## 32 to 1,469 ticks, or for good. Which of those happened depended only on the tick the ride
-## began on. Asked before [method _leave_face] and [method _split_leg], because both can
-## succeed by a hair there: a tick spent as a few millimetres instead of a crease leg, and
-## the same ride finishing in different times.
+## The duplicate-plane leg's answer in a wedge (`g2gfast-surf-crease-hang-1`): find the second face and spend the leg along the crease. True and [param result] moved if that got anywhere; false and untouched otherwise.
+## A surfer in the V of two slabs sits in both and the rest query names one of two equal contacts; named the same face twice, the leg, the lift and the split all stop at fraction zero and the rider hangs.
+## Asked before [method _leave_face] and [method _split_leg], because both can succeed by a hair there and the same ride would finish in different times.
 func _leave_crease(
 	result: MoveResult,
 	planes: Array[Vector3],
@@ -1636,10 +1357,8 @@ func _leave_crease(
 	if leg.length_squared() <= 1e-12:
 		return false
 
-	# From where the capsule is first, and only then lifted off both faces at once: the
-	# lift that leaves each face by a skin lies along their sum. Unlifted first because a
-	# crease leg that is clear from here is exactly the leg the slide takes when the query
-	# happens to name the faces the other way round, so either answer rides the same line.
+	# From where the capsule is first, and only then lifted off both faces at once (the lift that leaves each by a skin lies along their sum).
+	# Unlifted first because a crease leg clear from here is the leg the slide takes when the query names the faces the other way round, so either answer rides the same line.
 	var off_both := (normal + other) * (tunables.skin_width / (1.0 + c))
 	for scale: float in [0.0, 1.0, 2.0, 4.0]:
 		var lift := off_both * scale
@@ -1657,24 +1376,8 @@ func _leave_crease(
 	return false
 
 
-## The duplicate-plane leg's very last resort (`[hns-door-wedge-1]`, 2026-10-12): spend
-## [param leg]'s vertical part alone, or failing that its horizontal part alone. True and
-## [param result] moved if either got anywhere.
-##
-## [b]A rest query names one contact, and with two touching it can be the wrong one.[/b] A
-## capsule in the 80 degree corner of a wall and an open door's panel, touching the wall's
-## face to 15 micrometres and pushing at the panel, was stopped by the panel and told it had
-## met the wall: a normal square to the motion, which clips nothing. The slide met "the wall"
-## again at fraction zero, called it a duplicate, the leg off it and the lift off it both ran
-## into the panel, and the move stopped every tick with the fall speed kept: a body that
-## hopped into the corner hung 0.6 m up for the rest of the round (game-hide-n-seek's school
-## fire door; most of the school's doors did it). Straight down was clear all along. The panel
-## cannot be added as a plane, because no query along the motion names it; and asking the
-## rest query to look past a grazed face for the one the motion goes into (tried first) also
-## re-ordered the two faces of a surf crease and hung a rider there (game-g2gfast's surf
-## bonus). Splitting the leg asks nothing new of the world, runs only where the move was
-## otherwise lost for the tick, and moves no further than the leg itself. The velocity is
-## not touched.
+## The duplicate-plane leg's very last resort (`[hns-door-wedge-1]`): spend [param leg]'s vertical part alone, or failing that its horizontal part alone. True and [param result] moved if either got anywhere.
+## A rest query names one contact and with two touching it can be the wrong one (a wall corner with an open door panel: a normal square to the motion, which clips nothing). The panel cannot be added as a plane, so splitting asks nothing new of the world.
 func _split_leg(result: MoveResult, leg: Vector3, height: float) -> bool:
 	for part: Vector3 in [Vector3(0.0, leg.y, 0.0), Vector3(leg.x, 0.0, leg.z)]:
 		if part.length_squared() <= 1e-12:
@@ -1696,14 +1399,8 @@ const PLANE_FULL := 2
 
 
 ## Adds [param normal] to the plane list.
-##
-## Near-duplicates are rejected because a long surf ramp is not one polygon: sliding
-## along it produces a contact every few centimetres with a normal that differs in
-## the last bits, and without this the list fills with copies of the same plane and
-## the crease search never gets to look at the wall the player is actually caught on.
-##
-## A duplicate and a full list are told apart because the caller must treat them
-## differently: a duplicate is a plane already satisfied, and a full list is a corner.
+## Near-duplicates are rejected because a long surf ramp yields a contact every few centimetres with a normal differing in the last bits, which would fill the list and hide the wall the player is caught on.
+## A duplicate and a full list are told apart because the caller treats them differently: a duplicate is already satisfied, a full list is a corner.
 func _remember_plane(planes: Array[Vector3], normal: Vector3) -> int:
 	for existing in planes:
 		if existing.dot(normal) > 0.999:
@@ -1716,24 +1413,9 @@ func _remember_plane(planes: Array[Vector3], normal: Vector3) -> int:
 	return PLANE_ADDED
 
 
-## A direction that satisfies every plane touched so far, or zero if there is none.
-##
-## [b]This is why surf works.[/b] The classic slide pass, second half.
-## Clipping a vector against one plane and then the next is not the same as finding a
-## direction that leaves both: on a surf map the two ramps at a seam meet at a shallow
-## angle, and the vector clipped against the first ramp points back into the second, so
-## the next iteration clips it against that, which points it back into the first. The
-## player arrives at 20 m/s and stops dead in the corner.
-##
-## So: try each plane in turn, and take the first whose clipped direction does not
-## re-enter any other. If none does, the player is in a two-plane wedge and the only
-## direction out is along the crease — the cross product of the two normals, which is
-## by construction parallel to both surfaces. Three or more planes with no valid
-## direction is a genuine corner, and stopping is correct; continuing to search finds
-## a direction that leaves the player inside the geometry rather than outside it.
-##
-## [param original] is the velocity (or the motion) at the START of the move, never
-## the already-clipped one — see [method _slide].
+## A direction that satisfies every plane touched so far, or zero if there is none. This is why surf works.
+## Clipping against one plane then the next does not leave both: at a seam of two shallow ramps the clipped vector points back into the other and the player stops dead. Take the first plane whose clip re-enters no other, else go along the crease (cross of the normals); three planes with no direction is a corner and stopping is correct.
+## [param original] is the velocity or motion at the START of the move, never the clipped one; see [method _slide].
 func _resolve_planes(planes: Array[Vector3], original: Vector3) -> Vector3:
 	var count := planes.size()
 
@@ -1754,14 +1436,9 @@ func _resolve_planes(planes: Array[Vector3], original: Vector3) -> Vector3:
 		if clear:
 			return candidate
 
-	# [b]Every crease, not only the first two planes[/b] (`[hns-door-wedge-1]`). The
-	# classic slide stops dead at three planes, which is right for a corner with no way
-	# out and wrong for one with a way down: a body hopping into a room's corner under a
-	# window (game-hide-n-seek's school washroom) met the side wall and two edges of the
-	# boxes the window is cut from, one leaning down, and the line where the side wall and
-	# the upright edge meet (straight down) left all three; with the velocity zeroed every
-	# tick it hung 0.7 m up for good. A crease of two planes that also leaves
-	# every other one is a real way out; with two planes this is the old answer exactly.
+	# Every crease, not only the first two planes (`[hns-door-wedge-1]`). The classic slide stops dead at three planes, right for a corner with no way out and wrong for one with a way down:
+	# a body hopping into a corner under a window met the side wall and two box edges, and the line where the wall and the upright edge meet (straight down) left all three.
+	# A crease of two planes that also leaves every other one is a real way out; with two planes this is the old answer exactly.
 	for i in range(count):
 		for j in range(i + 1, count):
 			var crease := planes[i].cross(planes[j])
@@ -1787,11 +1464,7 @@ func _resolve_planes(planes: Array[Vector3], original: Vector3) -> Vector3:
 
 
 ## Whether there is a drop just in front of the player. For [member DotFpsTunables.edge_friction].
-##
-## Probed with a thin capsule rather than the player's own, and offset past their
-## radius: the question is whether there is floor under a point in front of the feet,
-## and sweeping the full capsule would answer "no" for anybody standing against a
-## wall — which would double the friction of every player in a corridor.
+## Probed with a thin capsule offset past their radius: sweeping the full capsule would answer "no" for anybody standing against a wall, doubling the friction of every player in a corridor.
 func _near_ledge(state: DotFpsState) -> bool:
 	var horizontal := Vector3(state.velocity.x, 0.0, state.velocity.z)
 
@@ -1818,13 +1491,8 @@ func _near_ledge(state: DotFpsState) -> bool:
 	return not hit.hit
 
 
-## Up, across, down — the standard way to walk up a step without jumping.
-##
-## Godot's own [method CharacterBody3D.move_and_slide] can do this, but only as part
-## of the stateful move this motor deliberately does not use. Doing it explicitly also
-## makes the failure mode visible: the down leg has to land on something that counts
-## as a floor, or the step is rejected and the player stays put rather than being
-## deposited on top of a wall.
+## Up, across, down: the standard way to walk up a step without jumping.
+## Done explicitly because [method CharacterBody3D.move_and_slide] needs the stateful move this motor avoids, and the down leg must land on a floor or the step is rejected rather than depositing the player on top of a wall.
 func _slide_with_step(
 	from: Vector3,
 	velocity: Vector3,
@@ -1833,11 +1501,8 @@ func _slide_with_step(
 ) -> MoveResult:
 	var centre := _capsule_centre(from, height)
 
-	# [b]A step is measured from the floor, not from the feet.[/b] A grounded player can
-	# be up to the ground probe's two centimetres above it — the tick they land — and a
-	# full lift from there clears a kerb that much taller than step_height: a walker
-	# landing beside a 0.46 m kerb with step_height 0.45 stepped straight onto it. One
-	# short query, and only on a tick the slide was blocked.
+	# A step is measured from the floor, not the feet: a grounded player can be up to the probe's two centimetres above it, and a full lift from there clears a kerb that much taller than step_height.
+	# One short query, and only on a tick the slide was blocked.
 	var seat := _sweep(centre, Vector3.DOWN * (tunables.skin_width * 2.0 + 0.02), height)
 	var hover := 0.0
 	if seat.hit:
@@ -1870,10 +1535,8 @@ func _slide_with_step(
 	result.velocity = across.velocity
 	result.blocked = across.blocked
 
-	# [b]And what it lands on is at most step_height above the floor it left.[/b] Asked
-	# of every landing, not only the edge's: a capsule coming down with its axis a
-	# quarter-metre short of a kerb meets the corner at about 41 degrees, which is a
-	# floor, and a 0.5 m kerb with step_height 0.45 was stepped onto at 10 m/s.
+	# And what it lands on is at most step_height above the floor it left. Asked of every landing, not only the edge's:
+	# a capsule coming down a quarter-metre short of a kerb meets the corner at about 41 degrees, which is a floor, and a 0.5 m kerb with step_height 0.45 was stepped onto.
 	var too_high := landing.hit and landing.point.y - floor_y > tunables.step_height + tunables.skin_width
 
 	if not landing.hit or too_high or not (
@@ -1895,28 +1558,9 @@ func _slide_with_step(
 	return result
 
 
-## Whether a steep landing contact is the rounded bottom of the capsule on the edge of
-## a floor, rather than a steep face.
-##
-## [b]The step's down leg reports the capsule's normal, not the kerb's.[/b] At walking
-## pace one tick's across leg is a few centimetres, so the capsule's axis is still short
-## of the edge when it comes down, its hemisphere lands on the corner, and the contact
-## normal points from the corner to the sphere's centre: 50 to 80 degrees from up. So a
-## 0.34 m kerb under a 0.45 m step_height was refused at every walking speed, and once
-## refused the slide had taken the speed into it, so the next tick's leg was shorter
-## still. The question the step is asking is whether the surface is a floor, and that is
-## answered by a thin probe just past the contact, which must find a floor at the
-## contact's own height. A steep face answers no, so surf and walls are unaffected.
-## Only the step asks it; the ground probe still reads the capsule's normal.
-##
-## [b]And the floor has to be within a step of where the step started[/b]
-## ([param start_y], the feet before the lift). Without that this answered yes for any
-## kerb at all: the across leg's slide rides the capsule's hemisphere up the corner, the
-## down leg comes to rest on the corner above the lifted feet, and the probe finds the
-## kerb's top at the contact's height and calls it a floor, which it is. With
-## step_height 0.45 a walker went over 0.5 m kerbs at 3 and 7 m/s and 0.7 m at 7, and
-## was stopped only at 1.0 m. The feet end up below that corner, hanging on it, so a cap
-## on how far the feet rose would not catch this; the floor's height does.
+## Whether a steep landing contact is the capsule's rounded bottom on the edge of a floor, rather than a steep face.
+## The step's down leg reports the capsule's normal, not the kerb's (50 to 80 degrees from up at walking pace), so a thin probe just past the contact must find a floor at the contact's own height. A steep face answers no, so surf and walls are unaffected.
+## And the floor must be within a step of where the step started ([param start_y]): the across leg rides the hemisphere up the corner, so without that any kerb answered yes (0.7 m at 7 m/s with step_height 0.45).
 func _floor_beyond_edge(landing: DotFpsBody.Hit, feet: Vector3, start_y: float) -> bool:
 	return _edge_floor_normal(landing, feet, start_y) != Vector3.ZERO
 
@@ -1944,17 +1588,9 @@ func _edge_floor_normal(landing: DotFpsBody.Hit, feet: Vector3, start_y: float) 
 	return hit.normal if absf(bottom - landing.point.y) < 0.02 else Vector3.ZERO
 
 
-## Puts a grounded player back a skin clear of the floor [param hit] found, if they are
-## closer than half of one. Straight up, and never further than the skin.
-##
-## [b]Exactly touching a floor is a state a horizontal sweep cannot move out of.[/b] Every
-## query here stops a skin short of what it meets, so the motor never puts a player there
-## itself — but a spawn at the floor's height does, and nothing then moved them off it,
-## because a player the ground check finds a floor under is never snapped. From exactly
-## touching, cast_motion reports the floor as an obstacle to a HORIZONTAL move, at fraction
-## ~0, in about one position in five (none at 0.2 mm clear, measured on 4 m and 40 m
-## boxes); the slide met that plane twice and stopped, every tick, velocity intact. A
-## runner at 12 m/s spawned on a floor's centre line froze in front of every kerb.
+## Puts a grounded player back a skin clear of the floor [param hit] found, if closer than half of one. Straight up, never further than the skin.
+## Exactly touching a floor is a state a horizontal sweep cannot move out of: cast_motion reports the floor as an obstacle to a HORIZONTAL move at fraction ~0 in about one position in five, so a runner spawned on a floor froze in front of every kerb.
+## Every query here stops a skin short, so only a spawn at the floor's height gets there, and a grounded player is never snapped.
 func _keep_skin(state: DotFpsState, hit: DotFpsBody.Hit, probe: Vector3) -> void:
 	var gap := probe.length() * hit.fraction
 	if gap < tunables.skin_width * 0.5 and hit.normal.y > 0.0:
@@ -1962,14 +1598,8 @@ func _keep_skin(state: DotFpsState, hit: DotFpsBody.Hit, probe: Vector3) -> void
 
 
 ## The floor [param hit] puts the player on, or [constant Vector3.ZERO] if it is not one.
-##
-## A walkable contact is its own answer. A steep one is the capsule's rounded bottom on
-## an edge, and counts as the floor beyond it — [method _edge_floor_normal] — [b]only
-## for a player moving onto that floor[/b]. That is the case a step leaves behind: it
-## accepts a landing on a kerb's corner, and the next tick's ground check read the
-## corner's normal, said AIR, and the air slide turned the run into a climb up the
-## corner — at 15 m/s over a 0.34 m kerb, to 1.07 m. Standing still on a ledge, walking
-## off one and running along one keep the capsule's answer and roll off as they did.
+## A walkable contact is its own answer. A steep one is the capsule's rounded bottom on an edge and counts as the floor beyond it ([method _edge_floor_normal]), [b]only for a player moving onto that floor[/b].
+## Otherwise the next tick read a kerb corner's normal as AIR and the air slide turned a run into a climb (1.07 m at 15 m/s over a 0.34 m kerb). Standing on, walking off or running along a ledge keep the capsule's answer.
 func _standable_normal(state: DotFpsState, hit: DotFpsBody.Hit) -> Vector3:
 	if not hit.hit:
 		return Vector3.ZERO
@@ -2008,46 +1638,9 @@ var _en_radius := 0.0
 var _en_normal := Vector3.ZERO
 
 
-## Pulls the player back down onto ground they have just walked off the edge of.
-##
-## Without it, walking down a ramp or a staircase leaves the ground for one tick in
-## every few. Those ticks get air physics — no friction, no ground acceleration — so
-## the player accelerates down slopes and skates at the bottom, which reads as the
-## movement being slippery rather than as a grounding bug.
-## Lifts a player who is inside geometry until they are not, and says whether it worked.
-##
-## Straight up, and never further than a step: the player got here by sinking through a
-## surface they were standing on, so the surface is above them and a step is as far as it
-## can be without this having been something other than a sinking. Lifting further would
-## be a teleport, and teleporting somebody out of a wall they legitimately spawned inside
-## is a different problem with a different answer.
-##
-## [b]The lift doubles each try.[/b] Starting at the skin width and stepping by it would
-## be several hundred overlap queries to cover a step; doubling covers the same distance
-## in about nine, which matters because this runs inside the simulation and the server
-## runs it for everybody. The cost is landing up to twice as high as strictly necessary,
-## and the ground probe on the next tick brings them back down.
-##
-## Deterministic — arithmetic and shape queries, no clock and no RNG — so a client and a
-## server recovering from the same embedded position recover to the same place, which is
-## the whole contract this file is written to.
-## Pushes the capsule out of whatever it is already inside, along that surface's own
-## normal. Returns whether it moved.
-##
-## [b]The general form of [method _lift_clear], and the reason one was not enough.[/b]
-## Lifting straight up is the right move out of a floor and the wrong one out of a
-## ramp: on a 60 degree face the shortest way out is mostly sideways, and pushing up
-## instead climbs along the inside of the surface rather than leaving it. Worse,
-## [method _lift_clear] is only ever reached from the branch of
-## [method _categorise_ground] that requires the player to have been GROUNDED last
-## tick — and a player on a surf ramp is never grounded, by design, because that is
-## what makes it surf. The one recovery this motor had could not run on the one
-## surface that needed it.
-##
-## Costs one query per tick per player. That is real on a full server and it is worth
-## it: the alternative is asking a cheaper question first, and the cheaper question
-## ([method DotFpsBody.overlaps]) cannot tell a player resting on a floor from a
-## player buried in it, so it answers yes for almost everybody and buys nothing.
+## Pushes the capsule out of whatever it is inside along that surface's own normal. Returns whether it moved.
+## The general form of [method _lift_clear]: straight up is right out of a floor and wrong out of a 60 degree ramp, and [method _lift_clear] is reached only for a player GROUNDED last tick, which a surfer never is.
+## One query a tick per player: the cheaper [method DotFpsBody.overlaps] cannot tell a player resting on a floor from one buried in it.
 func _depenetrate(state: DotFpsState, height: float) -> bool:
 	var centre := _capsule_centre(state.position, height)
 	var resting := body.rest_contact(centre, height, tunables.radius)
@@ -2055,12 +1648,8 @@ func _depenetrate(state: DotFpsState, height: float) -> bool:
 	if not resting.hit or resting.depth <= 0.0:
 		return false
 
-	# Out by the measured depth plus the skin every sweep expects to find, and never
-	# further in one tick than a step. The clamp is what makes a wrong answer
-	# survivable: a degenerate normal that moves a player a centimetre is a glitch
-	# they may not notice, and the same normal unclamped against a deep penetration
-	# throws them across the level. A genuine deep embed simply takes a few ticks to
-	# climb out of, and converges because each one is measured afresh.
+	# Out by the measured depth plus the skin every sweep expects, never further than a step per tick.
+	# The clamp makes a wrong answer survivable: a degenerate normal moves a player a centimetre, unclamped against a deep penetration it throws them across the level. A deep embed climbs out over a few ticks.
 	var push := minf(
 		resting.depth + tunables.skin_width,
 		maxf(tunables.step_height, tunables.skin_width * 2.0)
@@ -2072,6 +1661,9 @@ func _depenetrate(state: DotFpsState, height: float) -> bool:
 	return true
 
 
+## Lifts a player who is inside geometry until they are not, and says whether it worked.
+## Straight up and never further than a step: the player got here by sinking through a surface they stood on. Lifting further would be a teleport.
+## The lift doubles each try (about nine overlap queries to cover a step, not hundreds), landing up to twice as high as needed; the next ground probe brings them back down. Deterministic: shape queries and arithmetic only.
 func _lift_clear(state: DotFpsState, height: float) -> bool:
 	var lift := maxf(tunables.skin_width * 2.0, 0.0005)
 	var limit := maxf(tunables.step_height, lift)
@@ -2093,12 +1685,8 @@ func _lift_clear(state: DotFpsState, height: float) -> bool:
 	return false
 
 
-##
-## [param stood_on] is the floor the player was on at the start of the tick. Moving away
-## from it means something launched them and the snap must not cancel it; moving along
-## it is a walk, and at the crest of a ramp that walk still points upward while the feet
-## have run off the top — without the snap a walker is thrown about fifteen centimetres
-## into the air at every crest. So "away" is measured against that plane, not the horizon.
+## Pulls the player back down onto ground they have just walked off the edge of, so walking down a ramp does not get air physics (no friction) one tick in a few.
+## [param stood_on] is the floor at the start of the tick. Moving away from it means a launch the snap must not cancel; moving along it is a walk, and at a ramp's crest that walk still points upward.
 func _snap_to_ground(
 	state: DotFpsState,
 	height: float,
@@ -2135,10 +1723,8 @@ func _snap_to_ground(
 	state.ground_normal = hit.normal
 	state.ground_id = hit.collider_id
 
-	# Downward velocity accumulated while briefly airborne is discarded: keeping it
-	# means the next tick's ground check sees a fast descent and un-grounds again,
-	# which is the flicker this exists to stop. Upward velocity is left alone — it
-	# belongs to something that launched the player and is not ours to cancel.
+	# Downward velocity accumulated while briefly airborne is discarded, or the next tick sees a fast descent and un-grounds again (the flicker).
+	# Upward velocity belongs to whatever launched the player and is not ours to cancel.
 	if state.velocity.y < 0.0:
 		state.velocity.y = 0.0
 	elif state.velocity.dot(hit.normal) > LEAVING_SPEED:
@@ -2148,11 +1734,7 @@ func _snap_to_ground(
 
 
 ## Moves the player by its velocity for one tick, colliding and sliding.
-##
-## The built-in modes' movement, exposed so a [DotFpsMoveMode] does not have to
-## re-implement collide-and-slide — and, more to the point, so it gets the same
-## skin-margin and step handling, which is where all the collision bugs were.
-##
+## Exposed so a [DotFpsMoveMode] gets the same skin-margin and step handling without re-implementing collide-and-slide.
 ## [param step] enables stair stepping; a swimming or flying mode wants it off.
 func move_and_slide(
 	state: DotFpsState,
@@ -2180,9 +1762,7 @@ func move_and_slide(
 
 
 ## A swept capsule query with the skin margin applied, in world space.
-##
-## [param from] is the player's feet, not the capsule centre — the same convention as
-## [member DotFpsState.position], so a mode never has to remember the offset.
+## [param from] is the player's feet, not the capsule centre, the same convention as [member DotFpsState.position].
 func probe(
 	state: DotFpsState,
 	from: Vector3,
@@ -2204,23 +1784,14 @@ func categorise_ground(state: DotFpsState) -> void:
 
 
 ## Eye position for a state, for the camera and for anything tracing from the view.
-##
-## Sat slightly below the top of the capsule rather than at it, so the camera is not
-## coplanar with the collider's cap — at exactly the top, a ceiling the player is
-## touching intersects the near plane and the view sees through it.
+## Slightly below the capsule's top so a ceiling the player touches does not intersect the near plane.
 func eye_position(state: DotFpsState) -> Vector3:
 	var height := _height(state)
 	return state.position + Vector3.UP * (height - tunables.radius * 0.5)
 
 
 ## The full look direction for a yaw and a pitch.
-##
-## [b]Public because every game needs it and there is exactly one right answer.[/b]
-## A weapon traces along it, a physics gun reaches along it, and a camera points down
-## it — and a game that re-derives it from the angles gets the sign of one of them
-## wrong roughly half the time, because Godot is Y-up, right-handed and -Z forward.
-## Getting it wrong produces a game that aims correctly at the horizon and inverts as
-## soon as the player looks up.
+## Public because every game needs it: Godot is Y-up, right-handed and -Z forward, and a re-derivation that gets one sign wrong aims right at the horizon and inverts looking up.
 static func aim_for(yaw_degrees: float, pitch_degrees: float) -> Vector3:
 	return _view_basis(yaw_degrees, pitch_degrees).forward
 

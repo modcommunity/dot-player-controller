@@ -1,35 +1,14 @@
 extends Node
 
-## Proves the things a surf or bhop timer depends on.
-##
-## [codeblock]
-## godot --headless --path . res://examples/surf_selftest.tscn
-## [/codeblock]
-##
-## The movement self-test already covers strafe acceleration, air-strafing and the
-## collision backend. This one covers what a movement-game server adds on top, and
-## every check here is a property somebody would notice on the first map:
-##
-## - a ramp too steep to stand on does not ground the player, so air control keeps
-##   working all the way down it — that IS surf, and if the ground check accepted the
-##   ramp the player would walk down it at walking pace;
-## - a player sliding into a seam between two ramps comes out the other side rather
-##   than stopping dead. This is [method DotFpsMotor._resolve_planes] and it is the
-##   single most important thing in this file;
-## - hopping preserves speed with the cap off and cannot with it on;
-## - a style is a pure transform of the tunables and of the command.
-##
-## Run against [DotFpsFlatBody], because every one of those is a property of the
-## motor and against analytic geometry a failure has one possible cause.
+## Proves the things a surf or bhop timer depends on. Run: [code]godot --headless --path . res://examples/surf_selftest.tscn[/code]
+## The movement self-test covers strafe acceleration, air-strafing and the collision backend; this covers what a movement-game server adds, run against [DotFpsFlatBody] so a failure has one possible cause:
+## a ramp too steep to stand on does not ground the player (that IS surf); sliding into a seam between two ramps comes out the other side ([method DotFpsMotor._resolve_planes]); hopping keeps speed with the cap off and cannot with it on; a style is a pure transform of the tunables and the command.
 
 const STEP := 1.0 / 128.0
 
 const CHECKS := 52
 
-## Sections entered against sections that ran to their last line, and against this. A
-## runtime error inside a section aborts that function and nothing says so; a section that
-## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
-## total is the other half — see docs/testing.md.
+## Sections entered against sections that ran to their last line, and against this. A runtime error aborts that function silently; a section that bailed after a failed guard counts as unfinished on purpose. See docs/testing.md.
 const SECTIONS := 12
 
 var _passed := 0
@@ -86,7 +65,6 @@ func _run() -> void:
 	get_tree().quit(1 if _failed > 0 else 0)
 
 
-# --- Helpers ---------------------------------------------------------------
 
 func _tunables() -> DotFpsTunables:
 	var t := DotFpsTunables.with_profile("legacy")
@@ -142,15 +120,9 @@ func _check_near(
 	)
 
 
-# --- Surf ------------------------------------------------------------------
 
 ## A world with one surf ramp descending toward -Z through the origin.
-##
-## Returned with the ramp's index so a test can ask [method DotFpsFlatBody.ramp_height]
-## where the surface is rather than re-deriving it — the sign of a ramp's tilt is
-## exactly the thing that is easy to get backwards, and a test that gets it backwards
-## puts its player twenty metres under the map and then reports that surf does not
-## work.
+## Returned with the ramp's index so a test asks [method DotFpsFlatBody.ramp_height] where the surface is: a tilt with the sign backwards puts the player twenty metres under the map and reports that surf does not work.
 func _surf_world(angle: float) -> DotFpsFlatBody:
 	var body := DotFpsFlatBody.new()
 	body.floor_y = -500.0
@@ -159,13 +131,7 @@ func _surf_world(angle: float) -> DotFpsFlatBody:
 
 
 ## A state placed [param above] metres clear of the ramp at [param z].
-##
-## [b]Clear of the surface, not above the point under the feet.[/b] The capsule
-## touches a 60° face well before its feet reach the surface height directly below
-## them — about a metre before, for the shipped collider — so "0.2 above" placed
-## naively starts the player deeply embedded. That is not a hypothetical: the first
-## version of this file did it, and every surf test then measured what the motor does
-## to a player inside a wall.
+## Clear of the surface, not above the point under the feet: the capsule touches a 60 degree face about a metre before its feet reach the surface height below them, so "0.2 above" starts the player deeply embedded.
 func _on_ramp(body: DotFpsFlatBody, z: float, above: float) -> DotFpsState:
 	var t := _tunables()
 	var normal := body.planes[0].normal
@@ -303,10 +269,8 @@ func _run_ramp(body: DotFpsFlatBody, strafe: bool) -> float:
 func _test_crease_does_not_stop_a_surfer() -> void:
 	_section("a seam between two ramps")
 
-	# Two ramps falling toward each other along X, meeting in a valley that runs
-	# along Z. A player sliding down the valley is in permanent contact with both.
-	# This is the shape every surf map is made of and the shape a sequential
-	# collide-and-slide stops dead in.
+	# Two ramps falling toward each other along X, meeting in a valley along Z: a player sliding down is in permanent contact with both.
+	# This is the shape every surf map is made of and the shape a sequential collide-and-slide stops dead in.
 	var body := DotFpsFlatBody.new()
 	body.floor_y = -500.0
 	body.add_ramp(Vector3(-1.5, 0.0, 0.0), Vector3.RIGHT, 55.0)
@@ -366,7 +330,6 @@ func _test_crease_does_not_stop_a_surfer() -> void:
 	_done()
 
 
-# --- Bunny-hopping ---------------------------------------------------------
 
 func _test_bhop_preserves_speed() -> void:
 	_section("bunny-hopping")
@@ -546,7 +509,6 @@ func _test_sync_measurement() -> void:
 	_done()
 
 
-# --- Styles ----------------------------------------------------------------
 
 func _test_style_transform() -> void:
 	_section("styles transform the tunables")
@@ -564,10 +526,8 @@ func _test_style_transform() -> void:
 	_check_near(derived.gravity, 10.0, 0.0001, "a gravity scale halves gravity")
 	_check_near(base.gravity, 20.0, 0.0001, "and the base is not modified")
 
-	# Applying twice from the base must give the same answer as applying once. The
-	# controller derives from a stored base for exactly this reason: deriving from
-	# the previous result compounds, and a player who switched to low gravity and
-	# back lands in a quarter of it.
+	# Applying twice from the base must give the same answer as applying once. The controller derives from a stored base for this reason:
+	# deriving from the previous result compounds, and a player who switched to low gravity and back lands in a quarter of it.
 	var twice := low.apply_to(low.apply_to(base))
 	_check_near(twice.gravity, 5.0, 0.0001, "applying to a derived set compounds")
 	_check_near(

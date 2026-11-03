@@ -2,24 +2,10 @@ class_name DotFpsState
 extends RefCounted
 
 ## Everything the movement simulation carries from one tick to the next.
-##
-## [b]Why this is a separate object from the node.[/b] Client-side prediction rewinds
-## to a server-authoritative state and replays every command since. That is only
-## possible if "the state" is something you can capture, restore and compare — and if
-## it is [i]all[/i] of it. A single stray field left on the controller node (a
-## cooldown, a latch, "was I on the ground last tick") is not restored by the rewind,
-## so the replay diverges from the server in a way that only appears while moving and
-## only under latency.
-##
-## The rule this class exists to enforce: if the simulation reads it, it lives here.
+## A separate object so prediction can capture, restore and compare it: a field left on the node is not rewound, and the replay diverges only under latency.
+## Rule: if the simulation reads it, it lives here.
 
-## The built-in movement modes.
-##
-## Deliberately an [code]int[/code] on [member mode] rather than this enum's type:
-## [method DotFpsMotor.register_mode] hands out ids above these for a game's own
-## modes — a ladder, water, a grapple — and a typed enum would make those
-## unrepresentable. The three here are the ones the tunables describe, so they stay
-## built in.
+## The built-in movement modes. [member mode] is an [code]int[/code] so [method DotFpsMotor.register_mode] can hand out ids above these for a game's own modes.
 enum Mode {
 	GROUND,
 	AIR,
@@ -29,10 +15,7 @@ enum Mode {
 ## The first id [method DotFpsMotor.register_mode] hands out.
 const FIRST_CUSTOM_MODE := 3
 
-## Most modes one motor can have, built-in and custom.
-##
-## Bounded because the mode travels on the wire as a fixed-width field; see
-## [DotFpsNetSync].
+## Most modes one motor can have; the mode travels as a fixed-width field (see [DotFpsNetSync]).
 const MAX_MODES := 16
 
 var mode: int = Mode.AIR
@@ -48,49 +31,25 @@ var pitch: float = 0.0
 ## 0 standing, 1 fully crouched. Fractional mid-transition.
 var crouch_fraction: float = 0.0
 
-## Whether the crouch button was held on the command just applied.
-##
-## Distinct from [member crouch_fraction] > 0: a player who releases crouch under a
-## low ceiling is no longer holding it but is still crouched, and the difference is
-## what makes the stand-up attempt retry next tick instead of clipping.
+## Whether crouch was held on the command just applied.
+## Distinct from [member crouch_fraction] > 0: releasing under a low ceiling stays crouched and retries the stand-up each tick.
 var crouch_held: bool = false
 
 ## Normal of the floor under the player. Up when airborne.
 var ground_normal: Vector3 = Vector3.UP
 
-## The collider the player is standing on, or 0.
-##
-## Not replicated and not part of [method equals]: it is a local physics handle,
-## and the same surface has different ids on different machines.
+## The collider the player is standing on, or 0. A local physics handle, so not replicated and not in [method equals].
 var ground_id: int = 0
 
-## Id of the surface under the player. [code]&""[/code] when unmarked or airborne.
-##
-## [b]This one is part of the simulation[/b], unlike [member ground_id]: it scales
-## friction and acceleration, so a client and a server that disagreed about it would
-## disagree about where the player ends up. It is resolved from scene data rather
-## than from a physics handle precisely so both machines reach the same answer. See
-## [DotFpsSurfaceSet].
+## Id of the surface under the player, [code]&""[/code] when unmarked or airborne.
+## Part of the simulation (it scales friction and acceleration), resolved from scene data so both machines agree. See [DotFpsSurfaceSet].
 var surface: StringName = &""
 
-## Active modifiers as (id index, tick they expire on), sorted by index.
-##
-## [b]Sorted, and in the state, for the same reason.[/b] In the state because a
-## prediction rewind restores the state and replays from it, so a modifier held
-## anywhere else would vanish on the first correction. Sorted because the aggregate
-## is a product and floating-point multiplication is not associative — two machines
-## applying the same modifiers in different orders reach answers that differ in the
-## last bits, which is exactly the kind of drift that makes a reconciliation never
-## settle.
-##
-## An expiry of [code]-1[/code] means it lasts until removed explicitly.
+## Active modifiers as (id index, tick they expire on), sorted by index; an expiry of [code]-1[/code] lasts until removed.
+## In the state so a rewind restores them. Sorted because the aggregate is a float product, and a different order differs in the last bits so reconciliation never settles.
 var modifiers: Array[Vector2i] = []
 
-## Seconds since last on the ground. 0 while grounded.
-##
-## Drives coyote time. Counted in simulated seconds, never wall clock — the whole
-## state has to be reproducible from a replay, and [code]Time.get_ticks_msec()[/code]
-## is not.
+## Seconds since last on the ground, 0 while grounded. Drives coyote time; simulated seconds, so a replay reproduces it.
 var time_since_grounded: float = 0.0
 
 ## Seconds since the jump button was pressed, or a large number if it never was.
@@ -99,39 +58,22 @@ var time_since_jump_pressed: float = 1000.0
 ## Seconds since the last jump left the ground.
 var time_since_jump: float = 1000.0
 
-## Consecutive ticks spent on the ground. 0 while airborne.
-##
-## [b]Ticks, not seconds, and that is the whole point of it.[/b] A perfect bunny-hop
-## is a jump that leaves on the same tick the player landed, and a timer that reports
-## the fraction of perfect hops has to count them the same way at 64 Hz and at 128 Hz.
-## Deriving it from [member time_since_grounded] and a tick duration does not: the
-## comparison lands on a different side of the boundary at each rate, so the same run
-## scores differently on two servers.
-##
-## Nothing in the movement reads it today. It is in the state rather than beside it
-## because a prediction rewind restores the state and replays from it, and a counter
-## kept anywhere else would be reset by every correction — so the statistic would
-## quietly measure the client's packet loss instead of the player's timing.
+## Consecutive ticks spent on the ground, 0 while airborne.
+## Ticks, not seconds: a perfect hop must score the same at 64 Hz and 128 Hz. In the state so a rewind does not reset it.
 var ground_ticks: int = 0
 
 ## Buttons on the previous command, for edge detection.
 var previous_buttons: int = 0
 
 ## Seconds into the current slide, or -1.0 when not sliding.
-##
-## [b]In the state, like every timer[/b], because a slide changes friction and steering
-## for as long as it lasts, and a rewind that restored the position without it would
-## replay the next second of a slide as a crouch-walk. See [member DotFpsTunables.slide_enabled].
+## In the state so a rewind replays a slide as a slide. See [member DotFpsTunables.slide_enabled].
 var slide_time: float = -1.0
 
 ## Seconds before another slide may start. 0 when one may.
 var slide_cooldown_left: float = 0.0
 
-## Seconds before the launch ability may be used again. 0 when it may.
-##
-## Not replicated, like the jump timers: the server decides whether a launch happened, and
-## the snapshot carries the velocity it produced. A client whose copy is a tick out is
-## corrected by that velocity, which is the part a player sees.
+## Seconds before the launch ability may be used again, 0 when it may.
+## Not replicated: the server decides, and the snapshot carries the velocity it produced.
 var launch_cooldown_left: float = 0.0
 
 ## Seconds before the dash may be used again. Replicated with the launch's; see
@@ -154,10 +96,7 @@ var stamina_delay_left: float = 0.0
 var sprinting: bool = false
 
 ## Seconds into the current wall run, or -1.0 when not running.
-##
-## [b]In the state and in the snapshot[/b], like [member slide_time]: a run holds gravity
-## off for as long as it lasts, and a rewind that dropped it would replay the rest of a
-## wall run as a fall. See [member DotFpsTunables.wall_run_enabled].
+## In the state and snapshot so a rewind does not replay a wall run as a fall. See [member DotFpsTunables.wall_run_enabled].
 var wall_run_time: float = -1.0
 
 ## A run has ended in this airborne stretch, so no other may start until the player lands
@@ -179,20 +118,14 @@ var wall_jumps_in_air: int = 0
 var wall_jump_heading: int = 0
 
 ## The normal of the wall being run along or touched this tick, or zero.
-##
-## [b]An output, not state the simulation reads[/b]: the motor probes for the wall every
-## tick and writes this from the answer, so it is not replicated or compared. It is here
-## for the view, which rolls the camera away from the wall ([DotFpsView]).
+## An output the motor writes each tick (not replicated or compared), read by [DotFpsView] to roll the camera.
 var wall_normal: Vector3 = Vector3.ZERO
 
 ## Ticks simulated. Diagnostic; not compared.
 var tick: int = 0
 
 
-## A readable name for a mode id, built-in or custom.
-##
-## [param motor] supplies the names of registered custom modes; without one, a custom
-## id renders as its number rather than as a wrong built-in name.
+## A readable name for a mode id; [param motor] supplies registered custom names, else the number is shown.
 static func mode_name(id: int, motor: DotFpsMotor = null) -> String:
 	if id >= 0 and id < FIRST_CUSTOM_MODE:
 		return Mode.keys()[id]
@@ -289,11 +222,7 @@ func duplicate_state() -> DotFpsState:
 
 
 ## Whether two states are the same to within [param epsilon].
-##
-## Used by the self-test to prove a replay reproduces a simulation exactly, which is
-## the property client-side prediction depends on. Floating-point results are
-## bit-identical for an identical sequence of operations, so the epsilon exists for
-## comparing across quantisation, not for tolerating nondeterminism.
+## Proves a replay reproduces a simulation; the epsilon is for comparing across quantisation, not nondeterminism.
 func equals(other: DotFpsState, epsilon: float = 0.0001) -> bool:
 	if other == null:
 		return false
@@ -306,10 +235,7 @@ func equals(other: DotFpsState, epsilon: float = 0.0001) -> bool:
 		and previous_buttons == other.previous_buttons
 		and surface == other.surface
 		and modifiers == other.modifiers
-		# The timers are compared too. They feed coyote time and the jump buffer, so
-		# a replay that reproduced the position but not the timers would still jump
-		# differently on the next tick — a divergence one tick later, blamed on
-		# something else.
+		# The timers are compared too: a replay that matched the position but not the timers jumps differently one tick later.
 		and absf(time_since_grounded - other.time_since_grounded) <= epsilon
 		and absf(time_since_jump - other.time_since_jump) <= epsilon
 		and absf(time_since_jump_pressed - other.time_since_jump_pressed) <= epsilon

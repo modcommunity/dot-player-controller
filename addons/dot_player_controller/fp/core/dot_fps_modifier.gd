@@ -2,43 +2,19 @@
 class_name DotFpsModifier
 extends Resource
 
-## A temporary change to how the player moves. A speed pad, a slow field, a stun.
-##
-## [codeblock]
-## var boost := DotFpsModifier.make(&"speed_pad")
-## boost.max_speed_scale = 1.8
-## boost.duration_sec = 3.0
-## motor.register_modifier(boost)
-##
-## motor.add_modifier(state, &"speed_pad")   # server side; replicated to the owner
-## [/codeblock]
-##
-## [b]Definitions are configuration; the active set is state.[/b] That split is not
-## tidiness — it is what makes modifiers survive client-side prediction. A rewind
-## restores [DotFpsState] and replays every unacknowledged command, so anything that
-## changes the simulation has to be [i]in[/i] the state or the replay diverges. The
-## definition (how much faster, for how long) is the same on every machine and never
-## changes, so it stays out.
-##
-## [b]Effects multiply.[/b] Two modifiers that each halve speed leave a quarter, not
-## zero. Multiplication composes in any order, which matters because the order two
-## effects were applied in is not something the network guarantees.
+## A temporary change to how the player moves: a speed pad, a slow field, a stun.
+## Definitions are configuration; the active set is [DotFpsState], so a rewind restores it and replays predict it.
+## Effects multiply, so the order the network applied them in does not matter.
 
 ## Name this modifier is added and removed by. Must match on every machine.
 @export var id: StringName = &""
 
 @export_group("Duration")
 
-## Seconds it lasts. 0 or less means it stays until removed explicitly.
-##
-## Counted in simulated seconds, never wall clock — like every timer in
-## [DotFpsState], because a replay has to reproduce it.
+## Seconds it lasts, in simulated time so a replay reproduces it. 0 or less means until removed.
 @export_range(0.0, 600.0, 0.1) var duration_sec: float = 0.0
 
-## Whether adding it again while it is active restarts the clock.
-##
-## On for a pad the player can keep stepping on; off for something that should not be
-## refreshable by repeating the action that applied it.
+## Whether adding it again while active restarts the clock.
 @export var refreshable: bool = true
 
 @export_group("Movement scales")
@@ -52,10 +28,7 @@ extends Resource
 
 @export_group("Denials")
 
-## Deny jumping outright while active. A root, a stun, being grabbed.
-##
-## Separate from [code]jump_scale = 0[/code] because a denial should not be
-## cancellable by another modifier multiplying the scale back up.
+## Deny jumping outright while active. Separate from [code]jump_scale = 0[/code] so another modifier cannot scale it back up.
 @export var deny_jump: bool = false
 
 @export var deny_crouch: bool = false
@@ -65,21 +38,9 @@ extends Resource
 
 @export_group("Abilities")
 
-## Hold the player in noclip for as long as this is active, whatever
-## [member DotFpsTunables.can_noclip] says and whatever the noclip button does.
-##
-## [b]A modifier rather than a flag somewhere else, because this is the one shape that
-## survives prediction for free.[/b] An administrator's noclip is decided on the server.
-## Setting [member DotFpsState.mode] alone reaches the client in the next snapshot, and the
-## client's own motor then undoes it on every replayed tick — its copy of
-## [code]can_noclip[/code] is false, so [code]_update_noclip[/code] drops the player to
-## AIR — and the player rubber-bands between flying and falling. The active modifier set is
-## already replicated and already restored by a rewind, so a modifier that forces the mode
-## is predicted exactly like a slow field is. See [DotFpsAdminModifiers].
-##
-## Removing it does not by itself land the player: a player whose tunables allow noclip
-## stays in it until they toggle it off, which is correct for a sandbox and is why
-## [method DotFpsAdminModifiers.set_noclip] also puts them back in AIR.
+## Hold the player in noclip while active, whatever [member DotFpsTunables.can_noclip] says.
+## A modifier because it is already replicated and rewound: setting [member DotFpsState.mode] alone is undone by the client's replay.
+## Removing it does not land the player; see [method DotFpsAdminModifiers.set_noclip].
 @export var forces_noclip: bool = false
 
 ## Lets the noclip button work while this is active, whatever [member DotFpsTunables.can_noclip] says.
@@ -89,16 +50,10 @@ extends Resource
 
 @export_group("Impulse")
 
-## Velocity added once, when the modifier is applied, in m/s.
-##
-## For a launch pad or a knockback. Applied in the simulation so it is predicted and
-## reconciled like everything else, rather than as a one-off the server pushes.
+## Velocity added once when applied, in m/s (launch pad, knockback); applied in the simulation so it is predicted.
 @export var impulse: Vector3 = Vector3.ZERO
 
-## Zero the player's velocity before applying [member impulse].
-##
-## What makes a launch pad send everyone the same distance regardless of how fast
-## they arrived.
+## Zero the velocity before applying [member impulse], so a pad launches everyone the same distance.
 @export var impulse_clears_velocity: bool = false
 
 
@@ -133,13 +88,9 @@ func _to_string() -> String:
 	return "DotFpsModifier(%s)" % id
 
 
-# --- Aggregate -------------------------------------------------------------
 
 ## The combined effect of every active modifier, recomputed each tick.
-##
-## A plain object rather than a dictionary so a typo in a field name is a parse error
-## rather than a silently-missing multiplier — this is read on the hot path by the
-## acceleration code, and a scale that quietly reads as null would be 0.
+## A typed object, not a dictionary, so a misspelt field is a parse error rather than a silent 0 on the hot path.
 class Aggregate extends RefCounted:
 	var max_speed: float = 1.0
 	var accelerate: float = 1.0
