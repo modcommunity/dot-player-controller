@@ -658,3 +658,104 @@ func _test_physics_wall_hug_speed() -> void:
 		"holding forward and strafe into a wall, at any angle, never runs faster than max_speed",
 		worst_case)
 	_done()
+
+
+## The idle fast path against the full path, tick for tick, over a script that idles, walks, stops, jumps, rides a moving platform and loses its floor.
+func _test_idle_parity() -> void:
+	_section("idle fast path parity")
+
+	var world := Node3D.new()
+	add_child(world)
+	var pad := StaticBody3D.new()
+	var pad_shape := CollisionShape3D.new()
+	var pad_box := BoxShape3D.new()
+	pad_box.size = Vector3(8.0, 1.0, 8.0)
+	pad_shape.shape = pad_box
+	pad.add_child(pad_shape)
+	pad.position = Vector3(0.0, -0.5, 0.0)
+	world.add_child(pad)
+	var low := StaticBody3D.new()
+	var low_shape := CollisionShape3D.new()
+	var low_box := BoxShape3D.new()
+	low_box.size = Vector3(60.0, 1.0, 60.0)
+	low_shape.shape = low_box
+	low.add_child(low_shape)
+	low.position = Vector3(0.0, -3.5, 0.0)
+	world.add_child(low)
+	var platform := AnimatableBody3D.new()
+	var platform_shape := CollisionShape3D.new()
+	var platform_box := BoxShape3D.new()
+	platform_box.size = Vector3(6.0, 1.0, 6.0)
+	platform_shape.shape = platform_box
+	platform.add_child(platform_shape)
+	platform.position = Vector3(20.0, -0.5, 0.0)
+	world.add_child(platform)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	var t := _tunables()
+	var fast_body := DotFpsPhysicsBody.new()
+	var full_body := DotFpsPhysicsBody.new()
+	if not (fast_body.bind(world).ok and full_body.bind(world).ok):
+		_check(false, "both physics bodies bind to the parity world")
+		world.queue_free()
+		return
+	var fast := DotFpsMotor.new(t, fast_body)
+	var full := DotFpsMotor.new(t, full_body)
+	fast.idle_fast_path = true
+	full.idle_fast_path = false
+	full.reuse_settled_ground = false
+	var fs := DotFpsState.new()
+	var rs := DotFpsState.new()
+	fs.mode = DotFpsState.Mode.GROUND
+	rs.mode = DotFpsState.Mode.GROUND
+
+	var diverged := {}
+	var ticks := 0
+	for tick in range(900):
+		var phase := "idle"
+		var cmd := DotFpsCommand.new()
+		if tick >= 120 and tick < 200:
+			phase = "walk"
+			cmd = _command(1.0)
+		elif tick >= 200 and tick < 380:
+			phase = "stop"
+		elif tick >= 380 and tick < 440:
+			phase = "jump"
+			if tick == 380:
+				cmd.set_button(DotFpsCommand.BUTTON_JUMP, true)
+		elif tick >= 440 and tick < 740:
+			phase = "platform"
+			if tick == 440:
+				for st in [fs, rs]:
+					st.position = Vector3(20.0, 0.0, 0.0)
+					st.velocity = Vector3.ZERO
+					st.mode = DotFpsState.Mode.GROUND
+			if tick < 640:
+				platform.position.x += 0.01
+			await get_tree().physics_frame
+		elif tick >= 740:
+			phase = "floor"
+			if tick == 740:
+				for st in [fs, rs]:
+					st.position = Vector3.ZERO
+					st.velocity = Vector3.ZERO
+					st.mode = DotFpsState.Mode.GROUND
+			if tick == 840:
+				pad_shape.disabled = true
+				await get_tree().physics_frame
+				await get_tree().physics_frame
+		fast.simulate(fs, cmd, STEP)
+		full.simulate(rs, cmd, STEP)
+		ticks += 1
+		if not fs.equals(rs, 0.0001) and not diverged.has(phase):
+			diverged[phase] = "tick %d: fast %s %s, full %s %s" % [tick, fs.position, fs.velocity, rs.position, rs.velocity]
+
+	_check(ticks == 900, "all 900 parity ticks ran", "%d" % ticks)
+	for phase in ["idle", "walk", "stop", "jump", "platform", "floor"]:
+		_check(not diverged.has(phase), "the fast and full paths agree through the %s phase" % phase, str(diverged.get(phase, "")))
+	_check(fast.idle_ticks > 100, "the fast path was taken while idle", "%d ticks" % fast.idle_ticks)
+	_check(full.idle_ticks == 0, "the reference never takes the fast path", "%d ticks" % full.idle_ticks)
+	_check(fs.position.y < -2.0 and rs.position.y < -2.0, "a floor removed under an idle body wakes it and it falls", "%.2f and %.2f" % [fs.position.y, rs.position.y])
+	world.queue_free()
+	_done()

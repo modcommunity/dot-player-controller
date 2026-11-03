@@ -100,6 +100,10 @@ func _simulate(
 
 	_update_crouch(state, command, delta)
 
+	if idle_fast_path and _idle_tick(state, command):
+		state.previous_buttons = command.buttons
+		return
+
 	# Before the ground is categorised, because a probe starting inside geometry reports nothing and the whole tick is built on that answer.
 	# Unconditional: the case it exists for is a player in AIR on a ramp, which every earlier guard excluded.
 	_depenetrate(state, _height(state))
@@ -174,6 +178,50 @@ func _simulate(
 		_categorise_ground(state)
 
 	state.previous_buttons = command.buttons
+
+
+## The whole tick for a walker standing still on the floor the last tick proved, or false (nothing written) when anything differs.
+## Same answers as the full path, which for such a tick changes nothing: wish, velocity and buttons are zero, so only the world can differ, and two queries ask it (embedded? floor still there?).
+func _idle_tick(state: DotFpsState, command: DotFpsCommand) -> bool:
+	if (
+		not _rest_valid or command.move != Vector2.ZERO or command.buttons != 0
+		or state.previous_buttons != 0 or state.mode != DotFpsState.Mode.GROUND
+		or state.velocity != Vector3.ZERO or state.is_sliding() or state.is_wall_running()
+		or state.position != _rest_position or state.velocity != _rest_velocity
+		or state.ground_normal != _rest_normal or state.ground_id != _rest_ground_id
+		or state.surface != _rest_surface or _height(state) != _rest_height
+		or not state.modifiers.is_empty() or _surface.push != Vector3.ZERO
+		or tunables.wall_run_enabled or tunables.wall_jump_enabled
+		or not _rest_ground_unmoved()
+	):
+		return false
+
+	_idle_streak += 1
+	if idle_full_every > 0 and _idle_streak >= idle_full_every:
+		_idle_streak = 0
+		_rest_valid = false
+		return false
+
+	var height := _rest_height
+	var centre := _capsule_centre(state.position, height)
+	var resting := body.rest_contact(centre, height, tunables.radius)
+	if resting.hit and resting.depth > 0.0:
+		return false
+
+	var probe := Vector3.DOWN * (tunables.skin_width * 2.0 + 0.02)
+	var hit := _ground_probe(centre, probe, height)
+	if (
+		not hit.hit or hit.collider_id != _rest_ground_id or hit.normal != _rest_normal
+		or probe.length() * hit.fraction < tunables.skin_width * 0.5
+	):
+		_idle_streak = 0
+		_rest_valid = false
+		return false
+
+	_resolve_surface(state)
+	idle_ticks += 1
+	settled_ground_ticks += 1
+	return true
 
 
 ## Remembers the state a settled ground check just proved, for [method _reuse_rest].

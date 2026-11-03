@@ -15,3 +15,4 @@ Moved from `dot_player_controller_api.gd`; one line per level, newest last. The 
 - 11: DotFpsSprintRules (sprint and stamina cvars as one live group), DotFpsTunables.sprint_toggle (sv_sprint_toggle, applied by DotFpsSampler), and `sprinting`/`sprint_blocks_aim` in motion().
 - 12: DotPlayerController.apply_external_velocity(dv): a push (tornado, explosion) the controller keeps.
 - 13: DotPlayerViewRules.first_person_body (BODY_OFF, BODY_LEGS, BODY_FULL), own_body(choice) and the `mp_fp_body` cvar (off, legs and feet, whole body; default legs). `mp_fp_legs` is still accepted by set_cvar but no longer registered; `first_person_legs` reads the new value.
+- 14: `DotFpsMotor.idle_fast_path`, `idle_full_every` and `idle_ticks`: a cheap tick for a settled, idle, grounded body that wakes on any change (docs/collision.md).

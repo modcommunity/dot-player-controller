@@ -135,6 +135,17 @@ var reused_ground_ticks: int = 0
 ## Off if the floor can change between ticks (a platform that is not moved with its rider).
 var reuse_settled_ground: bool = true
 
+## Ticks answered by the idle path ([member idle_fast_path]). Diagnostic.
+var idle_ticks: int = 0
+
+## A walker with no input standing on a floor the last tick proved skips the movement pipeline and asks only whether it is embedded and whether the floor is still there.
+## Same results as the full path (examples/movement_selftest.gd). Off by default: in a box world it measured 31 us a tick against 27 for the full path, because the gate sits after the timer and modifier work.
+var idle_fast_path: bool = false
+
+## Every this many idle ticks the full path runs anyway, as a safety net; 0 never.
+var idle_full_every: int = 32
+
+var _idle_streak: int = 0
 var _rest_valid: bool = false
 var _rest_position: Vector3
 var _rest_velocity: Vector3
