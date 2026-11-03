@@ -6,7 +6,7 @@ extends "res://examples/movement_selftest_walls.gd"
 ##
 ## Most tests run on [DotFpsFlatBody] so a failure has one possible cause, the [DotFpsMotor]; [method _test_physics_body] covers the real implementation.
 
-const CHECKS := 420
+const CHECKS := 423
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
@@ -637,6 +637,7 @@ func _test_surfaces() -> void:
 
 	_belt_pushes(t, set)
 	_belt_against_wall(t, set)
+	_push_cap_horizontal_only(t)
 	_surface_resolver_checks()
 	_done()
 
@@ -703,6 +704,28 @@ func _belt_against_wall(t: DotFpsTunables, set: DotFpsSurfaceSet) -> void:
 	_check(absf(s.velocity.z) > absf(f.velocity.z) * 0.8,
 		"a conveyor still carries a walker pressing into a wall",
 		"wall %.2f, free %.2f m/s" % [absf(s.velocity.z), absf(f.velocity.z)])
+
+
+## The wall-creep cap rises by the horizontal push only: a vertical push must not raise it.
+func _push_cap_horizontal_only(t: DotFpsTunables) -> void:
+	var caps := {}
+	for push in [Vector3.ZERO, Vector3(0.0, 8.0, 0.0), Vector3(0.0, 0.0, -80.0)]:
+		var surface := DotFpsSurface.make(&"cap_probe")
+		surface.push = push
+		var set := DotFpsSurfaceSet.new()
+		set.add(surface)
+		var motor := _motor(t, DotFpsFlatBody.with_floor(0.0))
+		motor.surfaces = set
+		motor.surface_resolver = func(_id: int) -> StringName: return &"cap_probe"
+		var s := _standing(motor)
+		motor.simulate(s, _command(1.0, 0.0, 0.0), STEP)
+		caps[push] = motor._ground_cap
+	_check(caps[Vector3.ZERO] > 0.0, "the probe walker has a ground cap", "%.3f" % caps[Vector3.ZERO])
+	_check(is_equal_approx(caps[Vector3(0.0, 8.0, 0.0)], caps[Vector3.ZERO]),
+		"a purely vertical push leaves the ground cap unchanged",
+		"%.3f vs %.3f" % [caps[Vector3(0.0, 8.0, 0.0)], caps[Vector3.ZERO]])
+	_check(caps[Vector3(0.0, 0.0, -80.0)] > caps[Vector3.ZERO] + 0.01,
+		"a horizontal push still raises it", "%.3f" % caps[Vector3(0.0, 0.0, -80.0)])
 
 
 ## Surfaces read off dot-physics, duck-typed: the fields DotPhysicsSurface has.

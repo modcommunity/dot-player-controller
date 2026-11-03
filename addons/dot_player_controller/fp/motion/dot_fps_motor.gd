@@ -151,7 +151,7 @@ func _simulate(
 			# Environment motion is not wall-creep: let the cap rise by the horizontal push
 			# only; a vertical component cannot move the walker along the ground.
 			if _ground_cap > 0.0:
-				_ground_cap += _surface.push.length() * delta
+				_ground_cap += Vector2(_surface.push.x, _surface.push.z).length() * delta
 	elif state.is_wall_running():
 		_wall_run_vertical(state, delta)
 	else:
