@@ -21,7 +21,8 @@ var strafe_roll_response: float = 7.0
 ## Degrees the camera rolls while sliding, on top of the strafe roll, eased like it. 0 for none.
 var slide_roll: float = 3.0
 
-## Degrees the camera leans away from a wall being run along, toward the open side. 0 for none.
+## Degrees the camera leans while wall running: positive away from the wall (the open side),
+## negative toward it. 0 for none.
 ## Scaled by how square the view is to the wall: looking straight along it gives the full
 ## lean, turning to face away from it blends toward none rather than flipping.
 var wall_run_roll: float = 6.0
@@ -124,9 +125,9 @@ func advance(state: DotFpsState, delta: float) -> void:
 	_roll_a = lerpf(_roll_a, target, t)
 	_roll = lerpf(_roll, _roll_a, t)
 
-	# The wall-run lean, away from the wall.
+	# The wall-run lean: positive away from the wall, negative toward it.
 	var wall := 0.0
-	if wall_run_roll > 0.0 and state.is_wall_running() and state.wall_normal != Vector3.ZERO:
+	if wall_run_roll != 0.0 and state.is_wall_running() and state.wall_normal != Vector3.ZERO:
 		wall = -state.wall_normal.dot(right) * wall_run_roll
 	_wall_roll = lerpf(_wall_roll, wall, 1.0 - exp(-wall_run_roll_response * delta))
 

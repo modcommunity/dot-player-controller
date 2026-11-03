@@ -83,9 +83,10 @@ const CHANNEL := "fps.view"
 ## Degrees the camera rolls while sliding, eased in and out like the strafe roll. 0 for none.
 @export_range(-20.0, 20.0, 0.5) var slide_roll: float = 3.0
 
-## Degrees the camera rolls away from the wall while wall running. 0 for none.
-## Read only while [method DotFpsState.is_wall_running]. View only: the simulation never sees it.
-@export_range(0.0, 30.0, 0.5) var wall_run_roll: float = 6.0
+## Degrees the camera rolls while wall running: positive away from the wall (toward the open side),
+## negative tilts toward it. 0 for none. Read only while [method DotFpsState.is_wall_running].
+## View only: the simulation never sees it.
+@export_range(-30.0, 30.0, 0.5) var wall_run_roll: float = 6.0
 
 ## How quickly the wall-run roll eases in and out, per second. Exponential, so it starts
 ## and ends without a snap; about a sixth of a second to settle at the default.

@@ -4,7 +4,7 @@ extends "res://examples/fps_controller_selftest_base.gd"
 ## [method movement_selftest] tests the simulation; this tests the wiring around it (reference resolution, collider following the crouch, fixed-step accumulator, drive modes, registry, the noclip safety gate), which a host game touches first.
 ## Scenes are built in code so a failure names a line and an editor change cannot silently pass.
 
-const CHECKS := 116
+const CHECKS := 118
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
@@ -959,6 +959,20 @@ func _test_wall_run_roll() -> void:
 		view.apply(state, motor, frame)
 	_check(rad_to_deg(camera.rotation.z) < -view.wall_run_roll + 0.2,
 		"a wall on the left rolls it right",
+		"%.3f degrees" % rad_to_deg(camera.rotation.z))
+
+	# Negative leans toward the wall: camera z rotation is counter-clockwise, so a wall on the
+	# right (normal LEFT) wants a clockwise, negative z to tilt to it.
+	view.wall_run_roll = -6.0
+	state.wall_normal = Vector3.LEFT
+	for _i in range(200):
+		view.apply(state, motor, frame)
+	_check(rad_to_deg(camera.rotation.z) < -5.8, "a negative wall_run_roll tilts toward a wall on the right",
+		"%.3f degrees" % rad_to_deg(camera.rotation.z))
+	state.wall_normal = Vector3.RIGHT
+	for _i in range(200):
+		view.apply(state, motor, frame)
+	_check(rad_to_deg(camera.rotation.z) > 5.8, "and toward a wall on the left",
 		"%.3f degrees" % rad_to_deg(camera.rotation.z))
 
 	view.wall_run_roll = 0.0
