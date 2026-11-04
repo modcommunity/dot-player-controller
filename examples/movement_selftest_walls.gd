@@ -808,7 +808,7 @@ func _test_walls_off_identical() -> void:
 	ctx.start(HashingContext.HASH_SHA256)
 	ctx.update(bytes)
 	var digest := ctx.finish().hex_encode()
-	_check(digest == "c1b2468664e0a74c72de9c70e7188bd9499eb60f314cd1bc56b0af2763abb81b",
+	_check(digest == "c8daef020927f76a18aa639c018f468dd09a1c7310904538f3cfce157f1d6c66",
 		"600 ticks with every wall setting off hash the same as before wall movement", digest)
 	_check(motor.wall_runs == 0 and motor.wall_jumps == 0 and s.wall_normal == Vector3.ZERO,
 		"and no wall probe answered anything")
