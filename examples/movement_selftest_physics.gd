@@ -660,10 +660,8 @@ func _test_physics_wall_hug_speed() -> void:
 	_done()
 
 
-## The idle fast path against the full path, tick for tick, over a script that idles, walks, stops, jumps, rides a moving platform and loses its floor.
-func _test_idle_parity() -> void:
-	_section("idle fast path parity")
-
+## Builds the parity world: [world, pad collision shape, moving platform].
+func _build_parity_world() -> Array:
 	var world := Node3D.new()
 	add_child(world)
 	var pad := StaticBody3D.new()
@@ -690,6 +688,17 @@ func _test_idle_parity() -> void:
 	platform.add_child(platform_shape)
 	platform.position = Vector3(20.0, -0.5, 0.0)
 	world.add_child(platform)
+	return [world, pad_shape, platform]
+
+
+## The idle fast path against the full path, tick for tick, over a script that idles, walks, stops, jumps, rides a moving platform and loses its floor.
+func _test_idle_parity() -> void:
+	_section("idle fast path parity")
+
+	var parts := _build_parity_world()
+	var world: Node3D = parts[0]
+	var pad_shape: CollisionShape3D = parts[1]
+	var platform: AnimatableBody3D = parts[2]
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 

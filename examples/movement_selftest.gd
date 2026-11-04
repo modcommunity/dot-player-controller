@@ -128,8 +128,7 @@ func _test_flat_rest_axis() -> void:
 	var hit := body.rest_contact(at, height, radius)
 	_check(hit.hit and hit.normal.is_equal_approx(Vector3(0.0, 0.0, 1.0)),
 		"the push is out of the wall's face", "normal %s" % str(hit.normal))
-	_check(hit.hit and absf(hit.depth - 0.006) < 0.0005,
-		"by the 6 mm it is in, not the 32 m along it", "%.4f m" % hit.depth)
+	_check(hit.hit and absf(hit.depth - 0.006) < 0.0005, "by the 6 mm it is in, not the 32 m along it", "%.4f m" % hit.depth)
 	_done()
 
 
@@ -147,28 +146,17 @@ func _test_configuration() -> void:
 	var thin := _tunables()
 	thin.radius = 0.6
 	thin.crouch_height = 0.9
-	_check(
-		not thin.validate().ok,
-		"a capsule the engine would silently grow is rejected"
-	)
+	_check( not thin.validate().ok, "a capsule the engine would silently grow is rejected" )
 
 	var climber := _tunables()
 	climber.step_height = 1.0
 	climber.crouch_height = 0.9
-	_check(
-		not climber.validate().ok,
-		"a step height that would let the player climb walls is rejected"
-	)
+	_check( not climber.validate().ok, "a step height that would let the player climb walls is rejected" )
 
 	var derived := _tunables()
 	derived.gravity = 20.0
 	derived.jump_height = 1.25
-	_check_near(
-		derived.jump_velocity(),
-		sqrt(2.0 * 20.0 * 1.25),
-		0.0001,
-		"jump velocity is derived from gravity and height"
-	)
+	_check_near( derived.jump_velocity(), sqrt(2.0 * 20.0 * 1.25), 0.0001, "jump velocity is derived from gravity and height" )
 	_done()
 
 
@@ -191,10 +179,7 @@ func _test_falling_and_landing() -> void:
 
 	# Not a formality: the previous controller clamped a Vector3 to a float, so
 	# `vel` became a scalar and every later vector operation on it was wrong.
-	_check(
-		s.velocity is Vector3,
-		"velocity is still a Vector3 after clamping"
-	)
+	_check( s.velocity is Vector3, "velocity is still a Vector3 after clamping" )
 	_done()
 
 
@@ -255,11 +240,7 @@ func _test_jump_height() -> void:
 			manual_hops += 1
 		was_grounded = manual_state.is_grounded()
 
-	_check(
-		manual_hops == 1,
-		"without auto-hop a held button jumps exactly once",
-		"hops: %d" % manual_hops
-	)
+	_check( manual_hops == 1, "without auto-hop a held button jumps exactly once", "hops: %d" % manual_hops )
 	_done()
 
 
@@ -326,11 +307,7 @@ func _test_ground_friction() -> void:
 	for _i in range(180):
 		motor.simulate(s, DotFpsCommand.new(), STEP)
 
-	_check(
-		s.horizontal_speed() < 0.01,
-		"friction brings a sliding player to a stop",
-		"%.4f m/s" % s.horizontal_speed()
-	)
+	_check( s.horizontal_speed() < 0.01, "friction brings a sliding player to a stop", "%.4f m/s" % s.horizontal_speed() )
 	_done()
 
 
@@ -345,9 +322,7 @@ func _test_ground_speed_cap() -> void:
 	for _i in range(240):
 		motor.simulate(s, _command(1.0), STEP)
 
-	_check_near(
-		s.horizontal_speed(), 7.0, 0.15, "running forward settles at max_speed"
-	)
+	_check_near( s.horizontal_speed(), 7.0, 0.15, "running forward settles at max_speed" )
 
 	# The classic diagonal bug: an unclamped forward+strafe is √2 times faster.
 	var diagonal := _standing(motor)
@@ -437,15 +412,9 @@ func _test_speed_modifiers() -> void:
 	t.walk_speed_scale = 0.25
 
 	_check_near(t.speed_for(0), 8.0, 0.001, "no modifier is max_speed")
-	_check_near(
-		t.speed_for(DotFpsCommand.BUTTON_SPRINT), 12.0, 0.001, "sprint scales up"
-	)
-	_check_near(
-		t.speed_for(DotFpsCommand.BUTTON_CROUCH), 4.0, 0.001, "crouch scales down"
-	)
-	_check_near(
-		t.speed_for(DotFpsCommand.BUTTON_WALK), 2.0, 0.001, "walk scales down"
-	)
+	_check_near( t.speed_for(DotFpsCommand.BUTTON_SPRINT), 12.0, 0.001, "sprint scales up" )
+	_check_near( t.speed_for(DotFpsCommand.BUTTON_CROUCH), 4.0, 0.001, "crouch scales down" )
+	_check_near( t.speed_for(DotFpsCommand.BUTTON_WALK), 2.0, 0.001, "walk scales down" )
 
 		# Regression: one stored multiplier reset to 1 on release made releasing sprint while crouched restore full speed. Most restrictive wins.
 	_check_near(
@@ -458,12 +427,7 @@ func _test_speed_modifiers() -> void:
 	var disabled := _tunables()
 	disabled.can_sprint = false
 	disabled.max_speed = 8.0
-	_check_near(
-		disabled.speed_for(DotFpsCommand.BUTTON_SPRINT),
-		8.0,
-		0.001,
-		"a disabled ability ignores its button"
-	)
+	_check_near( disabled.speed_for(DotFpsCommand.BUTTON_SPRINT), 8.0, 0.001, "a disabled ability ignores its button" )
 	_done()
 
 
@@ -568,17 +532,11 @@ func _test_surfaces() -> void:
 	set.add(ice).add(glass).add(belt)
 
 	_check(set.get_surface(&"ice") == ice, "a surface resolves by id")
-	_check(
-		set.get_surface(&"nothing_here") != null,
-		"an unknown id falls back rather than returning null"
-	)
+	_check( set.get_surface(&"nothing_here") != null, "an unknown id falls back rather than returning null" )
 
 	# Everything the caller does with a surface goes through get_surface, so a null
 	# fallback would be a crash on the first unmarked floor in a level.
-	_check(
-		set.get_surface(&"nothing_here").friction_scale == 1.0,
-		"and the fallback is neutral"
-	)
+	_check( set.get_surface(&"nothing_here").friction_scale == 1.0, "and the fallback is neutral" )
 
 	var t := _tunables()
 	var world := DotFpsFlatBody.with_floor(0.0)
@@ -594,16 +552,8 @@ func _test_surfaces() -> void:
 	for _i in range(60):
 		motor.simulate(s, DotFpsCommand.new(), STEP)
 
-	_check(
-		s.surface == &"ice",
-		"the surface under the player reaches the state",
-		String(s.surface)
-	)
-	_check(
-		s.horizontal_speed() > 5.0,
-		"and ice barely slows a sliding player",
-		"%.2f m/s from 6.00" % s.horizontal_speed()
-	)
+	_check( s.surface == &"ice", "the surface under the player reaches the state", String(s.surface) )
+	_check( s.horizontal_speed() > 5.0, "and ice barely slows a sliding player", "%.2f m/s from 6.00" % s.horizontal_speed() )
 
 	# The control: the same slide on default ground stops.
 	var plain := _motor(t, DotFpsFlatBody.with_floor(0.0))
@@ -613,11 +563,7 @@ func _test_surfaces() -> void:
 	for _i in range(60):
 		plain.simulate(plain_state, DotFpsCommand.new(), STEP)
 
-	_check(
-		plain_state.horizontal_speed() < 1.0,
-		"where ordinary ground stops them",
-		"%.2f m/s" % plain_state.horizontal_speed()
-	)
+	_check( plain_state.horizontal_speed() < 1.0, "where ordinary ground stops them", "%.2f m/s" % plain_state.horizontal_speed() )
 
 	# Unstandable: a floor by geometry, a wall by configuration.
 	var glass_motor := _motor(t, DotFpsFlatBody.with_floor(0.0))
@@ -630,10 +576,7 @@ func _test_surfaces() -> void:
 	for _i in range(60):
 		glass_motor.simulate(glass_state, DotFpsCommand.new(), STEP)
 
-	_check(
-		not glass_state.is_grounded(),
-		"an unstandable surface cannot be stood on whatever its angle"
-	)
+	_check( not glass_state.is_grounded(), "an unstandable surface cannot be stood on whatever its angle" )
 
 	_belt_pushes(t, set)
 	_belt_against_wall(t, set)
@@ -654,11 +597,7 @@ func _belt_pushes(t: DotFpsTunables, set: DotFpsSurfaceSet) -> void:
 	for _i in range(60):
 		belt_motor.simulate(belt_state, DotFpsCommand.new(), STEP)
 
-	_check(
-		belt_state.position.z < -5.0,
-		"a surface push carries a standing player",
-		"z = %.2f" % belt_state.position.z
-	)
+	_check( belt_state.position.z < -5.0, "a surface push carries a standing player", "z = %.2f" % belt_state.position.z )
 
 	# And the threshold itself, because a push that silently does nothing is the
 	# failure a level designer would hit first.
@@ -749,8 +688,7 @@ func _surfaces_from_physics() -> void:
 	var ice_physics := FakePhysicsSurface.new()
 	ice_physics.id = &"ice"
 	ice_physics.traction = 0.1
-	_check(is_equal_approx(DotFpsSurface.from_physics(ice_physics).max_speed_scale, 1.0),
-		"ice, with no dampening, keeps its top speed")
+	_check(is_equal_approx(DotFpsSurface.from_physics(ice_physics).max_speed_scale, 1.0), "ice, with no dampening, keeps its top speed")
 	var water_physics := FakePhysicsSurface.new()
 	water_physics.id = &"water"
 	water_physics.liquid = true
@@ -769,23 +707,14 @@ func _surface_resolver_checks() -> void:
 	# see, so the same node metadata resolves the same on either side.
 	var marker := Node3D.new()
 	marker.set_meta(&"dot_fps_surface", "ice")
-	_check(
-		DotFpsSurfaceSet.resolve_from_node(marker) == &"ice",
-		"a surface resolves from node metadata"
-	)
+	_check( DotFpsSurfaceSet.resolve_from_node(marker) == &"ice", "a surface resolves from node metadata" )
 
 	var grouped := Node3D.new()
 	grouped.add_to_group(&"surface_mud")
-	_check(
-		DotFpsSurfaceSet.resolve_from_node(grouped) == &"mud",
-		"and from a group"
-	)
+	_check( DotFpsSurfaceSet.resolve_from_node(grouped) == &"mud", "and from a group" )
 
 	var unmarked := Node3D.new()
-	_check(
-		DotFpsSurfaceSet.resolve_from_node(unmarked) == &"",
-		"an unmarked node resolves to nothing, not to a default"
-	)
+	_check( DotFpsSurfaceSet.resolve_from_node(unmarked) == &"", "an unmarked node resolves to nothing, not to a default" )
 
 	marker.free()
 	grouped.free()
@@ -822,19 +751,13 @@ func _test_modifiers() -> void:
 	motor.register_modifier(pad)
 	motor.register_modifier(low_g)
 
-	_check(
-		motor.modifier_index(&"nothing") < 0,
-		"an unregistered modifier has no index"
-	)
+	_check( motor.modifier_index(&"nothing") < 0, "an unregistered modifier has no index" )
 
 	var s := _standing(motor)
 
 	_check(motor.add_modifier(s, &"boost"), "a modifier applies")
 	_check(motor.has_modifier(s, &"boost"), "and is then active")
-	_check(
-		not motor.add_modifier(s, &"not_a_modifier"),
-		"an unknown one is refused rather than silently ignored"
-	)
+	_check( not motor.add_modifier(s, &"not_a_modifier"), "an unknown one is refused rather than silently ignored" )
 
 	for _i in range(50):
 		motor.simulate(s, _command(1.0), STEP)
@@ -851,11 +774,7 @@ func _test_modifiers() -> void:
 		motor.simulate(s, _command(1.0), STEP)
 
 	_check(not motor.has_modifier(s, &"boost"), "and expires on its own")
-	_check(
-		s.horizontal_speed() < t.max_speed + 0.3,
-		"after which the player is back to base speed",
-		"%.2f m/s" % s.horizontal_speed()
-	)
+	_check( s.horizontal_speed() < t.max_speed + 0.3, "after which the player is back to base speed", "%.2f m/s" % s.horizontal_speed() )
 
 	# Effects multiply, so two modifiers compose without either winning.
 	var both := _standing(motor)
@@ -863,10 +782,7 @@ func _test_modifiers() -> void:
 	motor.add_modifier(both, &"slow")
 	motor.simulate(both, DotFpsCommand.new(), STEP)
 
-	_check_near(
-		motor.effects().max_speed, 1.0, 0.001,
-		"a doubling and a halving compose to no change"
-	)
+	_check_near( motor.effects().max_speed, 1.0, 0.001, "a doubling and a halving compose to no change" )
 
 	# Sorted by index, whatever order they were applied in — the aggregate is a
 	# product, and floating-point multiplication is not associative.
@@ -897,11 +813,7 @@ func _test_modifiers() -> void:
 		)
 
 	_check_near(rooted.position.y, before_y, 0.02, "deny_jump stops a jump")
-	_check(
-		rooted.horizontal_speed() < 0.1,
-		"deny_move stops movement",
-		"%.3f m/s" % rooted.horizontal_speed()
-	)
+	_check( rooted.horizontal_speed() < 0.1, "deny_move stops movement", "%.3f m/s" % rooted.horizontal_speed() )
 
 	# An impulse is applied inside the simulation, so it is predicted and reconciled
 	# like everything else rather than pushed by the server as a one-off.
@@ -909,19 +821,11 @@ func _test_modifiers() -> void:
 	launched.velocity = Vector3(5.0, 0.0, 0.0)
 	motor.add_modifier(launched, &"pad")
 
-	_check_near(
-		launched.velocity.y, 12.0, 0.001, "an impulse launches the player"
-	)
-	_check_near(
-		launched.velocity.x, 0.0, 0.001,
-		"and impulse_clears_velocity means everyone leaves at the same speed"
-	)
+	_check_near( launched.velocity.y, 12.0, 0.001, "an impulse launches the player" )
+	_check_near( launched.velocity.x, 0.0, 0.001, "and impulse_clears_velocity means everyone leaves at the same speed" )
 
 	motor.simulate(launched, DotFpsCommand.new(), STEP)
-	_check(
-		not launched.is_grounded(),
-		"an upward impulse leaves the ground rather than being eaten by the snap"
-	)
+	_check( not launched.is_grounded(), "an upward impulse leaves the ground rather than being eaten by the snap" )
 
 	# Gravity scaling, which is the one that changes the shape of a jump.
 	var floaty := _standing(motor)
@@ -943,10 +847,7 @@ func _test_modifiers() -> void:
 	)
 
 	_check(motor.remove_modifier(floaty, &"low_gravity"), "a modifier is removable")
-	_check(
-		not motor.remove_modifier(floaty, &"low_gravity"),
-		"and removing it twice reports nothing to remove"
-	)
+	_check( not motor.remove_modifier(floaty, &"low_gravity"), "and removing it twice reports nothing to remove" )
 	_done()
 
 
@@ -1023,14 +924,8 @@ func _test_custom_mode() -> void:
 	var ladder := LadderMode.new()
 	var ladder_id := motor.register_mode(ladder)
 
-	_check(
-		ladder_id == DotFpsState.FIRST_CUSTOM_MODE,
-		"a custom mode gets the first id above the built-ins",
-		"%d" % ladder_id
-	)
-	_check(
-		motor.mode_id_of(&"ladder") == ladder_id, "and is findable by name"
-	)
+	_check( ladder_id == DotFpsState.FIRST_CUSTOM_MODE, "a custom mode gets the first id above the built-ins", "%d" % ladder_id )
+	_check( motor.mode_id_of(&"ladder") == ladder_id, "and is findable by name" )
 	_check(
 		motor.register_mode(LadderMode.new()) == ladder_id,
 		"registering the same name twice reuses the id rather than shifting the wire"
@@ -1045,25 +940,14 @@ func _test_custom_mode() -> void:
 		motor.simulate(s, _command(1.0), STEP)
 
 	_check(ladder.ticks == 60, "the mode owns the tick", "%d" % ladder.ticks)
-	_check(
-		s.position.y > 2.0,
-		"and climbs, with no gravity applied behind its back",
-		"y = %.2f" % s.position.y
-	)
+	_check( s.position.y > 2.0, "and climbs, with no gravity applied behind its back", "y = %.2f" % s.position.y )
 
 	motor.set_mode(s, DotFpsState.Mode.AIR)
 	_check(ladder.exited == 1, "leaving runs the exit hook")
 
 	# The names have to survive being asked for outside the enum's range.
-	_check(
-		DotFpsState.mode_name(ladder_id, motor) == "ladder",
-		"a custom mode renders by name",
-		DotFpsState.mode_name(ladder_id, motor)
-	)
-	_check(
-		DotFpsState.mode_name(DotFpsState.Mode.GROUND) == "GROUND",
-		"and a built-in one still does without a motor"
-	)
+	_check( DotFpsState.mode_name(ladder_id, motor) == "ladder", "a custom mode renders by name", DotFpsState.mode_name(ladder_id, motor) )
+	_check( DotFpsState.mode_name(DotFpsState.Mode.GROUND) == "GROUND", "and a built-in one still does without a motor" )
 
 	# Gravity resumes as soon as the built-in mode is back, which is the check that
 	# the dispatch actually returns rather than falling through.
@@ -1103,20 +987,9 @@ func _test_crouch_headroom() -> void:
 	for _i in range(30):
 		motor.simulate(s, DotFpsCommand.new(), STEP)
 
-	_check(
-		s.is_crouched(),
-		"standing up is refused when there is no headroom",
-		"crouch fraction %.3f" % s.crouch_fraction
-	)
-	_check(
-		not s.crouch_held,
-		"but the controller knows the button was released"
-	)
-	_check(
-		s.position.y < 1.2,
-		"and the player is still below the ceiling",
-		"y = %.3f" % s.position.y
-	)
+	_check( s.is_crouched(), "standing up is refused when there is no headroom", "crouch fraction %.3f" % s.crouch_fraction )
+	_check( not s.crouch_held, "but the controller knows the button was released" )
+	_check( s.position.y < 1.2, "and the player is still below the ceiling", "y = %.3f" % s.position.y )
 
 	# Step out from under it and the player stands on their own.
 	s.position = Vector3(0.0, 0.0, 20.0)
@@ -1170,11 +1043,7 @@ func _test_stair_step() -> void:
 		if s.position.z < -4.5 and s.position.z > -7.5:
 			height_on_step = maxf(height_on_step, s.position.y)
 
-	_check(
-		s.position.z < -4.5,
-		"the player walks up a step instead of stopping at it",
-		"z = %.2f" % s.position.z
-	)
+	_check( s.position.z < -4.5, "the player walks up a step instead of stopping at it", "z = %.2f" % s.position.z )
 	_check_near(height_on_step, 0.3, 0.05, "and is standing on top of it")
 
 	# A wall taller than step_height must still stop them.
@@ -1187,11 +1056,7 @@ func _test_stair_step() -> void:
 	for _i in range(180):
 		wall_motor.simulate(wall_state, _command(1.0), STEP)
 
-	_check(
-		wall_state.position.y < 0.1,
-		"a wall taller than step_height is not climbed",
-		"y = %.3f" % wall_state.position.y
-	)
+	_check( wall_state.position.y < 0.1, "a wall taller than step_height is not climbed", "y = %.3f" % wall_state.position.y )
 	_done()
 
 
@@ -1257,11 +1122,7 @@ func _test_walkable_slope() -> void:
 		peak_clearance = maxf(peak_clearance, s.position.y - world.ramp_height(0, s.position))
 
 	_check(left, "a jump started on the slope leaves the ground", "mode %d" % s.mode)
-	_check(
-		peak_clearance > 0.5,
-		"and rises clear of the slope, not along it",
-		"peak clearance %.3f m" % peak_clearance
-	)
+	_check( peak_clearance > 0.5, "and rises clear of the slope, not along it", "peak clearance %.3f m" % peak_clearance )
 	_done()
 
 
@@ -1286,11 +1147,7 @@ func _test_step_refused_without_floor() -> void:
 		motor.simulate(s, _command(1.0), STEP)
 		max_y = maxf(max_y, s.position.y)
 
-	_check(
-		max_y <= 0.25,
-		"a step with nothing behind it does not leave the player hovering",
-		"peak y = %.3f" % max_y
-	)
+	_check( max_y <= 0.25, "a step with nothing behind it does not leave the player hovering", "peak y = %.3f" % max_y )
 	_done()
 
 
@@ -1324,11 +1181,7 @@ func _test_ground_snap() -> void:
 		if not s.is_grounded():
 			airborne_ticks += 1
 
-	_check(
-		airborne_ticks <= 6,
-		"walking down steps keeps the player grounded",
-		"%d airborne ticks of 180" % airborne_ticks
-	)
+	_check( airborne_ticks <= 6, "walking down steps keeps the player grounded", "%d airborne ticks of 180" % airborne_ticks )
 	_done()
 
 
@@ -1401,10 +1254,7 @@ func _test_noclip_gating() -> void:
 	var s := _standing(motor)
 
 	motor.simulate(s, _command(0.0, 0.0, 0.0, DotFpsCommand.BUTTON_NOCLIP), STEP)
-	_check(
-		s.mode == DotFpsState.Mode.NOCLIP,
-		"the noclip button toggles noclip when it is allowed"
-	)
+	_check( s.mode == DotFpsState.Mode.NOCLIP, "the noclip button toggles noclip when it is allowed" )
 
 	# Straight through the floor.
 	for _i in range(60):
@@ -1424,10 +1274,7 @@ func _test_noclip_gating() -> void:
 			STEP
 		)
 
-	_check(
-		denied_state.mode != DotFpsState.Mode.NOCLIP,
-		"and is ignored when it is not"
-	)
+	_check( denied_state.mode != DotFpsState.Mode.NOCLIP, "and is ignored when it is not" )
 
 	# Revoking the ability mid-flight must drop the player out of it, not leave them
 	# flying because they entered before the rules changed.
@@ -1442,10 +1289,7 @@ func _test_noclip_gating() -> void:
 	revoked.can_noclip = false
 	revoked_motor.simulate(revoked_state, DotFpsCommand.new(), STEP)
 
-	_check(
-		revoked_state.mode != DotFpsState.Mode.NOCLIP,
-		"revoking noclip drops a player already using it"
-	)
+	_check( revoked_state.mode != DotFpsState.Mode.NOCLIP, "revoking noclip drops a player already using it" )
 	_done()
 
 
@@ -1460,24 +1304,17 @@ func _test_admin_modifiers() -> void:
 
 	var server := _motor(locked)
 	var registered := DotFpsAdminModifiers.register(server)
-	_check(
-		registered == DotFpsAdminModifiers.definitions().size(),
-		"every admin modifier registers", "%d" % registered
-	)
+	_check( registered == DotFpsAdminModifiers.definitions().size(), "every admin modifier registers", "%d" % registered )
 
 	var s := _standing(server)
 	server.add_modifier(s, DotFpsAdminModifiers.NOCLIP)
 	server.simulate(s, DotFpsCommand.new(), STEP)
-	_check(
-		s.mode == DotFpsState.Mode.NOCLIP,
-		"a forced noclip holds a player whose tunables forbid it"
-	)
+	_check( s.mode == DotFpsState.Mode.NOCLIP, "a forced noclip holds a player whose tunables forbid it" )
 
 	for _i in range(60):
 		server.simulate(s, _command(0.0, 0.0, 0.0, DotFpsCommand.BUTTON_CROUCH), STEP)
 
-	_check(s.position.y < -1.0, "and they pass through the floor",
-		"y %.2f" % s.position.y)
+	_check(s.position.y < -1.0, "and they pass through the floor", "y %.2f" % s.position.y)
 
 	# The player's own button must not end an administrator's decision.
 	server.simulate(s, _command(0.0, 0.0, 0.0, DotFpsCommand.BUTTON_NOCLIP), STEP)
@@ -1572,8 +1409,7 @@ func _test_admin_modifiers() -> void:
 	# Speed: the top speed on a step is the step times the base.
 	_check(is_equal_approx(DotFpsAdminModifiers.nearest(DotFpsAdminModifiers.SPEED_STEPS, 2.2), 2.0),
 		"a speed the ladder does not have is taken to the nearest step")
-	_check(is_equal_approx(DotFpsAdminModifiers.nearest(DotFpsAdminModifiers.SPEED_STEPS, 1.1), 1.0),
-		"and one nearest to 1 means none")
+	_check(is_equal_approx(DotFpsAdminModifiers.nearest(DotFpsAdminModifiers.SPEED_STEPS, 1.1), 1.0), "and one nearest to 1 means none")
 
 	var base_runner := _standing(server)
 	var fast_runner := _standing(server)
@@ -1614,17 +1450,10 @@ func _test_command_sanitising() -> void:
 	c.buttons = 0xFFFF
 	c.sanitise(-89.0, 89.0)
 
-	_check(
-		c.move.length() <= 1.0001,
-		"an oversized move vector is clamped",
-		"%.3f" % c.move.length()
-	)
+	_check( c.move.length() <= 1.0001, "an oversized move vector is clamped", "%.3f" % c.move.length() )
 	_check(absf(c.yaw) <= 180.0, "yaw is wrapped")
 	_check(c.pitch <= 89.0001, "pitch is clamped")
-	_check(
-		c.buttons < (1 << DotFpsCommand.BUTTON_BITS),
-		"unknown button bits are dropped"
-	)
+	_check( c.buttons < (1 << DotFpsCommand.BUTTON_BITS), "unknown button bits are dropped" )
 
 	# NaN survives every comparison, so a naive clamp lets it through and it poisons
 	# the position permanently.
@@ -1634,10 +1463,7 @@ func _test_command_sanitising() -> void:
 	nan_command.pitch = NAN
 	nan_command.sanitise()
 
-	_check(
-		is_finite(nan_command.move.x) and is_finite(nan_command.yaw),
-		"a NaN command is neutralised"
-	)
+	_check( is_finite(nan_command.move.x) and is_finite(nan_command.yaw), "a NaN command is neutralised" )
 
 	# And the whole point: a sanitised command cannot move the player faster.
 	var t := _tunables()
@@ -1682,11 +1508,7 @@ func _test_touch_sampler() -> void:
 	# A thumb resting on glass drifts; a player who is not moving must not creep.
 	sampler.handle_event(_drag(0, Vector2(205.0, 500.0)))
 	var resting := sampler.sample(STEP)
-	_check(
-		resting.move == Vector2.ZERO,
-		"a drift inside the dead zone is no input",
-		str(resting.move)
-	)
+	_check( resting.move == Vector2.ZERO, "a drift inside the dead zone is no input", str(resting.move) )
 
 	sampler.handle_event(_touch(0, Vector2(205.0, 500.0), false))
 	var lifted := sampler.sample(STEP)
@@ -1698,10 +1520,7 @@ func _test_touch_sampler() -> void:
 	sampler.handle_event(_drag(1, Vector2(900.0, 500.0)))
 	sampler.sample(STEP)
 
-	_check(
-		not is_equal_approx(sampler.yaw, before_yaw),
-		"dragging the right half turns the view"
-	)
+	_check( not is_equal_approx(sampler.yaw, before_yaw), "dragging the right half turns the view" )
 
 	# And a short, still touch there is a tap, not a drag of zero length.
 	sampler.handle_event(_touch(1, Vector2(900.0, 500.0), false))
@@ -1709,29 +1528,17 @@ func _test_touch_sampler() -> void:
 	sampler.handle_event(_touch(2, Vector2(822.0, 401.0), false))
 
 	var tapped := sampler.sample(STEP)
-	_check(
-		tapped.is_pressed(DotFpsCommand.BUTTON_JUMP),
-		"a tap presses the configured button"
-	)
+	_check( tapped.is_pressed(DotFpsCommand.BUTTON_JUMP), "a tap presses the configured button" )
 
 	var after_tap := sampler.sample(STEP)
-	_check(
-		not after_tap.is_pressed(DotFpsCommand.BUTTON_JUMP),
-		"for exactly one command, so a tap and a hold stay distinguishable"
-	)
+	_check( not after_tap.is_pressed(DotFpsCommand.BUTTON_JUMP), "for exactly one command, so a tap and a hold stay distinguishable" )
 
 	# The game's own on-screen buttons.
 	sampler.hold(DotFpsCommand.BUTTON_CROUCH, true)
-	_check(
-		sampler.sample(STEP).is_pressed(DotFpsCommand.BUTTON_CROUCH),
-		"a held on-screen button reaches the command"
-	)
+	_check( sampler.sample(STEP).is_pressed(DotFpsCommand.BUTTON_CROUCH), "a held on-screen button reaches the command" )
 
 	sampler.hold(DotFpsCommand.BUTTON_CROUCH, false)
-	_check(
-		not sampler.sample(STEP).is_pressed(DotFpsCommand.BUTTON_CROUCH),
-		"and releasing it stops"
-	)
+	_check( not sampler.sample(STEP).is_pressed(DotFpsCommand.BUTTON_CROUCH), "and releasing it stops" )
 
 	# A finger on the game's own button must not also steer: the button is checked first.
 	sampler.ignore_fn = func(pos: Vector2) -> bool: return pos.x > 900.0
@@ -1753,10 +1560,7 @@ func _test_touch_sampler() -> void:
 	sampler.suspended = true
 
 	var suspended := sampler.sample(STEP)
-	_check(
-		suspended.move == Vector2.ZERO and suspended.buttons == 0,
-		"a suspended sampler emits nothing"
-	)
+	_check( suspended.move == Vector2.ZERO and suspended.buttons == 0, "a suspended sampler emits nothing" )
 
 	# And the point of the whole exercise: touch produces ordinary commands, so the
 	# simulation cannot tell where they came from.
@@ -1798,24 +1602,13 @@ func _test_wire_round_trip() -> void:
 	var decoded := DotFpsCommand.new()
 	decoded.read(wire)
 
-	_check(
-		wire.values.size() == 5,
-		"the command writes every field",
-		"wrote %d" % wire.values.size()
-	)
+	_check( wire.values.size() == 5, "the command writes every field", "wrote %d" % wire.values.size() )
 	_check_near(decoded.move.x, -0.5, 0.01, "move.x survives quantisation")
 	_check_near(decoded.move.y, 0.75, 0.01, "move.y survives quantisation")
 	_check_near(decoded.yaw, -134.0, 0.2, "yaw survives quantisation")
 	_check_near(decoded.pitch, 42.0, 0.5, "pitch survives quantisation")
-	_check(
-		decoded.buttons == original.buttons,
-		"buttons survive exactly, including the game's own bits"
-	)
-	_check(
-		DotFpsCommand.estimated_bits() < 64,
-		"a command costs under 8 bytes",
-		"%d bits" % DotFpsCommand.estimated_bits()
-	)
+	_check( decoded.buttons == original.buttons, "buttons survive exactly, including the game's own bits" )
+	_check( DotFpsCommand.estimated_bits() < 64, "a command costs under 8 bytes", "%d bits" % DotFpsCommand.estimated_bits() )
 	_done()
 
 
@@ -1826,10 +1619,7 @@ func _test_net_sync_round_trip() -> void:
 	_check(specs.size() == 7, "seven properties replicate", "%d" % specs.size())
 
 	for spec in specs:
-		_check(
-			spec.has("property") and spec.has("type") and spec.has("source"),
-			"spec %s is complete" % str(spec.get("property", "?"))
-		)
+		_check( spec.has("property") and spec.has("type") and spec.has("source"), "spec %s is complete" % str(spec.get("property", "?")) )
 
 	# A stand-in for the DotNetBehaviour the host game writes. Only get/set are used,
 	# which is exactly what DotFpsNetSync relies on.
@@ -1850,19 +1640,11 @@ func _test_net_sync_round_trip() -> void:
 	var target := DotFpsState.new()
 	DotFpsNetSync.push(carrier, target)
 
-	_check(
-		target.position.is_equal_approx(source.position),
-		"position round-trips"
-	)
-	_check(
-		target.velocity.is_equal_approx(source.velocity),
-		"velocity round-trips"
-	)
+	_check( target.position.is_equal_approx(source.position), "position round-trips" )
+	_check( target.velocity.is_equal_approx(source.velocity), "velocity round-trips" )
 	_check(target.mode == source.mode, "the movement mode round-trips")
 	_check(target.crouch_held == source.crouch_held, "crouch_held round-trips")
-	_check_near(
-		target.crouch_fraction, 1.0, 0.0001, "the crouch fraction round-trips"
-	)
+	_check_near( target.crouch_fraction, 1.0, 0.0001, "the crouch fraction round-trips" )
 
 	_check_mode_packing()
 	_check_timer_and_button_packing()
@@ -1897,8 +1679,7 @@ func _test_net_sync_round_trip() -> void:
 	spent.wall_run_spent = true
 	var spent_back := DotFpsState.new()
 	DotFpsNetSync.unpack_flags(spent_back, DotFpsNetSync.pack_flags(spent))
-	_check(spent_back.wall_run_spent and not spent_back.is_wall_running(),
-		"a spent run arrives spent and not running")
+	_check(spent_back.wall_run_spent and not spent_back.is_wall_running(), "a spent run arrives spent and not running")
 	var pairs_ok := true
 	for total in range(4):
 		for same in (range(1, total + 1) if total > 0 else [0]):
@@ -1921,8 +1702,7 @@ func _wire_size_checks(walled: DotFpsState) -> void:
 	_check(not older.is_wall_running() and not older.wall_run_spent and older.wall_jumps_in_air == 0
 			and is_equal_approx(older.dash_cooldown_left, 2.5),
 		"an encoding from before them reads as no run and no wall jumps, the rest intact")
-	_check(DotFpsNetSync.FLAG_BITS == 64, "and the flags word is exactly full",
-		"%d bits" % DotFpsNetSync.FLAG_BITS)
+	_check(DotFpsNetSync.FLAG_BITS == 64, "and the flags word is exactly full", "%d bits" % DotFpsNetSync.FLAG_BITS)
 
 	# Under four bytes per player per snapshot for the flags; 28 bytes in all since the modifier mask grew to 48 bits.
 	_check(
@@ -1938,29 +1718,17 @@ func _test_fingerprint() -> void:
 	var a := _tunables()
 	var b := _tunables()
 
-	_check(
-		a.fingerprint() == b.fingerprint(),
-		"identical tunables have identical fingerprints"
-	)
+	_check( a.fingerprint() == b.fingerprint(), "identical tunables have identical fingerprints" )
 
 	b.mouse_sensitivity = 3.0
 	b.invert_look_y = true
 
-	_check(
-		a.fingerprint() == b.fingerprint(),
-		"look preferences do not change the fingerprint"
-	)
+	_check( a.fingerprint() == b.fingerprint(), "look preferences do not change the fingerprint" )
 
 	b.air_accelerate = 10.0
 
-	_check(
-		a.fingerprint() != b.fingerprint(),
-		"a simulation value does change it"
-	)
-	_check(
-		not DotFpsNetSync.agrees(a, b.fingerprint()),
-		"and the peers are reported as disagreeing"
-	)
+	_check( a.fingerprint() != b.fingerprint(), "a simulation value does change it" )
+	_check( not DotFpsNetSync.agrees(a, b.fingerprint()), "and the peers are reported as disagreeing" )
 
 	var diff := DotFpsNetSync.differences(a, b)
 	var named := false
@@ -1993,8 +1761,7 @@ func _test_slide() -> void:
 	var s := _running(motor)
 	var before := s.horizontal_speed()
 	motor.simulate(s, _command(1.0, 0.0, 0.0, crouch), STEP)
-	_check(s.is_sliding(), "crouch pressed at a run starts a slide",
-		"%.2f m/s, min %.2f" % [before, t.slide_min_speed])
+	_check(s.is_sliding(), "crouch pressed at a run starts a slide", "%.2f m/s, min %.2f" % [before, t.slide_min_speed])
 	_check(
 		s.horizontal_speed() > before + t.slide_boost * 0.8,
 		"the slide starts with a burst of speed",
@@ -2112,8 +1879,7 @@ func _test_launch() -> void:
 	falling.mode = DotFpsState.Mode.AIR
 	falling.time_since_grounded = 1.0
 	grounded_motor.simulate(falling, _command(0.0, 0.0, 0.0, button), STEP)
-	_check(falling.velocity.y <= 0.0, "launch_from_air off refuses a launch in mid-air",
-		"%.2f m/s" % falling.velocity.y)
+	_check(falling.velocity.y <= 0.0, "launch_from_air off refuses a launch in mid-air", "%.2f m/s" % falling.velocity.y)
 
 	# launch_forward throws along the view's heading.
 	var forward := _launch_tunables()
@@ -2156,8 +1922,7 @@ func _test_launch() -> void:
 
 	var replay := snapshot.duplicate_state()
 	_run_window(_motor(t), replay, commands, 121, commands.size())
-	_check(replay.equals(full, 0.0001), "replaying across launches reproduces the run",
-		"diverged %.6f m" % replay.divergence(full))
+	_check(replay.equals(full, 0.0001), "replaying across launches reproduces the run", "diverged %.6f m" % replay.divergence(full))
 
 	var amnesiac := snapshot.duplicate_state()
 	amnesiac.launch_cooldown_left = 0.0
@@ -2301,11 +2066,7 @@ func _test_replay_determinism() -> void:
 	second.position = Vector3(0.0, 0.5, 0.0)
 	_run_window(second_motor, second, commands, 0, commands.size())
 
-	_check(
-		first.equals(second, 0.0),
-		"the same commands produce a bit-identical result",
-		"diverged by %.6f m" % first.divergence(second)
-	)
+	_check( first.equals(second, 0.0), "the same commands produce a bit-identical result", "diverged by %.6f m" % first.divergence(second) )
 
 	# Now the reconciliation shape. Run to tick 250, keep the state, then replay the
 	# last 150 commands from that snapshot and require the same endpoint.
@@ -2565,11 +2326,7 @@ func _test_physics_slope_landing() -> void:
 		jumper.simulate(js, _command(1.0), STEP)
 		if not js.is_grounded():
 			jump_air += 1
-	_check(
-		jump_air >= 15,
-		"and a jump up a 40-degree ramp at 10 m/s still leaves it",
-		"airborne %d of 31 ticks" % jump_air
-	)
+	_check( jump_air >= 15, "and a jump up a 40-degree ramp at 10 m/s still leaves it", "airborne %d of 31 ticks" % jump_air )
 
 	world.queue_free()
 	_done()
@@ -2643,8 +2400,7 @@ func _test_physics_bank() -> void:
 
 	_check(frozen == 0, "a rider pressed into a bank never hangs with its speed intact",
 		"%d ticks with the position fixed and the velocity not" % frozen)
-	_check(covered > expected * 0.97, "and covers the ground its speed says",
-		"%.2f m of %.2f" % [covered, expected])
+	_check(covered > expected * 0.97, "and covers the ground its speed says", "%.2f m of %.2f" % [covered, expected])
 
 	world.queue_free()
 	_done()
@@ -2679,8 +2435,7 @@ func _test_sprint_stamina() -> void:
 	for _i in range(80):
 		motor.simulate(s, _command(1.0, 0.0, 0.0, sprint), STEP)
 	_check_near(s.horizontal_speed(), 6.0, 0.2, "sprint settles at max_speed x sprint_speed_scale")
-	_check(s.stamina < 0.9 and s.stamina > 0.0 and s.sprinting, "stamina drains while sprinting",
-		"%.2f" % s.stamina)
+	_check(s.stamina < 0.9 and s.stamina > 0.0 and s.sprinting, "stamina drains while sprinting", "%.2f" % s.stamina)
 	var drain_rate := (1.0 - s.stamina) / (80.0 * STEP)
 	_check_near(drain_rate, 0.3, 0.02, "drain follows sv_stamina_drain")
 	for _i in range(400):

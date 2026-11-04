@@ -10,8 +10,7 @@ func _test_wall_run() -> void:
 	var off_motor := _motor(_tunables(), _wall_world())
 	var off := _beside_wall(9.0)
 	var off_run := _run_along(off_motor, off, 30)
-	_check(off_run.running == 0 and off_motor.wall_runs == 0,
-		"wall running is off unless a game turns it on")
+	_check(off_run.running == 0 and off_motor.wall_runs == 0, "wall running is off unless a game turns it on")
 
 	var t := _wall_tunables()
 	var motor := _motor(t, _wall_world())
@@ -20,12 +19,9 @@ func _test_wall_run() -> void:
 	var s := _beside_wall(9.0)
 	var speed_before := s.horizontal_speed()
 	motor.simulate(s, _command(1.0, 0.0, 0.0), STEP)
-	_check(s.is_wall_running(), "an airborne player fast along a wall runs on it",
-		"%s" % ", ".join(s.describe_lines()))
-	_check(s.wall_normal.dot(Vector3.LEFT) > 0.99, "and the state names the wall's normal",
-		"%s" % s.wall_normal)
-	_check_near(s.horizontal_speed(), speed_before, 0.01,
-		"the speed along the wall is the speed the player arrived with")
+	_check(s.is_wall_running(), "an airborne player fast along a wall runs on it", "%s" % ", ".join(s.describe_lines()))
+	_check(s.wall_normal.dot(Vector3.LEFT) > 0.99, "and the state names the wall's normal", "%s" % s.wall_normal)
+	_check_near(s.horizontal_speed(), speed_before, 0.01, "the speed along the wall is the speed the player arrived with")
 
 	_wall_run_entry_refusals(t)
 
@@ -44,8 +40,7 @@ func _test_wall_run() -> void:
 		"running": during.running + after.running,
 		"worst": maxf(during.worst, after.worst),
 	}
-	_check_near(whole.running * STEP, t.wall_run_max_time, STEP * 1.5,
-		"a run ends at wall_run_max_time")
+	_check_near(whole.running * STEP, t.wall_run_max_time, STEP * 1.5, "a run ends at wall_run_max_time")
 	_check(capped_motor.wall_runs == 1 and capped.wall_run_spent,
 		"and does not start again on the same wall before landing",
 		"%d runs" % capped_motor.wall_runs)
@@ -64,11 +59,8 @@ func _test_wall_run() -> void:
 	_check(slider.wall_run_spent and slider.velocity.y >= -2.0 - 0.001 and slider.velocity.y < 0.0,
 		"after the run the player slides down the wall at wall_slide_speed",
 		"%.3f m/s" % slider.velocity.y)
-	_check(slid.worst < sliding.gravity * STEP * 1.05, "and the slide starts without a jolt",
-		"worst %.3f m/s" % slid.worst)
-	_check(capped.velocity.y < -3.0,
-		"while without the slide the same run ends in a free fall",
-		"%.3f m/s" % capped.velocity.y)
+	_check(slid.worst < sliding.gravity * STEP * 1.05, "and the slide starts without a jolt", "worst %.3f m/s" % slid.worst)
+	_check(capped.velocity.y < -3.0, "while without the slide the same run ends in a free fall", "%.3f m/s" % capped.velocity.y)
 
 	_wall_run_ledge(t)
 	_done()
@@ -80,16 +72,14 @@ func _wall_run_entry_refusals(t: DotFpsTunables) -> void:
 	var slow_motor := _motor(t, _wall_world())
 	var slow := _beside_wall(4.0)
 	_run_along(slow_motor, slow, 10)
-	_check(slow_motor.wall_runs == 0, "too slow along the wall is no run",
-		"%d runs" % slow_motor.wall_runs)
+	_check(slow_motor.wall_runs == 0, "too slow along the wall is no run", "%d runs" % slow_motor.wall_runs)
 
 	var floor_motor := _motor(t, _wall_world())
 	var grounded := _beside_wall(9.0, 0.0, 0.0)
 	grounded.mode = DotFpsState.Mode.GROUND
 	grounded.time_since_grounded = 0.0
 	_run_along(floor_motor, grounded, 30)
-	_check(floor_motor.wall_runs == 0 and grounded.is_grounded(),
-		"on the ground beside a wall is no run")
+	_check(floor_motor.wall_runs == 0 and grounded.is_grounded(), "on the ground beside a wall is no run")
 
 	# Entry needs forward held (wall_run_requires_forward).
 	var idle_motor := _motor(t, _wall_world())
@@ -164,13 +154,11 @@ func _test_wall_run_corridor() -> void:
 	_check(held * STEP >= 0.75, "it keeps running for most of a second", "%.2f s" % (held * STEP))
 	_check(near_wall and s.position.y > start_y - 0.8,
 		"and stays up and beside the wall while it does", "y %.2f from %.2f" % [s.position.y, start_y])
-	_check(s.horizontal_speed() > 10.0, "at the speed it arrived with (the speed floor holds)",
-		"%.2f m/s" % s.horizontal_speed())
+	_check(s.horizontal_speed() > 10.0, "at the speed it arrived with (the speed floor holds)", "%.2f m/s" % s.horizontal_speed())
 
 	# Space leaps off, away from the wall, and the run does not come back.
 	motor.simulate(s, _command(1.0, 0.0, 0.0, jump), STEP)
-	_check(not s.is_wall_running() and s.velocity.x < 0.0, "space leaps off, away from the wall",
-		"vx %.2f" % s.velocity.x)
+	_check(not s.is_wall_running() and s.velocity.x < 0.0, "space leaps off, away from the wall", "vx %.2f" % s.velocity.x)
 	for _i in range(20):
 		motor.simulate(s, _command(1.0, 0.0, 0.0), STEP)
 	_check(wall_x - s.position.x > 1.0 and not s.is_wall_running(),
@@ -198,8 +186,7 @@ func _test_wall_run_corridor() -> void:
 		turn_motor.simulate(turn, _command(1.0, 0.0, 0.0), STEP)
 	for _i in range(90):
 		turn_motor.simulate(turn, _command(1.0, 0.0, 80.0), STEP)
-	_check(not turn.is_wall_running(), "turning away from the wall ends the run",
-		"%s" % ", ".join(turn.describe_lines()))
+	_check(not turn.is_wall_running(), "turning away from the wall ends the run", "%s" % ", ".join(turn.describe_lines()))
 	_done()
 
 
@@ -225,8 +212,7 @@ func _test_wall_run_auto() -> void:
 	_check(s.is_wall_running() and motor.wall_runs == 1 and motor.wall_jumps == 0,
 		"moving into a wall in the air starts a run with no press", ", ".join(s.describe_lines()))
 	motor.simulate(s, _command(1.0, 0.0, 0.0, jump), STEP)
-	_check(motor.wall_jumps == 1 and not s.is_wall_running(),
-		"a press during the run jumps off the wall", ", ".join(s.describe_lines()))
+	_check(motor.wall_jumps == 1 and not s.is_wall_running(), "a press during the run jumps off the wall", ", ".join(s.describe_lines()))
 
 	var idle := _beside_wall(2.0, -1.0)
 	idle.velocity = Vector3(5.0, 0.0, -5.0)
@@ -308,8 +294,7 @@ func _test_wall_run_min_size() -> void:
 	_check(wall["runs"] == 1 and wall["steady"] and wall["agree"], "a 3 m wall starts a run", str(wall))
 	for top in [0.5, 1.0]:
 		var low := _size_trial(t, top)
-		_check(low["runs"] == 0 and low["steady"] and low["agree"],
-			"a %.1f m block starts no run and never turns the view" % top, str(low))
+		_check(low["runs"] == 0 and low["steady"] and low["agree"], "a %.1f m block starts no run and never turns the view" % top, str(low))
 
 	t.wall_run_auto = false
 	t.wall_run_on_jump = true
@@ -517,8 +502,7 @@ func _wall_run_cooldown_checks(jump: int) -> void:
 	var packed := DotFpsNetSync.pack_timers(cd)
 	var restored := DotFpsState.new()
 	DotFpsNetSync.unpack_timers(restored, packed)
-	_check_near(restored.wall_run_cooldown_left, cd.wall_run_cooldown_left, 0.01,
-		"and the cooldown rides in the rewind timers")
+	_check_near(restored.wall_run_cooldown_left, cd.wall_run_cooldown_left, 0.01, "and the cooldown rides in the rewind timers")
 
 	# The cvars reach the tunables.
 	var cv := DotFpsTunables.new()
@@ -547,8 +531,7 @@ func _test_wall_jump() -> void:
 	motor.simulate(s, _command(1.0, 0.0, 0.0, jump), STEP)
 	var push := Vector3(s.velocity.x, 0.0, s.velocity.z + along_before)
 	_check(motor.wall_jumps == 1 and not s.is_wall_running(), "a jump press during a run jumps off the wall")
-	_check(s.velocity.x < -t.wall_jump_push_speed * 0.6, "away from the wall",
-		"%.2f m/s along the normal" % -s.velocity.x)
+	_check(s.velocity.x < -t.wall_jump_push_speed * 0.6, "away from the wall", "%.2f m/s along the normal" % -s.velocity.x)
 	_check_near(s.velocity.y, t.wall_jump_up_speed, 0.4, "and up at wall_jump_up_speed")
 	_check(-s.velocity.z >= along_before - 0.01,
 		"keeping every bit of the speed along the wall", "%.2f from %.2f" % [-s.velocity.z, along_before])
@@ -609,12 +592,10 @@ func _wall_jump_budget() -> void:
 		var before := budget_motor.wall_jumps
 		budget_motor.simulate(climber, _command(0.0, 0.0, 0.0, jump), STEP)
 		jumped += budget_motor.wall_jumps - before
-	_check(jumped == 2 and climber.wall_jumps_in_air == 2,
-		"wall_jump_max_per_air limits the jumps across walls", "%d jumps" % jumped)
+	_check(jumped == 2 and climber.wall_jumps_in_air == 2, "wall_jump_max_per_air limits the jumps across walls", "%d jumps" % jumped)
 	for _i in range(200):
 		budget_motor.simulate(climber, _command(), STEP)
-	_check(climber.is_grounded() and climber.wall_jumps_in_air == 0 and climber.wall_jump_count == 0,
-		"and landing refills the budget")
+	_check(climber.is_grounded() and climber.wall_jumps_in_air == 0 and climber.wall_jump_count == 0, "and landing refills the budget")
 
 
 ## The rewind a predicting client does, in the middle of a wall run.
@@ -710,8 +691,7 @@ func _test_wall_hop_rewind() -> void:
 	for c in commands:
 		motor.simulate(s, c, STEP)
 		full.append(s.duplicate_state())
-	_check(absf(s.position.x - (1.0 - t.radius)) < 0.01, "the run ends pinned against the wall",
-		"x %.3f" % s.position.x)
+	_check(absf(s.position.x - (1.0 - t.radius)) < 0.01, "the run ends pinned against the wall", "x %.3f" % s.position.x)
 
 	var plain: Object = _carrier_script().new()
 	var timed: Object = _timers_carrier_script().new()
@@ -735,10 +715,8 @@ func _test_wall_hop_rewind() -> void:
 		counts.append([bad, worst])
 	plain.free()
 	timed.free()
-	_check(counts[0][0] == 0, "every rewind through net_timers lands where the server did",
-		"%d diverged, worst %.3f m" % counts[0])
-	_check(counts[1][0] > 0, "negative control: a rewind without net_timers diverges",
-		"%d diverged, worst %.3f m" % counts[1])
+	_check(counts[0][0] == 0, "every rewind through net_timers lands where the server did", "%d diverged, worst %.3f m" % counts[0])
+	_check(counts[1][0] > 0, "negative control: a rewind without net_timers diverges", "%d diverged, worst %.3f m" % counts[1])
 	var back := DotFpsState.new()
 	DotFpsNetSync.unpack_timers(back, DotFpsNetSync.pack_timers(DotFpsState.new()))
 	var spent := DotFpsState.new()
@@ -810,6 +788,5 @@ func _test_walls_off_identical() -> void:
 	var digest := ctx.finish().hex_encode()
 	_check(digest == "c1b2468664e0a74c72de9c70e7188bd9499eb60f314cd1bc56b0af2763abb81b",
 		"600 ticks with every wall setting off hash the same as before wall movement", digest)
-	_check(motor.wall_runs == 0 and motor.wall_jumps == 0 and s.wall_normal == Vector3.ZERO,
-		"and no wall probe answered anything")
+	_check(motor.wall_runs == 0 and motor.wall_jumps == 0 and s.wall_normal == Vector3.ZERO, "and no wall probe answered anything")
 	_done()

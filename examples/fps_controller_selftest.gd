@@ -33,6 +33,7 @@ func _run() -> void:
 	await _test_change_signals()
 	await _test_command_veto()
 	_test_wall_run_roll()
+	_test_wall_run_camera_roll()
 	_test_view_motion()
 	await _test_wheel_jump()
 	await _test_pair_exceptions()
@@ -178,11 +179,7 @@ func _test_change_signals() -> void:
 		controller.apply_command(_command())
 		controller.simulate_tick(200 + i, STEP)
 
-	_check(
-		crouches.size() == 2 and crouches[0] and not crouches[1],
-		"crouching reports one edge down and one up",
-		str(crouches)
-	)
+	_check( crouches.size() == 2 and crouches[0] and not crouches[1], "crouching reports one edge down and one up", str(crouches) )
 
 	# Walk into the step.
 	for i in range(240):
@@ -190,10 +187,7 @@ func _test_change_signals() -> void:
 		controller.simulate_tick(300 + i, STEP)
 
 	_check(steps.size() > 0, "stepping up is reported", "%d" % steps.size())
-	_check(
-		steps.size() == 0 or steps[0] <= controller.tunables.step_height + 0.01,
-		"with a height no larger than step_height"
-	)
+	_check( steps.size() == 0 or steps[0] <= controller.tunables.step_height + 0.01, "with a height no larger than step_height" )
 
 	# A modifier that expires reports both edges, from the same diff.
 	_check(controller.add_modifier(&"boost"), "a modifier applies through the controller")
@@ -203,15 +197,8 @@ func _test_change_signals() -> void:
 		controller.simulate_tick(600 + i, STEP)
 
 	_check(added.size() == 1 and added[0] == &"boost", "and is reported once", str(added))
-	_check(
-		removed.size() == 1 and removed[0] == &"boost",
-		"and its expiry is reported once",
-		str(removed)
-	)
-	_check(
-		not controller.has_modifier(&"boost"),
-		"after which the controller agrees it is gone"
-	)
+	_check( removed.size() == 1 and removed[0] == &"boost", "and its expiry is reported once", str(removed) )
+	_check( not controller.has_modifier(&"boost"), "after which the controller agrees it is gone" )
 
 	world.queue_free()
 	await get_tree().process_frame
@@ -238,15 +225,8 @@ func _test_command_veto() -> void:
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 
-	_check(
-		controller.registered == 1,
-		"_register_extensions runs exactly once, before the first tick",
-		"%d" % controller.registered
-	)
-	_check(
-		controller.motor.modifier_index(&"slow") == 0,
-		"and what it registered is there"
-	)
+	_check( controller.registered == 1, "_register_extensions runs exactly once, before the first tick", "%d" % controller.registered )
+	_check( controller.motor.modifier_index(&"slow") == 0, "and what it registered is there" )
 
 	controller.teleport(Vector3(0.0, 0.5, 0.0))
 
@@ -262,10 +242,7 @@ func _test_command_veto() -> void:
 
 	# Vetoed, not skipped: the tick still ran, so gravity applied and the tick
 	# counter kept up with the server's.
-	_check(
-		controller.state.is_grounded(),
-		"but the tick still ran, so the player still fell and landed"
-	)
+	_check( controller.state.is_grounded(), "but the tick still ran, so the player still fell and landed" )
 
 	controller.frozen = false
 
@@ -295,21 +272,12 @@ func _test_zero_configuration() -> void:
 
 	_check(controller.motor != null, "the motor is built")
 	_check(controller.body is DotFpsPhysicsBody, "against the physics body")
-	_check(
-		controller.view != null,
-		"the view is found without a view_ref being set"
-	)
-	_check(
-		controller.tunables != null and controller.tunables.validate().ok,
-		"default tunables are created and valid"
-	)
+	_check( controller.view != null, "the view is found without a view_ref being set" )
+	_check( controller.tunables != null and controller.tunables.validate().ok, "default tunables are created and valid" )
 
 	# The one thing the whole family exists to avoid: a hardcoded path. Every
 	# reference above was resolved by type, from the body, with nothing configured.
-	_check(
-		controller.view.camera() != null,
-		"the view finds the camera without a camera_ref being set"
-	)
+	_check( controller.view.camera() != null, "the view finds the camera without a camera_ref being set" )
 
 	world.queue_free()
 	await get_tree().process_frame
@@ -340,11 +308,7 @@ func _test_external_drive() -> void:
 			controller.state.position,
 		]
 	)
-	_check(
-		controller.state.position.z < -5.0,
-		"and moves in the commanded direction",
-		"z = %.2f" % controller.state.position.z
-	)
+	_check( controller.state.position.z < -5.0, "and moves in the commanded direction", "z = %.2f" % controller.state.position.z )
 
 	# The simulated position has to reach the scene, or nothing else in the game can
 	# see where the player is.
@@ -359,10 +323,7 @@ func _test_external_drive() -> void:
 	controller.current_command = null
 	controller.simulate_tick(200, STEP)
 
-	_check(
-		controller.state.position.z < before,
-		"a starved tick keeps the player moving rather than stopping dead"
-	)
+	_check( controller.state.position.z < before, "a starved tick keeps the player moving rather than stopping dead" )
 
 	# And keeps them LOOKING where they were. With no buttons held the starved tick used
 	# a fresh command, whose yaw and pitch are zero, so every lost packet snapped the
@@ -461,10 +422,7 @@ func _test_collider_follows_crouch() -> void:
 		return
 
 	# Not the shape the scene supplied: a CapsuleShape3D loaded from a .tscn is shared by every instance, so resizing one player's collider on crouch would resize every player's.
-	_check(
-		capsule != null and capsule.resource_path == "",
-		"with a private shape, not one shared across instances"
-	)
+	_check( capsule != null and capsule.resource_path == "", "with a private shape, not one shared across instances" )
 
 	controller.teleport(Vector3(0.0, 1.0, 0.0))
 
@@ -472,19 +430,13 @@ func _test_collider_follows_crouch() -> void:
 		controller.apply_command(_command())
 		controller.simulate_tick(i + 1, STEP)
 
-	_check_near(
-		capsule.height, controller.tunables.stand_height, 0.01,
-		"standing height matches the tunables"
-	)
+	_check_near( capsule.height, controller.tunables.stand_height, 0.01, "standing height matches the tunables" )
 
 	for i in range(120):
 		controller.apply_command(_command(0.0, 0.0, 0.0, DotFpsCommand.BUTTON_CROUCH))
 		controller.simulate_tick(200 + i, STEP)
 
-	_check_near(
-		capsule.height, controller.tunables.crouch_height, 0.01,
-		"and the collider shrinks with the crouch"
-	)
+	_check_near( capsule.height, controller.tunables.crouch_height, 0.01, "and the collider shrinks with the crouch" )
 	_check_near(
 		collision.position.y, controller.tunables.crouch_height * 0.5, 0.01,
 		"and stays centred on the body, whose origin is at the feet"
@@ -514,10 +466,7 @@ func _test_noclip_gate() -> void:
 	# The tunables say yes and the instance says no. The instance wins: the tunables
 	# are shared configuration a client also holds a copy of, and the command's
 	# noclip bit is set by the client. Only a server-side property can gate this.
-	_check(
-		not controller.tunables.can_noclip,
-		"allow_noclip false overrides can_noclip true"
-	)
+	_check( not controller.tunables.can_noclip, "allow_noclip false overrides can_noclip true" )
 
 	controller.teleport(Vector3(0.0, 1.0, 0.0))
 
@@ -525,10 +474,7 @@ func _test_noclip_gate() -> void:
 		controller.apply_command(_command(0.0, 0.0, 0.0, DotFpsCommand.BUTTON_NOCLIP))
 		controller.simulate_tick(i + 1, STEP)
 
-	_check(
-		controller.state.mode != DotFpsState.Mode.NOCLIP,
-		"and a client asking for noclip does not get it"
-	)
+	_check( controller.state.mode != DotFpsState.Mode.NOCLIP, "and a client asking for noclip does not get it" )
 
 	world.queue_free()
 	await get_tree().process_frame
@@ -550,10 +496,7 @@ func _test_noclip_gate() -> void:
 	allowed.apply_command(_command(0.0, 0.0, 0.0, DotFpsCommand.BUTTON_NOCLIP))
 	allowed.simulate_tick(1, STEP)
 
-	_check(
-		allowed.state.mode == DotFpsState.Mode.NOCLIP,
-		"and does get it when the server allows it"
-	)
+	_check( allowed.state.mode == DotFpsState.Mode.NOCLIP, "and does get it when the server allows it" )
 
 	allowed_world.queue_free()
 	await get_tree().process_frame
@@ -605,10 +548,7 @@ func _test_admin_abilities() -> void:
 	controller.apply_command(DotFpsCommand.new())
 	controller.simulate_tick(2, STEP)
 
-	_check(
-		controller.state.mode != DotFpsState.Mode.NOCLIP,
-		"and turning it off lands a player whose own tunables allow noclip"
-	)
+	_check( controller.state.mode != DotFpsState.Mode.NOCLIP, "and turning it off lands a player whose own tunables allow noclip" )
 
 	var applied := DotFpsAdminModifiers.set_speed(controller, 2.4)
 	_check(
@@ -655,14 +595,8 @@ func _test_teleport_and_signals() -> void:
 	controller.teleport(Vector3(0.0, 4.0, 0.0), 45.0, -10.0)
 
 	_check_near(controller.state.yaw, 45.0, 0.001, "teleport sets the view angles")
-	_check(
-		controller.state.velocity == Vector3.ZERO,
-		"and discards velocity, so a fall does not carry through it"
-	)
-	_check(
-		(controller.get_parent() as Node3D).global_position.y == 4.0,
-		"and moves the node immediately, not on the next tick"
-	)
+	_check( controller.state.velocity == Vector3.ZERO, "and discards velocity, so a fall does not carry through it" )
+	_check( (controller.get_parent() as Node3D).global_position.y == 4.0, "and moves the node immediately, not on the next tick" )
 
 	for i in range(240):
 		controller.apply_command(_command())
@@ -708,10 +642,7 @@ func _test_registry_and_describe() -> void:
 
 	var scoped := DotRegistry.scoped_name(DotFpsController.SERVICE, &"p1")
 
-	_check(
-		DotRegistry.get_service(scoped) == controller,
-		"a scoped controller registers under its scope"
-	)
+	_check( DotRegistry.get_service(scoped) == controller, "a scoped controller registers under its scope" )
 
 	# Scoped rather than global by default: two players in one scene would otherwise
 	# overwrite each other's registration, which is the configuration split-screen
@@ -720,18 +651,12 @@ func _test_registry_and_describe() -> void:
 	_check(lines.size() > 4, "describe_lines produces something to paste in a report")
 
 	var described := controller.describe()
-	_check(
-		described.has("state") and described.has("motor"),
-		"describe covers the state and the motor"
-	)
+	_check( described.has("state") and described.has("motor"), "describe covers the state and the motor" )
 
 	world.queue_free()
 	await get_tree().process_frame
 
-	_check(
-		not DotRegistry.has(scoped),
-		"and unregisters when it leaves the tree"
-	)
+	_check( not DotRegistry.has(scoped), "and unregisters when it leaves the tree" )
 	_done()
 
 
@@ -774,10 +699,7 @@ func _test_local_drive_accumulator() -> void:
 
 	# Rendering interpolates between ticks; the simulation does not.
 	var rendered := controller.render_state()
-	_check(
-		rendered != controller.state,
-		"render_state is a copy, so nothing can write back through it"
-	)
+	_check( rendered != controller.state, "render_state is a copy, so nothing can write back through it" )
 
 	# It has to blend under EXTERNAL drive, the only one a networked game uses: it refused anything but LOCAL and returned the raw tick state, so every client drew its player quantised to the tick rate (74 mm and 112 mm steps at 60 fps against a 128-tick server).
 	# Asserted with an explicit alpha rather than a frame-timed one: the fraction's source is the host's business, the blend is this class's, and only the blend can be checked without a clock.
@@ -825,11 +747,7 @@ func _test_local_drive_accumulator() -> void:
 	# A clock without render_alpha (an older dot-net) is the engine's fraction, 0..1.
 	controller.render_clock = RefCounted.new()
 	var engine := controller.render_state().position.z
-	_check(
-		engine >= 0.0 and engine <= 10.0,
-		"a clock without render_alpha leaves the engine's fraction in charge",
-		str(engine)
-	)
+	_check( engine >= 0.0 and engine <= 10.0, "a clock without render_alpha leaves the engine's fraction in charge", str(engine) )
 	controller.render_clock = null
 
 	# A remote player is written by the interpolator every frame and has no second
@@ -891,8 +809,7 @@ func _test_wall_run_roll() -> void:
 	bs.wall_normal = Vector3.LEFT
 	for _i in range(120):
 		bm.advance(bs, 1.0 / 144.0)
-	_check_near(bm.body_roll(), bm.wall_run_body_roll, 0.5,
-		"a wall on the right rolls the body left (head away, feet to the wall)")
+	_check_near(bm.body_roll(), bm.wall_run_body_roll, 0.5, "a wall on the right rolls the body left (head away, feet to the wall)")
 	_check_near(bm.body_yaw(), -bm.wall_run_body_yaw, 0.5, "and turns it toward the wall")
 	bs.wall_normal = Vector3.RIGHT
 	for _i in range(120):
@@ -912,6 +829,9 @@ func _test_wall_run_roll() -> void:
 	_check(absf(bm.body_roll()) < 0.01 and absf(bm.body_yaw()) < 0.01, "0 turns the body pose off")
 	_done()
 
+
+## The wall-run camera roll through DotFpsView.
+func _test_wall_run_camera_roll() -> void:
 	_section("wall-run camera roll")
 
 	var body := Node3D.new()
@@ -946,13 +866,11 @@ func _test_wall_run_roll() -> void:
 		worst_step = maxf(worst_step, absf(rolls[i] - rolls[i - 1]))
 
 	_check(absf(rolls[29]) < 0.001, "no roll before the run")
-	_check_near(rolls[173], view.wall_run_roll, 0.2,
-		"a wall on the right rolls the view left, away from it, by wall_run_roll")
+	_check_near(rolls[173], view.wall_run_roll, 0.2, "a wall on the right rolls the view left, away from it, by wall_run_roll")
 	_check(worst_step < 0.4,
 		"eased in and out: no frame turns it by more than a fraction of a degree",
 		"worst %.3f degrees in one frame" % worst_step)
-	_check(absf(rolls[359]) < 0.2, "and it settles back to level once the run ends",
-		"%.3f degrees" % rolls[359])
+	_check(absf(rolls[359]) < 0.2, "and it settles back to level once the run ends", "%.3f degrees" % rolls[359])
 
 	state.wall_run_time = 0.1
 	state.wall_normal = Vector3.RIGHT
@@ -973,8 +891,7 @@ func _test_wall_run_roll() -> void:
 	state.wall_normal = Vector3.RIGHT
 	for _i in range(200):
 		view.apply(state, motor, frame)
-	_check(rad_to_deg(camera.rotation.z) > 5.8, "and toward a wall on the left",
-		"%.3f degrees" % rad_to_deg(camera.rotation.z))
+	_check(rad_to_deg(camera.rotation.z) > 5.8, "and toward a wall on the left", "%.3f degrees" % rad_to_deg(camera.rotation.z))
 
 	view.wall_run_roll = 0.0
 	view.snap()
@@ -1017,11 +934,8 @@ func _test_view_motion() -> void:
 	_check(absf(rolls[0]) < motion.strafe_roll * 0.02,
 		"the strafe roll eases in: the first frame turns it under 2% of the way",
 		"%.4f of %.2f degrees" % [rolls[0], motion.strafe_roll])
-	_check(steps.max() < motion.strafe_roll * 0.04,
-		"and no frame turns it more than 4% of the way",
-		"worst %.4f degrees" % steps.max())
-	_check_near(absf(rolls[143]), motion.strafe_roll, motion.strafe_roll * 0.05,
-		"a strafe at the reference speed leans strafe_roll")
+	_check(steps.max() < motion.strafe_roll * 0.04, "and no frame turns it more than 4% of the way", "worst %.4f degrees" % steps.max())
+	_check_near(absf(rolls[143]), motion.strafe_roll, motion.strafe_roll * 0.05, "a strafe at the reference speed leans strafe_roll")
 	_check(rolls[143] < 0.0, "into the strafe: right leans right (negative)")
 	_check(absf(rolls[287]) < motion.strafe_roll * 0.05, "and eases back out")
 
@@ -1035,8 +949,7 @@ func _test_view_motion() -> void:
 	for _i in range(288):
 		motion.advance(strafing, frame)
 		widest = maxf(widest, absf(motion.roll()))
-	_check(widest <= 7.0 + 1e-4 and widest > 6.9, "the strafe and wall-run rolls add, never past roll_limit",
-		"%.3f degrees" % widest)
+	_check(widest <= 7.0 + 1e-4 and widest > 6.9, "the strafe and wall-run rolls add, never past roll_limit", "%.3f degrees" % widest)
 
 	# The widening: none under the floor, the gain at the reference, eased.
 	var widening := DotFpsViewMotion.new()
@@ -1117,8 +1030,7 @@ func _test_view_motion() -> void:
 	for _i in range(72):
 		floored.apply(state, motor, frame)
 		floor_deepest = minf(floor_deepest, floor_head.position.y - floor_rest)
-	_check(absf(floor_deepest) < 1e-5, "a landing under DotFpsView.landing_min_speed dips nothing",
-		"%.2f mm" % (-floor_deepest * 1000.0))
+	_check(absf(floor_deepest) < 1e-5, "a landing under DotFpsView.landing_min_speed dips nothing", "%.2f mm" % (-floor_deepest * 1000.0))
 	floor_body.queue_free()
 	_done()
 
@@ -1157,8 +1069,7 @@ func _landing_dip_checks(frame: float) -> Array:
 	_check(absf(ys[0]) < view.landing_dip * 0.4,
 		"a landing starts the dip, it does not set it: the first frame drops under 40% of it",
 		"%.1f mm of %.1f" % [-ys[0] * 1000.0, view.landing_dip * 1000.0])
-	_check_near(-deepest, view.landing_dip, view.landing_dip * 0.1,
-		"a landing at the reference speed dips landing_dip at the deepest")
+	_check_near(-deepest, view.landing_dip, view.landing_dip * 0.1, "a landing at the reference speed dips landing_dip at the deepest")
 	_check(absf(ys[143]) < 0.002, "and the eye is back a second later", "%.2f mm" % (ys[143] * 1000.0))
 	body.queue_free()
 	return [motor, state]
@@ -1233,8 +1144,7 @@ func _test_wheel_jump() -> void:
 	for _i in range(10):
 		await get_tree().physics_frame
 		rose = rose or controller.state.velocity.y > 0.5
-	_check(grounded and rose, "a standing player jumps on one wheel tick",
-		"grounded %s, vy %.2f" % [grounded, controller.state.velocity.y])
+	_check(grounded and rose, "a standing player jumps on one wheel tick", "grounded %s, vy %.2f" % [grounded, controller.state.velocity.y])
 
 	world.queue_free()
 	InputMap.action_erase_events(&"dot_fps_jump")
