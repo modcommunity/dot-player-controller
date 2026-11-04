@@ -283,7 +283,7 @@ func _advance_timers(
 	command: DotFpsCommand,
 	delta: float
 ) -> void:
-	state.time_since_jump += delta
+	state.time_since_jump = minf(state.time_since_jump + delta, TIMER_CAP)
 
 	if state.mode == DotFpsState.Mode.GROUND:
 		state.time_since_grounded = 0.0
@@ -294,7 +294,7 @@ func _advance_timers(
 		if tunables.wall_run_enabled or tunables.wall_jump_enabled:
 			_reset_walls(state)
 	else:
-		state.time_since_grounded += delta
+		state.time_since_grounded = minf(state.time_since_grounded + delta, TIMER_CAP)
 		state.ground_ticks = 0
 
 	var jump_pressed := (
@@ -304,7 +304,7 @@ func _advance_timers(
 	if jump_pressed:
 		state.time_since_jump_pressed = 0.0
 	else:
-		state.time_since_jump_pressed += delta
+		state.time_since_jump_pressed = minf(state.time_since_jump_pressed + delta, TIMER_CAP)
 
 	state.slide_cooldown_left = maxf(state.slide_cooldown_left - delta, 0.0)
 	state.launch_cooldown_left = maxf(state.launch_cooldown_left - delta, 0.0)
@@ -1113,6 +1113,10 @@ func _quadrant_floor_probe(centre: Vector3, probe: Vector3, height: float) -> Do
 			return hit
 	return DotFpsBody.Hit.miss()
 
+
+## The "never happened" value the timers start at; they stop here, because a float32 timer past it
+## rounds differently on the client and the server and reads as a misprediction every few ticks.
+const TIMER_CAP := 1000.0
 
 const QUADRANTS: Array[Vector2] = [
 	Vector2(-1.0, -1.0), Vector2(1.0, 1.0), Vector2(-1.0, 1.0), Vector2(1.0, -1.0),
