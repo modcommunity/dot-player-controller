@@ -430,6 +430,8 @@ extends DotConfig
 @export_range(0.0, 10.0, 0.05) var wall_run_cooldown: float = 0.0
 ## A jump-started run turns the player's view along the wall (the owner's look input is rotated once).
 @export var wall_run_turn_view: bool = false
+## Widest angle, degrees, between the view and the new heading that the turn still applies at. 90 leaves a view facing into the wall alone; 180 always aligns it.
+@export_range(1.0, 180.0, 1.0) var wall_run_turn_view_max_angle: float = 90.0
 
 ## How far beside the player, in metres, a wall still counts as touched: for a run, and
 ## for a wall jump off a wall the player is not running on.

@@ -419,6 +419,23 @@ func _wall_run_view_checks(motor: DotFpsMotor, jump: int) -> void:
 	turn_motor.simulate(away, _command(1.0, 0.0, 135.0, jump), STEP)
 	_check(away.is_wall_running() and turn_motor.view_turn == 0.0, "a view looking the other way is not turned")
 
+	# A view facing straight into the wall (the playtest case): left alone by default, aligned with the wider limit.
+	var into_t := _wall_tunables()
+	into_t.wall_run_auto = true
+	into_t.wall_run_turn_view = true
+	into_t.wall_run_jump_min_speed = 5.0
+	for limit: float in [90.0, 180.0]:
+		into_t.wall_run_turn_view_max_angle = limit
+		var into_motor := _motor(into_t, _wall_world())
+		var into_s := _beside_wall(2.0, 1.0)
+		into_s.velocity = Vector3(5.0, 0.0, -5.0)
+		into_motor.simulate(into_s, _command(1.0, 0.0, -90.0), STEP)
+		var expect_turn := limit >= 180.0
+		_check(into_s.is_wall_running() and (absf(into_motor.view_turn - 90.0) < 1.0) == expect_turn \
+			and (into_motor.view_turn == 0.0) != expect_turn,
+			"a view facing into the wall turns along it only with turn_view_max_angle %d" % int(limit),
+			"%.1f" % into_motor.view_turn)
+
 	# Whatever the approach angle, the view ends parallel to the wall (yaw 0 runs down -Z).
 	var at := _wall_tunables()
 	at.wall_run_auto = true

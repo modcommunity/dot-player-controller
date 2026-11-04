@@ -86,6 +86,7 @@ const _CVARS := {
 	"sv_wallrun_time": ["wall_run_max_time", 1.0, "Longest a wall run lasts, seconds (at most 1.9)"],
 	"sv_wallrun_gravity": ["wall_run_gravity_scale", 1.0, "Share of gravity felt while wall running, 0 to 1"],
 	"sv_wallrun_turnview": ["wall_run_turn_view", 1.0, "A jump-started wall-run turns the view along the wall (0/1)"],
+	"sv_wallrun_turnviewangle": ["wall_run_turn_view_max_angle", 1.0, "Widest angle between view and new heading a run's view turn applies at, degrees (180 always)"],
 	"sv_wallrun_cooldown": ["wall_run_cooldown", 1.0, "Seconds after a run ends before another may start"],
 	"sv_wallrun_endspeed": ["wall_run_end_speed", 1.0, "A run ends below this speed along the wall, m/s"],
 	"sv_wallrun_minheight": ["wall_run_min_height", 1.0, "Wall height a run needs to start on it, m; 0 off (a wall jump needs none)"],

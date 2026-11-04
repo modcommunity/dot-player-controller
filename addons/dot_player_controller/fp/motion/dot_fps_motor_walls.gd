@@ -412,7 +412,8 @@ func _turn_along(state: DotFpsState, turned: Vector3) -> void:
 	wall_runs += 1
 	if tunables.wall_run_turn_view:
 		var view := forward_for(state.yaw)
-		if view.dot(turned.normalized()) > 0.0:
+		var limit := tunables.wall_run_turn_view_max_angle
+		if limit >= 180.0 or view.dot(turned.normalized()) > cos(deg_to_rad(limit)) + 1e-6:
 			view_turn = wrapf(rad_to_deg(atan2(-turned.x, -turned.z)) - state.yaw, -180.0, 180.0)
 
 

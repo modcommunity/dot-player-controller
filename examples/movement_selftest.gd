@@ -6,7 +6,7 @@ extends "res://examples/movement_selftest_walls.gd"
 ##
 ## Most tests run on [DotFpsFlatBody] so a failure has one possible cause, the [DotFpsMotor]; [method _test_physics_body] covers the real implementation.
 
-const CHECKS := 423
+const CHECKS := 425
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
