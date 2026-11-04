@@ -43,6 +43,10 @@ var tap_slop: float = 18.0
 ## Defaults to nothing: which action a tap takes is the game's decision.
 var tap_button: int = 0
 
+## Asked with a screen position when a finger lands; true leaves that touch to the game's own on-screen button.
+## Assign [code]DotTouchButtons.contains_point[/code] so pressing Fire does not also drag the view.
+var ignore_fn: Callable = Callable()
+
 ## Buttons held by the game's own on-screen controls. See [method hold].
 var _held: int = 0
 
@@ -97,6 +101,8 @@ func handle_event(event: InputEvent) -> void:
 
 func _handle_touch(event: InputEventScreenTouch) -> void:
 	if event.pressed:
+		if ignore_fn.is_valid() and ignore_fn.call(event.position):
+			return
 		if event.position.x < _screen_width * move_zone:
 			if _move_finger == -1:
 				_move_finger = event.index

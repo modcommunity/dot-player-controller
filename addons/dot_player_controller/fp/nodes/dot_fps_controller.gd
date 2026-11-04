@@ -97,6 +97,9 @@ enum Drive {
 ## Register this addon's default input bindings if the project has none.
 @export var register_default_actions: bool = true
 
+## On a touch device ([method DotPlatform.has_touch]) a local controller samples touch ([DotFpsTouchSampler]): a stick, a look drag, and buttons the game holds.
+@export var use_touch_sampler: bool = true
+
 ## The simulated state. Authoritative in [constant Drive.LOCAL] and
 ## [constant Drive.EXTERNAL]; written from the network in [constant Drive.REMOTE].
 var state: DotFpsState = DotFpsState.new()
@@ -264,7 +267,12 @@ func setup() -> DotResult:
 ## A local controller samples its own input; warns when the actions it reads are not bound.
 func _setup_sampler() -> void:
 	if drive == Drive.LOCAL:
-		sampler = DotFpsSampler.new(tunables)
+		if use_touch_sampler and DotPlatform.has_touch():
+			var touch := DotFpsTouchSampler.new(tunables)
+			touch.set_screen_width(get_viewport().get_visible_rect().size.x if is_inside_tree() else 1152.0)
+			sampler = touch
+		else:
+			sampler = DotFpsSampler.new(tunables)
 
 		if register_default_actions:
 			DotFpsSampler.register_default_actions(sampler)
@@ -546,6 +554,8 @@ func _exit_tree() -> void:
 
 func _input(event: InputEvent) -> void:
 	if drive == Drive.LOCAL and sampler != null:
+		if sampler is DotFpsTouchSampler:
+			(sampler as DotFpsTouchSampler).set_screen_width(get_viewport().get_visible_rect().size.x)
 		sampler.handle_event(event)
 
 

@@ -6,7 +6,7 @@ extends "res://examples/movement_selftest_walls.gd"
 ##
 ## Most tests run on [DotFpsFlatBody] so a failure has one possible cause, the [DotFpsMotor]; [method _test_physics_body] covers the real implementation.
 
-const CHECKS := 425
+const CHECKS := 427
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
@@ -1732,6 +1732,19 @@ func _test_touch_sampler() -> void:
 		not sampler.sample(STEP).is_pressed(DotFpsCommand.BUTTON_CROUCH),
 		"and releasing it stops"
 	)
+
+	# A finger on the game's own button must not also steer: the button is checked first.
+	sampler.ignore_fn = func(pos: Vector2) -> bool: return pos.x > 900.0
+	var yaw_before := sampler.yaw
+	sampler.handle_event(_touch(5, Vector2(950.0, 500.0), true))
+	sampler.handle_event(_drag(5, Vector2(990.0, 500.0)))
+	sampler.sample(STEP)
+	_check(sampler._look_finger == -1 and is_equal_approx(sampler.yaw, yaw_before), "a touch the game claims does not start a look drag")
+	sampler.handle_event(_touch(5, Vector2(990.0, 500.0), false))
+	sampler.handle_event(_touch(6, Vector2(800.0, 500.0), true))
+	_check(sampler._look_finger == 6, "while one elsewhere on the look side still does")
+	sampler.handle_event(_touch(6, Vector2(800.0, 500.0), false))
+	sampler.ignore_fn = Callable()
 
 	# Suspending has to stop everything, or an open chat box leaves the player
 	# running because a finger was down when it opened.

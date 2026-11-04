@@ -4,11 +4,11 @@ extends "res://examples/fps_controller_selftest_base.gd"
 ## [method movement_selftest] tests the simulation; this tests the wiring around it (reference resolution, collider following the crouch, fixed-step accumulator, drive modes, registry, the noclip safety gate), which a host game touches first.
 ## Scenes are built in code so a failure names a line and an editor change cannot silently pass.
 
-const CHECKS := 118
+const CHECKS := 120
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
-const SECTIONS := 18
+const SECTIONS := 19
 
 
 func _ready() -> void:
@@ -37,6 +37,7 @@ func _run() -> void:
 	await _test_wheel_jump()
 	await _test_pair_exceptions()
 	await _test_landing_kick_and_legs()
+	await _test_touch_sampler_pick()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -1363,4 +1364,21 @@ func _test_landing_kick_and_legs() -> void:
 	_check(def.duration_sec == 3.0 and is_equal_approx(def.max_speed_scale, 0.5), "with the signal's seconds and scale")
 	_check(not legs.on_legs_broken(0.0, 0.5), "zero seconds does nothing")
 	world.queue_free()
+	_done()
+
+
+func _test_touch_sampler_pick() -> void:
+	_section("touch device picks the touch sampler")
+
+	DotPlatform.touch_override = 1
+	var world := _make_world()
+	var touch_player := _make_player(world, DotFpsController.Drive.LOCAL)
+	_check(touch_player.sampler is DotFpsTouchSampler, "a local controller on a touch device samples touch")
+
+	DotPlatform.touch_override = 0
+	var desk_world := _make_world()
+	var desk_player := _make_player(desk_world, DotFpsController.Drive.LOCAL)
+	_check(desk_player.sampler != null and not desk_player.sampler is DotFpsTouchSampler, "and a desktop keeps the keyboard sampler")
+	DotPlatform.touch_override = -1
+	await get_tree().physics_frame
 	_done()
