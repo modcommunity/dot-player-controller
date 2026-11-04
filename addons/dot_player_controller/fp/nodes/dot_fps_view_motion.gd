@@ -21,10 +21,9 @@ var strafe_roll_response: float = 7.0
 ## Degrees the camera rolls while sliding, on top of the strafe roll, eased like it. 0 for none.
 var slide_roll: float = 3.0
 
-## Degrees the camera leans while wall running: positive away from the wall (the open side),
-## negative toward it. 0 for none.
-## Scaled by how square the view is to the wall: looking straight along it gives the full
-## lean, turning to face away from it blends toward none rather than flipping.
+## Degrees the camera leans while wall running: positive away from the wall, negative toward
+## it, 0 for none. Scaled by how square the view is to the wall; facing away blends to none
+## rather than flipping.
 var wall_run_roll: float = 6.0
 
 ## How quickly the wall-run lean eases in and out, per second. One exponential stage: about
