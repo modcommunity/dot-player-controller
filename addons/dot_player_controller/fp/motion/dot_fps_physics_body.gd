@@ -121,6 +121,7 @@ func _configure(height: float, radius: float) -> void:
 	if exclude != _cfg_exclude:
 		_shape_params.exclude = exclude
 		_cfg_exclude = exclude.duplicate()
+		_rm_valid = false
 
 
 ## [member PhysicsShapeQueryParameters3D.collision_mask], written only when it changes: a
@@ -158,6 +159,7 @@ func revalidate() -> bool:
 
 	if space != _space:
 		_space = space
+		_rm_valid = false
 		_shape_params.shape = _shape
 		DotLog.debug(CHANNEL, "re-bound to a new physics space")
 
@@ -460,6 +462,69 @@ func _raw_rest_or_null(at: Vector3, height: float, radius: float) -> Hit:
 		return null
 
 	_configure(height, radius)
+
+	# Within one motor tick nothing this query can see moves, and the tick asks the same question more than once (the de-penetration test, then the slide's opening check at the same spot).
+	# Answered from the last result when the shape, place and filters are identical; a hit is rebuilt so callers may edit what they are given.
+	var memo := perf_caches and _in_tick
+	if memo and _rm_valid and at == _rm_at and height == _rm_height and radius == _rm_radius and _cfg_mask == _rm_mask:
+		rest_memo_hits += 1
+		if _rm_normal == Vector3.ZERO:
+			return null
+		var again := Hit.new()
+		again.hit = true
+		again.fraction = 0.0
+		again.normal = _rm_normal
+		again.point = _rm_point
+		again.collider_id = _rm_id
+		again.depth = _rm_depth
+		return again
+
+	var found := _raw_rest_query(at, height, radius)
+
+	if memo:
+		_rm_valid = true
+		_rm_at = at
+		_rm_height = height
+		_rm_radius = radius
+		_rm_mask = _cfg_mask
+		if found == null:
+			_rm_normal = Vector3.ZERO
+		else:
+			_rm_normal = found.normal
+			_rm_point = found.point
+			_rm_id = found.collider_id
+			_rm_depth = found.depth
+
+	return found
+
+
+## Rest queries answered from [method _raw_rest_or_null]'s memo. Diagnostic.
+var rest_memo_hits: int = 0
+
+var _in_tick: bool = false
+var _rm_valid: bool = false
+var _rm_at := Vector3.ZERO
+var _rm_height := 0.0
+var _rm_radius := 0.0
+var _rm_mask := 0
+var _rm_normal := Vector3.ZERO
+var _rm_point := Vector3.ZERO
+var _rm_id := 0
+var _rm_depth := 0.0
+
+
+func begin_tick() -> void:
+	_in_tick = true
+	_rm_valid = false
+
+
+func end_tick() -> void:
+	_in_tick = false
+	_rm_valid = false
+
+
+## The query itself; see [method _raw_rest_or_null].
+func _raw_rest_query(at: Vector3, height: float, radius: float) -> Hit:
 	query_count += 1
 
 	_shape_params.transform = Transform3D(Basis.IDENTITY, at)
