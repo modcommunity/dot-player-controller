@@ -45,7 +45,7 @@ func _make_flat_world() -> void:
 
 
 ## A flat body wrapped with the hulls of ten other players that walk circles, as the arena does for each of its bots.
-func _bodies_flat(clock: Array) -> Array[DotFpsBody]:
+func _bodies_flat(clock: Array, crowd: int = 10) -> Array[DotFpsBody]:
 	var out: Array[DotFpsBody] = []
 	for _i in range(2):
 		var flat := DotFpsFlatBody.with_floor(0.0)
@@ -54,9 +54,10 @@ func _bodies_flat(clock: Array) -> Array[DotFpsBody]:
 		var hulls := func() -> Array:
 			var list: Array = []
 			var t: int = clock[0]
-			for k in range(10):
+			for k in range(crowd):
 				var a := float(t) * 0.01 + float(k) * 0.9
-				var feet := Vector3(cos(a) * (6.0 + k), 0.0, sin(a) * (6.0 + k))
+				var ring := (6.0 + k) if crowd <= 10 else (1.5 + float(k) * 0.3)
+				var feet := Vector3(cos(a) * ring, 0.0, sin(a) * ring)
 				list.append(AABB(feet - Vector3(0.35, 0.0, 0.35), Vector3(0.7, 1.8, 0.7)))
 			return list
 		out.append(DotFpsHullBody.new().wrap(flat, hulls))
@@ -101,6 +102,8 @@ func _pair(name: String, bodies: Array[DotFpsBody], tun: DotFpsTunables, clock: 
 	var worst := 0.0
 	var first_bad := -1
 	var modes := {}
+	# Exact comparison as well: a hash over every tick's position, velocity, ground normal and flags, so a one-ulp drift fails even where EPSILON would hide it.
+	var hashes := [0, 0]
 	for tick in range(TICKS):
 		clock[0] = tick
 		if modifier and tick % 300 == 50:
@@ -109,6 +112,8 @@ func _pair(name: String, bodies: Array[DotFpsBody], tun: DotFpsTunables, clock: 
 		var cmd := _command_for(tick, seed, plan)
 		for i in range(2):
 			motors[i].simulate(states[i], cmd.duplicate_command(), STEP)
+		for i in range(2):
+			hashes[i] = hash([hashes[i], states[i].position, states[i].velocity, states[i].ground_normal, states[i].move_flags(), states[i].mode])
 		var d := _same(states[0], states[1])
 		modes[str(states[0].mode) + ":" + str(states[0].move_flags())] = true
 		if d > worst:
@@ -119,6 +124,7 @@ func _pair(name: String, bodies: Array[DotFpsBody], tun: DotFpsTunables, clock: 
 	print("  %-18s ticks %d  max divergence %.9f  states %d  end %s  memo hits %s" % [
 		name, TICKS, worst, modes.size(), states[0].position,
 		str((bodies[0] as DotFpsPhysicsBody).rest_memo_hits) if bodies[0] is DotFpsPhysicsBody else "-"])
+	_check(hashes[0] == hashes[1], "%s: old and new paths are bit-for-bit identical (hash over every tick)" % name)
 	_check(worst <= EPSILON, "%s: old and new paths agree to %s on every tick" % [name, EPSILON] + ("" if first_bad < 0 else " (first at tick %d)" % first_bad))
 
 
@@ -164,6 +170,9 @@ func _run_equivalence() -> void:
 	for sc in flat_scenarios:
 		var clock := [0]
 		_pair(sc[0], _bodies_flat(clock), _tunables(), clock, sc[1], sc[2], sc[3], sc[4])
+	for crowd_sc in [["flat dense crowd", Vector3(0, 0.05, 0), Vector3.ZERO, 41, 1], ["flat crowd turning", Vector3(0, 0.05, 10), Vector3(0, 0, -8), 42, 2], ["flat crowd walls", Vector3(26, 1.5, 0), Vector3(0, 0, -10), 43, 1]]:
+		var clock3 := [0]
+		_pair(crowd_sc[0], _bodies_flat(clock3, 40), _tunables(), clock3, crowd_sc[1], crowd_sc[2], crowd_sc[3], crowd_sc[4])
 	var clock2 := [0]
 	_pair("flat+sta+modifier", _bodies_flat(clock2), _stamina_tunables(), clock2, Vector3(0, 0.05, 0), Vector3.ZERO, 31, 1, true)
 	_section("the check can fail")

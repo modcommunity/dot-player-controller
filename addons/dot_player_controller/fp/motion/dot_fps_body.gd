@@ -26,10 +26,6 @@ class Hit extends RefCounted:
 	## Zero for swept contacts; non-zero only from [method DotFpsBody.rest_contact], where it is the push-back distance along [member normal] ([method DotFpsMotor._depenetrate]).
 	var depth: float = 0.0
 
-	func _init() -> void:
-		if DotFpsBody.qprof:
-			DotFpsBody.q_n[7] += 1
-
 	static func miss() -> Hit:
 		return Hit.new()
 
@@ -100,13 +96,6 @@ var exclude: Array[RID] = []
 ## Layers a player may walk out of when it starts inside them (other players' hulls, [DotPlayerBodyRules]): a sweep stops at them, questions about what is touched ignore them.
 ## Two players spawned together walk apart instead of being held still.
 var pass_out_mask: int = 0
-
-## SPIKE (motor-native-spike-1): per-query-kind time and counts, filled only while [member qprof] is on.
-## 0 hull sweep (outer), 1 flat sweep, 2 flat rest_contact, 3 flat overlaps, 4 hull rest (outer), 5 hull overlaps (outer), 7 Hit allocations.
-static var qprof: bool = false
-static var q_us := PackedInt64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-static var q_n := PackedInt64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-
 
 ## Sweeps another player's hull stopped, and sweeps the world touched at all. A wrapper that adds hulls counts them so the
 ## motor can tell a slide stopped only by a player (stepping over a standing player never succeeds) from a wall or kerb.
