@@ -6,7 +6,7 @@ extends "res://examples/movement_selftest_walls.gd"
 ##
 ## Most tests run on [DotFpsFlatBody] so a failure has one possible cause, the [DotFpsMotor]; [method _test_physics_body] covers the real implementation.
 
-const CHECKS := 428
+const CHECKS := 432
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
@@ -1521,6 +1521,28 @@ func _test_touch_sampler() -> void:
 	sampler.sample(STEP)
 
 	_check( not is_equal_approx(sampler.yaw, before_yaw), "dragging the right half turns the view" )
+
+	# A non-finite drag is dropped, so the view keeps its last good angles.
+	sampler.handle_event(_touch(1, Vector2(900.0, 500.0), false))
+	sampler.handle_event(_touch(7, Vector2(800.0, 500.0), true))
+	sampler.handle_event(_drag(7, Vector2(850.0, 540.0)))
+	sampler.sample(STEP)
+	_check(is_finite(sampler.yaw) and is_finite(sampler.pitch), "a good drag leaves yaw and pitch finite")
+	var good_yaw := sampler.yaw
+	var good_pitch := sampler.pitch
+	sampler.handle_event(_drag(7, Vector2(NAN, 540.0)))
+	sampler.handle_event(_drag(7, Vector2(INF, -INF)))
+	var rel := _drag(7, Vector2(860.0, 545.0))
+	rel.relative = Vector2(NAN, INF)
+	sampler.handle_event(rel)
+	sampler.sample(STEP)
+	_check(is_finite(sampler.yaw) and is_finite(sampler.pitch), "NaN and inf drags keep yaw and pitch finite")
+	_check(sampler.yaw == good_yaw and sampler.pitch == good_pitch, "and leave them unchanged")
+	sampler.handle_event(_drag(7, Vector2(900.0, 500.0)))
+	sampler.sample(STEP)
+	_check(sampler.yaw != good_yaw, "and the next good drag still turns the view")
+	sampler.handle_event(_touch(7, Vector2(900.0, 500.0), false))
+	sampler.handle_event(_touch(1, Vector2(900.0, 500.0), true))
 
 	# And a short, still touch there is a tap, not a drag of zero length.
 	sampler.handle_event(_touch(1, Vector2(900.0, 500.0), false))

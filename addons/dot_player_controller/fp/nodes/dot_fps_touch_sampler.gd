@@ -133,6 +133,10 @@ func _handle_touch(event: InputEventScreenTouch) -> void:
 
 
 func _handle_drag(event: InputEventScreenDrag) -> void:
+	# A NaN or inf drag would turn yaw and pitch into NaN for good.
+	if not event.position.is_finite() or not event.relative.is_finite():
+		return
+
 	if event.index == _move_finger:
 		_move_current = event.position
 		return
