@@ -415,6 +415,16 @@ func _check_timer_and_button_packing() -> void:
 	)
 	DotFpsNetSync.set_tick_rate(128)
 	_check(DotFpsNetSync.timer_scale == 64.0, "and above 64 Hz the wire keeps its 1/64 s scale")
+	DotFpsNetSync.set_tick_rate(66)
+	var sixty_six := DotFpsState.new()
+	sixty_six.wall_run_time = 19.0 / 66.0
+	var sixty_six_back := DotFpsState.new()
+	DotFpsNetSync.unpack_flags(sixty_six_back, DotFpsNetSync.pack_flags(sixty_six))
+	_check(
+		is_equal_approx(sixty_six_back.wall_run_time, 19.0 / 66.0),
+		"at 66 Hz a wall run's time round-trips to the tick, so a rewind lands where the server is",
+		"%.5f" % sixty_six_back.wall_run_time
+	)
 	DotFpsNetSync.set_tick_rate(64)
 	var idle := DotFpsState.new()
 	DotFpsNetSync.unpack_flags(idle, DotFpsNetSync.pack_flags(DotFpsState.new()))

@@ -51,8 +51,12 @@ const FLAG_CROUCH_HELD := 1 << MODE_BITS
 ## In the flags word, not a new property, so no game's net behaviour needs a new var.
 const TIMER_SCALE := 64.0
 
-## The scale in use: [constant TIMER_SCALE] at 64 Hz and above, so the wire is unchanged there, and
-## the tick rate below it, so a timer counted down a tick at a time still quantises exactly.
+## The highest tick rate whose ticks are the wire's unit: 125 codes of the wall-run field are 1.89 s at 66 Hz.
+const EXACT_RATE_LIMIT := 66
+
+## The scale in use: the tick rate up to [constant EXACT_RATE_LIMIT], so a timer counted a tick at a
+## time round-trips exactly (the client rewinds to a decoded value and must land where the server is),
+## and [constant TIMER_SCALE] above it, where the 7-bit fields could not hold their documented range.
 ## Set by [method set_tick_rate] (the simulator and the controller do), one value per process.
 static var timer_scale: float = TIMER_SCALE
 const LAUNCH_BITS := 12
@@ -200,7 +204,7 @@ static func pack_flags(state: DotFpsState) -> int:
 
 ## Derives [member timer_scale] from the simulation's tick rate. Both ends must run the same rate.
 static func set_tick_rate(rate: int) -> void:
-	timer_scale = clampf(float(rate), 1.0, TIMER_SCALE)
+	timer_scale = float(maxi(rate, 1)) if rate <= EXACT_RATE_LIMIT else TIMER_SCALE
 
 
 static func unpack_flags(state: DotFpsState, flags: int) -> void:
