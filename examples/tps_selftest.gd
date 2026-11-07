@@ -201,6 +201,10 @@ func _test_movement() -> void:
 		var _v := DotTpsMotor.step(s, _intent(), t, 1.0 / 60.0, true)
 	_check(s.speed() < 0.01, "letting go stops")
 
+	_movement_limits(t, s)
+
+
+func _movement_limits(t: DotTpsTunables, s: DotTpsState) -> void:
 	s.forget_state()
 	var diagonal := DotTpsMotor.step(s, _intent(Vector2(1, 1)), t, 1.0, true)
 	_check(
@@ -263,7 +267,12 @@ func _test_jumping() -> void:
 		+ "coyote window closed, or the character occasionally leaps twice as high"
 	)
 
-	# Coyote time.
+	_jump_coyote(t, s)
+	_jump_buffer(t, s)
+	_jump_air()
+
+
+func _jump_coyote(t: DotTpsTunables, s: DotTpsState) -> void:
 	s.forget_state()
 	var _walk := DotTpsMotor.step(s, _intent(Vector2(0, 1)), t, 1.0 / 60.0, true)
 	var _step_off := DotTpsMotor.step(s, _intent(Vector2(0, 1)), t, 0.05, false)
@@ -289,7 +298,9 @@ func _test_jumping() -> void:
 	)
 	_check(s.velocity.y < 0.0, "and their jump does nothing")
 
-	# The buffer.
+
+
+func _jump_buffer(t: DotTpsTunables, s: DotTpsState) -> void:
 	s.forget_state()
 	s.on_floor = false
 	s.air_time = 999.0
@@ -318,7 +329,9 @@ func _test_jumping() -> void:
 		"and does not fire a second later, which would be a jump the player never asked for"
 	)
 
-	# Air jumps.
+
+
+func _jump_air() -> void:
 	var double := DotTpsTunables.platformer()
 	var d := DotTpsState.new()
 	var _first := DotTpsMotor.step(
@@ -561,6 +574,15 @@ func _test_controller() -> void:
 		+ "it had before it was moved"
 	)
 
+	_check_handover(controller, body)
+	_check_camera_rig(controller)
+	_check_sampler()
+
+	player.queue_free()
+	roster.queue_free()
+
+
+func _check_handover(controller: DotTpsController, body: CharacterBody3D) -> void:
 	# The handover, which is what makes having two controllers worth anything.
 	var state := controller.handover_state()
 	_check(state.has("transform") and state.has("yaw"), "it offers a handover state")
@@ -587,12 +609,6 @@ func _test_controller() -> void:
 		+ "viewpoint is nowhere near their character, and a trace from the head would "
 		+ "point somewhere they are not looking"
 	)
-
-	_check_camera_rig(controller)
-	_check_sampler()
-
-	player.queue_free()
-	roster.queue_free()
 
 
 func _check_camera_rig(controller: DotTpsController) -> void:
