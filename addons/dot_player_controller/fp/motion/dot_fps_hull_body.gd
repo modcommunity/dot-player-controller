@@ -79,40 +79,19 @@ func _sync() -> void:
 func _hull_list() -> Array:
 	if _in_tick and _gathered:
 		return _boxes
-	var tg := Time.get_ticks_usec()
 	_boxes = hulls_fn.call() if hulls_fn.is_valid() else []
-	DotFpsBody.q_us[8] += Time.get_ticks_usec() - tg
-	DotFpsBody.q_n[8] += 1
 	_gathered = _in_tick
 	_coarse_valid = false
 	return _boxes
 
 
 func sweep(from: Vector3, motion: Vector3, height: float, radius: float) -> Hit:
-	if not DotFpsBody.qprof:
-		return _sweep_raw(from, motion, height, radius)
-	var t := Time.get_ticks_usec()
-	var r := _sweep_raw(from, motion, height, radius)
-	DotFpsBody.q_us[0] += Time.get_ticks_usec() - t
-	DotFpsBody.q_n[0] += 1
-	return r
-
-
-func _sweep_raw(from: Vector3, motion: Vector3, height: float, radius: float) -> Hit:
-	var t0 := Time.get_ticks_usec()
 	if inner != null:
 		_sync()
 	var world: Hit = inner.sweep(from, motion, height, radius) if inner != null else Hit.miss()
 	if world.hit:
 		world_touches += 1
-	var t1 := Time.get_ticks_usec()
-	var g_before := DotFpsBody.q_us[8]
 	var boxes := _hull_list()
-	var t2 := Time.get_ticks_usec()
-	DotFpsBody.q_us[9] += t1 - t0  # sync + inner
-	DotFpsBody.q_us[10] += t2 - t1 - (DotFpsBody.q_us[8] - g_before)  # hull_list excl gather
-	DotFpsBody.q_n[9] += 1
-	DotFpsBody.q_n[11] += boxes.size()
 	if boxes.is_empty():
 		return world
 
@@ -146,15 +125,10 @@ func _sweep_raw(from: Vector3, motion: Vector3, height: float, radius: float) ->
 			if box.intersects(swept):
 				_near.boxes.append(box)
 				_near_index.append(i)
-	var t3 := Time.get_ticks_usec()
-	DotFpsBody.q_us[12] += t3 - t2
-	DotFpsBody.q_n[12] += _near.boxes.size()
 	if _near.boxes.is_empty():
 		return world
 
 	var other := _near.sweep(from, motion, height, radius)
-	DotFpsBody.q_us[13] += Time.get_ticks_usec() - t3
-	DotFpsBody.q_n[13] += 1
 	if not other.hit or (world.hit and world.fraction <= other.fraction):
 		return world
 
@@ -168,26 +142,14 @@ func overlaps(at: Vector3, height: float, radius: float) -> bool:
 	if inner == null:
 		return false
 	_sync()
-	if not DotFpsBody.qprof:
-		return inner.overlaps(at, height, radius)
-	var t := Time.get_ticks_usec()
-	var r := inner.overlaps(at, height, radius)
-	DotFpsBody.q_us[5] += Time.get_ticks_usec() - t
-	DotFpsBody.q_n[5] += 1
-	return r
+	return inner.overlaps(at, height, radius)
 
 
 func rest_contact(at: Vector3, height: float, radius: float) -> Hit:
 	if inner == null:
 		return Hit.miss()
 	_sync()
-	if not DotFpsBody.qprof:
-		return inner.rest_contact(at, height, radius)
-	var t := Time.get_ticks_usec()
-	var r := inner.rest_contact(at, height, radius)
-	DotFpsBody.q_us[4] += Time.get_ticks_usec() - t
-	DotFpsBody.q_n[4] += 1
-	return r
+	return inner.rest_contact(at, height, radius)
 
 
 func describe() -> Dictionary:

@@ -98,23 +98,39 @@ func ramp_height(index: int, at: Vector3) -> float:
 const SWEEP_REJECT_MARGIN := 1e-3
 
 
+## Per-tick candidate list (perf_caches): the boxes within [constant COARSE_REACH] of the first sweep of the tick, as indices in their order, and the bounds they were chosen for.
+## A sweep whose reject bounds lie inside the region can only touch boxes that intersect it, so it walks those instead of every box; one that leaves the region rebuilds around itself.
+## Same boxes, same order, same answers as walking all of them. Only inside a motor tick ([method begin_tick]), so a box moved between ticks is seen.
+const COARSE_REACH := 6.0
+## Below this many boxes a candidate list costs more than it saves.
+const COARSE_MIN := 8
+## False walks every box on every sweep (the equivalence test and the A/B tools flip it); true uses the per-tick candidate list when [member DotFpsBody.perf_caches] is on.
+static var world_coarse: bool = true
+var _in_tick: bool = false
+var _c_valid: bool = false
+var _c_count: int = 0
+var _c_lo := Vector3.ZERO
+var _c_hi := Vector3.ZERO
+var _c_idx := PackedInt32Array()
+
+
+func begin_tick() -> void:
+	_in_tick = true
+	_c_valid = false
+
+
+func end_tick() -> void:
+	_in_tick = false
+	_c_valid = false
+
+
 ## The capsule as an axis-aligned box. [param at] is the centre.
 func _bounds(at: Vector3, height: float, radius: float) -> AABB:
 	var half := Vector3(radius, height * 0.5, radius)
 	return AABB(at - half, half * 2.0)
 
 
-func sweep(from: Vector3, motion: Vector3, height: float, radius: float) -> Hit:
-	if not DotFpsBody.qprof:
-		return _sweep_raw(from, motion, height, radius)
-	var t := Time.get_ticks_usec()
-	var r := _sweep_raw(from, motion, height, radius)
-	DotFpsBody.q_us[1] += Time.get_ticks_usec() - t
-	DotFpsBody.q_n[1] += 1
-	return r
-
-
-func _sweep_raw(
+func sweep(
 	from: Vector3,
 	motion: Vector3,
 	height: float,
@@ -170,20 +186,55 @@ func _sweep_raw(
 		hi_y = maxf(s_max.y, e_max.y) + SWEEP_REJECT_MARGIN
 		hi_z = maxf(s_max.z, e_max.z) + SWEEP_REJECT_MARGIN
 
-	for index in range(boxes.size()):
-		var candidate := boxes[index]
-		if rejecting:
+	if rejecting and world_coarse and _in_tick and boxes.size() > COARSE_MIN:
+		if not (_c_valid and _c_count == boxes.size() and lo_x >= _c_lo.x and lo_y >= _c_lo.y and lo_z >= _c_lo.z and hi_x <= _c_hi.x and hi_y <= _c_hi.y and hi_z <= _c_hi.z):
+			var r_lo_x := lo_x - COARSE_REACH
+			var r_lo_y := lo_y - COARSE_REACH
+			var r_lo_z := lo_z - COARSE_REACH
+			var r_hi_x := hi_x + COARSE_REACH
+			var r_hi_y := hi_y + COARSE_REACH
+			var r_hi_z := hi_z + COARSE_REACH
+			_c_lo = Vector3(r_lo_x, r_lo_y, r_lo_z)
+			_c_hi = Vector3(r_hi_x, r_hi_y, r_hi_z)
+			_c_idx.resize(0)
+			for index in range(boxes.size()):
+				var cb := boxes[index]
+				var cb_min := cb.position
+				var cb_max := cb_min + cb.size
+				if cb_max.x < r_lo_x or cb_min.x > r_hi_x or cb_max.y < r_lo_y or cb_min.y > r_hi_y or cb_max.z < r_lo_z or cb_min.z > r_hi_z:
+					continue
+				_c_idx.append(index)
+			_c_count = boxes.size()
+			_c_valid = true
+		for k in range(_c_idx.size()):
+			var index := _c_idx[k]
+			var candidate := boxes[index]
 			var c_min := candidate.position
 			var c_max := c_min + candidate.size
 			if c_max.x < lo_x or c_min.x > hi_x or c_max.y < lo_y or c_min.y > hi_y or c_max.z < lo_z or c_min.z > hi_z:
 				continue
-		var slab := _slab_sweep(start, motion, candidate)
-		if slab.x < 0.0 or slab.x >= best:
-			continue
-		best = slab.x
-		best_normal = _axis_normal(int(slab.y), motion)
-		best_id = box_id(index)
-		found = true
+			var slab := _slab_sweep(start, motion, candidate)
+			if slab.x < 0.0 or slab.x >= best:
+				continue
+			best = slab.x
+			best_normal = _axis_normal(int(slab.y), motion)
+			best_id = box_id(index)
+			found = true
+	else:
+		for index in range(boxes.size()):
+			var candidate := boxes[index]
+			if rejecting:
+				var c_min := candidate.position
+				var c_max := c_min + candidate.size
+				if c_max.x < lo_x or c_min.x > hi_x or c_max.y < lo_y or c_min.y > hi_y or c_max.z < lo_z or c_min.z > hi_z:
+					continue
+			var slab := _slab_sweep(start, motion, candidate)
+			if slab.x < 0.0 or slab.x >= best:
+				continue
+			best = slab.x
+			best_normal = _axis_normal(int(slab.y), motion)
+			best_id = box_id(index)
+			found = true
 
 	for index in range(planes.size()):
 		var t := _plane_sweep(from, motion, height, radius, planes[index])
@@ -299,16 +350,6 @@ static func _axis_normal(axis: int, motion: Vector3) -> Vector3:
 ## The deepest surface the capsule at [param at] is already inside.
 ## The analytic counterpart of [method DotFpsPhysicsBody.rest_contact], so de-penetration is proven against a known answer. Boxes report the face least far past; planes are exact.
 func rest_contact(at: Vector3, height: float, radius: float) -> Hit:
-	if not DotFpsBody.qprof:
-		return _rest_raw(at, height, radius)
-	var t := Time.get_ticks_usec()
-	var r := _rest_raw(at, height, radius)
-	DotFpsBody.q_us[2] += Time.get_ticks_usec() - t
-	DotFpsBody.q_n[2] += 1
-	return r
-
-
-func _rest_raw(at: Vector3, height: float, radius: float) -> Hit:
 	var best := Hit.miss()
 	var deepest := 0.0
 
@@ -365,16 +406,6 @@ func _rest_hit(normal: Vector3, depth: float, id: int) -> Hit:
 
 
 func overlaps(at: Vector3, height: float, radius: float) -> bool:
-	if not DotFpsBody.qprof:
-		return _overlaps_raw(at, height, radius)
-	var t := Time.get_ticks_usec()
-	var r := _overlaps_raw(at, height, radius)
-	DotFpsBody.q_us[3] += Time.get_ticks_usec() - t
-	DotFpsBody.q_n[3] += 1
-	return r
-
-
-func _overlaps_raw(at: Vector3, height: float, radius: float) -> bool:
 	var bounds := _bounds(at, height, radius)
 
 	if floor_y > -INF and bounds.position.y < floor_y:
