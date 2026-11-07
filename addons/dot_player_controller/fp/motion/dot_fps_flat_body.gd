@@ -94,6 +94,10 @@ func ramp_height(index: int, at: Vector3) -> float:
 	) / plane.normal.y
 
 
+## Slack, in metres, on the broad phase of [method sweep]: far more than float rounding, far less than any gap that matters.
+const SWEEP_REJECT_MARGIN := 1e-3
+
+
 ## The capsule as an axis-aligned box. [param at] is the centre.
 func _bounds(at: Vector3, height: float, radius: float) -> AABB:
 	var half := Vector3(radius, height * 0.5, radius)
@@ -135,8 +139,35 @@ func sweep(
 
 	var start := _bounds(from, height, radius)
 
+	# Broad phase (perf_caches): a box the capsule's swept bounds miss on any axis cannot be entered within the tick, so the slab test (a call and nine property reads per box) is skipped for it.
+	# The margin keeps every box the slab test could still call a touching hit; what it rejects, it would have rejected.
+	var rejecting := perf_caches
+	var lo_x := 0.0
+	var lo_y := 0.0
+	var lo_z := 0.0
+	var hi_x := 0.0
+	var hi_y := 0.0
+	var hi_z := 0.0
+	if rejecting:
+		var s_min := start.position
+		var s_max := start.position + start.size
+		var e_min := s_min + motion
+		var e_max := s_max + motion
+		lo_x = minf(s_min.x, e_min.x) - SWEEP_REJECT_MARGIN
+		lo_y = minf(s_min.y, e_min.y) - SWEEP_REJECT_MARGIN
+		lo_z = minf(s_min.z, e_min.z) - SWEEP_REJECT_MARGIN
+		hi_x = maxf(s_max.x, e_max.x) + SWEEP_REJECT_MARGIN
+		hi_y = maxf(s_max.y, e_max.y) + SWEEP_REJECT_MARGIN
+		hi_z = maxf(s_max.z, e_max.z) + SWEEP_REJECT_MARGIN
+
 	for index in range(boxes.size()):
-		var slab := _slab_sweep(start, motion, boxes[index])
+		var candidate := boxes[index]
+		if rejecting:
+			var c_min := candidate.position
+			var c_max := c_min + candidate.size
+			if c_max.x < lo_x or c_min.x > hi_x or c_max.y < lo_y or c_min.y > hi_y or c_max.z < lo_z or c_min.z > hi_z:
+				continue
+		var slab := _slab_sweep(start, motion, candidate)
 		if slab.x < 0.0 or slab.x >= best:
 			continue
 		best = slab.x
