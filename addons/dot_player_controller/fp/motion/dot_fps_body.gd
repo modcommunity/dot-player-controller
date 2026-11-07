@@ -104,8 +104,8 @@ var pass_out_mask: int = 0
 ## SPIKE (motor-native-spike-1): per-query-kind time and counts, filled only while [member qprof] is on.
 ## 0 hull sweep (outer), 1 flat sweep, 2 flat rest_contact, 3 flat overlaps, 4 hull rest (outer), 5 hull overlaps (outer), 7 Hit allocations.
 static var qprof: bool = false
-static var q_us := PackedInt64Array([0, 0, 0, 0, 0, 0, 0, 0])
-static var q_n := PackedInt64Array([0, 0, 0, 0, 0, 0, 0, 0])
+static var q_us := PackedInt64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+static var q_n := PackedInt64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 
 
 ## Sweeps another player's hull stopped, and sweeps the world touched at all. A wrapper that adds hulls counts them so the
