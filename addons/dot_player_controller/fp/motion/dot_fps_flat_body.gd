@@ -104,7 +104,17 @@ func _bounds(at: Vector3, height: float, radius: float) -> AABB:
 	return AABB(at - half, half * 2.0)
 
 
-func sweep(
+func sweep(from: Vector3, motion: Vector3, height: float, radius: float) -> Hit:
+	if not DotFpsBody.qprof:
+		return _sweep_raw(from, motion, height, radius)
+	var t := Time.get_ticks_usec()
+	var r := _sweep_raw(from, motion, height, radius)
+	DotFpsBody.q_us[1] += Time.get_ticks_usec() - t
+	DotFpsBody.q_n[1] += 1
+	return r
+
+
+func _sweep_raw(
 	from: Vector3,
 	motion: Vector3,
 	height: float,
@@ -289,6 +299,16 @@ static func _axis_normal(axis: int, motion: Vector3) -> Vector3:
 ## The deepest surface the capsule at [param at] is already inside.
 ## The analytic counterpart of [method DotFpsPhysicsBody.rest_contact], so de-penetration is proven against a known answer. Boxes report the face least far past; planes are exact.
 func rest_contact(at: Vector3, height: float, radius: float) -> Hit:
+	if not DotFpsBody.qprof:
+		return _rest_raw(at, height, radius)
+	var t := Time.get_ticks_usec()
+	var r := _rest_raw(at, height, radius)
+	DotFpsBody.q_us[2] += Time.get_ticks_usec() - t
+	DotFpsBody.q_n[2] += 1
+	return r
+
+
+func _rest_raw(at: Vector3, height: float, radius: float) -> Hit:
 	var best := Hit.miss()
 	var deepest := 0.0
 
@@ -345,6 +365,16 @@ func _rest_hit(normal: Vector3, depth: float, id: int) -> Hit:
 
 
 func overlaps(at: Vector3, height: float, radius: float) -> bool:
+	if not DotFpsBody.qprof:
+		return _overlaps_raw(at, height, radius)
+	var t := Time.get_ticks_usec()
+	var r := _overlaps_raw(at, height, radius)
+	DotFpsBody.q_us[3] += Time.get_ticks_usec() - t
+	DotFpsBody.q_n[3] += 1
+	return r
+
+
+func _overlaps_raw(at: Vector3, height: float, radius: float) -> bool:
 	var bounds := _bounds(at, height, radius)
 
 	if floor_y > -INF and bounds.position.y < floor_y:
