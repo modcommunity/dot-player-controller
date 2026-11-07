@@ -55,6 +55,8 @@ func _simulate(
 	command: DotFpsCommand,
 	delta: float
 ) -> void:
+	if profile:
+		_lap_at = Time.get_ticks_usec()
 	view_turn = 0.0
 
 	ticks_simulated += 1
@@ -98,7 +100,11 @@ func _simulate(
 		state.previous_buttons = command.buttons
 		return
 
+	if profile:
+		_lap(0)
 	_update_crouch(state, command, delta)
+	if profile:
+		_lap(1)
 
 	if idle_fast_path and _idle_tick(state, command):
 		state.previous_buttons = command.buttons
@@ -107,6 +113,8 @@ func _simulate(
 	# Before the ground is categorised, because a probe starting inside geometry reports nothing and the whole tick is built on that answer.
 	# Unconditional: the case it exists for is a player in AIR on a ramp, which every earlier guard excluded.
 	_depenetrate(state, _height(state))
+	if profile:
+		_lap(2)
 
 	var start_settled := _reuse_rest(state)
 	if not start_settled:
@@ -114,12 +122,16 @@ func _simulate(
 	var start_position := state.position
 	var start_velocity := state.velocity
 	var start_height := _height(state)
+	if profile:
+		_lap(3)
 
 	var jumped := _try_jump(state, command, delta)
 
 	# The wall, probed once a tick and only when a wall move could use it: both are off
 	# by default, and a game that leaves them off makes no extra query and simulates what
 	# it did before they existed.
+	if profile:
+		_lap(4)
 	var wall := _wall_contact(state, command)
 	var wall_jumped := false
 	if not jumped and not _try_jump_run(state, wall):
@@ -127,6 +139,8 @@ func _simulate(
 		if not wall_jumped and not jumped:
 			_try_auto_run(state, command, wall)
 
+	if profile:
+		_lap(5)
 	var launched := _try_launch(state, command)
 	launched = _try_dash(state, command) or launched
 
@@ -161,7 +175,11 @@ func _simulate(
 			_wall_slide_vertical(state, falling_at, delta)
 
 	_clamp_velocity(state)
+	if profile:
+		_lap(6)
 	var settled := _move(state, delta, jumped or launched)
+	if profile:
+		_lap(7)
 
 	# After the move, so the next tick starts from the truth, unless the move's own check already is that truth:
 	# a grounded walker's [method _move] categorises after the slide, and if that changed only the ground fields and left it GROUNDED, running it again repeats the same queries ([method _categorise_ground_settled]).
@@ -176,6 +194,8 @@ func _simulate(
 	else:
 		_rest_valid = false
 		_categorise_ground(state)
+	if profile:
+		_lap(8)
 
 	state.previous_buttons = command.buttons
 
@@ -311,7 +331,9 @@ func _advance_timers(
 	state.dash_cooldown_left = maxf(state.dash_cooldown_left - delta, 0.0)
 	state.wall_run_cooldown_left = maxf(state.wall_run_cooldown_left - delta, 0.0)
 	_tick_stamina(state, command, delta)
-	DotFpsNetSync.snap_stamina(state)
+	# Without stamina the fields are written to their constants (1, false, 0) above, which are exactly on the wire grid: packing and unpacking them is the identity.
+	if tunables.stamina_enabled or not perf_caches:
+		DotFpsNetSync.snap_stamina(state)
 
 
 ## Decides whether this tick sprints and moves stamina. Crouch and walk win over sprint, as in speed_for.

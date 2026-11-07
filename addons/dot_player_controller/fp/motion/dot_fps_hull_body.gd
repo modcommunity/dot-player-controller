@@ -18,13 +18,34 @@ var _in_tick: bool = false
 var _near := DotFpsFlatBody.new()
 var _near_index := PackedInt32Array()
 
+## Per-tick candidate list (perf_caches): the hulls within [constant COARSE_REACH] of the first sweep of the tick, as indices into the gathered list in their order, and the region they were chosen for.
+## A sweep whose bounds lie inside the region can only touch hulls that intersect the region, so it tests those instead of every hull; one that leaves the region (a launch, a long probe) rebuilds around itself.
+## Same hulls, same order, same answers as testing all of them.
+var _coarse_region := AABB()
+var _coarse_valid: bool = false
+var _coarse: PackedInt32Array = PackedInt32Array()
+
+## How far around a sweep's bounds the per-tick candidate region reaches, in metres: a few ticks of any ordinary speed, so most of a tick's sweeps (slide legs, step probes, ground checks) fit in one region.
+const COARSE_REACH := 6.0
+
 
 func _init() -> void:
 	_near.floor_y = -INF
 
 
+## Below this many hulls a candidate list costs more than it saves.
+const COARSE_MIN := 6
+
+
+func _perf_caches_changed() -> void:
+	if inner != null:
+		inner.perf_caches = perf_caches
+
+
 func wrap(map_body: DotFpsBody, hulls: Callable) -> DotFpsBody:
 	inner = map_body
+	if map_body != null:
+		map_body.perf_caches = perf_caches
 	hulls_fn = hulls
 	if map_body != null:
 		collision_mask = map_body.collision_mask
@@ -36,6 +57,7 @@ func wrap(map_body: DotFpsBody, hulls: Callable) -> DotFpsBody:
 func begin_tick() -> void:
 	_in_tick = true
 	_gathered = false
+	_coarse_valid = false
 	if inner != null:
 		inner.begin_tick()
 
@@ -43,6 +65,7 @@ func begin_tick() -> void:
 func end_tick() -> void:
 	_in_tick = false
 	_gathered = false
+	_coarse_valid = false
 	if inner != null:
 		inner.end_tick()
 
@@ -58,6 +81,7 @@ func _hull_list() -> Array:
 		return _boxes
 	_boxes = hulls_fn.call() if hulls_fn.is_valid() else []
 	_gathered = _in_tick
+	_coarse_valid = false
 	return _boxes
 
 
@@ -81,11 +105,26 @@ func sweep(from: Vector3, motion: Vector3, height: float, radius: float) -> Hit:
 
 	_near.boxes.clear()
 	_near_index.resize(0)
-	for i in range(boxes.size()):
-		var box: AABB = boxes[i]
-		if box.intersects(swept):
-			_near.boxes.append(box)
-			_near_index.append(i)
+	if perf_caches and _in_tick and boxes.size() > COARSE_MIN:
+		if not (_coarse_valid and _coarse_region.encloses(swept)):
+			_coarse_region = swept.grow(COARSE_REACH)
+			_coarse.resize(0)
+			for i in range(boxes.size()):
+				if (boxes[i] as AABB).intersects(_coarse_region):
+					_coarse.append(i)
+			_coarse_valid = true
+		for k in range(_coarse.size()):
+			var i := _coarse[k]
+			var box: AABB = boxes[i]
+			if box.intersects(swept):
+				_near.boxes.append(box)
+				_near_index.append(i)
+	else:
+		for i in range(boxes.size()):
+			var box: AABB = boxes[i]
+			if box.intersects(swept):
+				_near.boxes.append(box)
+				_near_index.append(i)
 	if _near.boxes.is_empty():
 		return world
 

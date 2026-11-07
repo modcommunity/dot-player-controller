@@ -135,6 +135,26 @@ var reused_ground_ticks: int = 0
 ## Off if the floor can change between ticks (a platform that is not moved with its rider).
 var reuse_settled_ground: bool = true
 
+## Master switch for the per-tick caches and allocation savings of the motor perf work (query-parameter reuse, merged sweeps, skipped redundant probes). False runs the original code paths; the equivalence test replays both and asserts identical results.
+var perf_caches: bool = true:
+	set(value):
+		perf_caches = value
+		if body != null:
+			body.perf_caches = value
+
+## Per-phase microseconds of [method DotFpsMotor.simulate], filled only while [member profile] is on (a micro-benchmark and the server operator's debug flag). Index names are in [constant PHASES].
+static var profile: bool = false
+static var phase_us := PackedInt64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+const PHASES: Array[String] = ["timers+mods", "crouch", "depenetrate", "ground-start", "jump", "walls", "forces", "move", "ground-end", "other", "", ""]
+var _lap_at: int = 0
+
+
+## Charges the time since the last lap to [param phase]. Call only under [code]if profile[/code].
+func _lap(phase: int) -> void:
+	var now := Time.get_ticks_usec()
+	phase_us[phase] += now - _lap_at
+	_lap_at = now
+
 ## Ticks answered by the idle path ([member idle_fast_path]). Diagnostic.
 var idle_ticks: int = 0
 
@@ -338,7 +358,11 @@ func _expire_modifiers(state: DotFpsState) -> void:
 
 
 func _rebuild_effects(state: DotFpsState) -> void:
+	# No modifiers and an aggregate nobody has been handed since it was last reset: it is still all ones.
+	if perf_caches and _effects_clean and state.modifiers.is_empty():
+		return
 	_effects.reset()
+	_effects_clean = state.modifiers.is_empty()
 
 	for entry in state.modifiers:
 		var definition := modifier_at(entry.x)
@@ -349,7 +373,12 @@ func _rebuild_effects(state: DotFpsState) -> void:
 ## The combined modifier effect for the tick in progress.
 ## Public so a [DotFpsMoveMode] scales by the same numbers; a ladder ignoring a slow field would escape it.
 func effects() -> DotFpsModifier.Aggregate:
+	# A caller may write to what it is handed, so the next tick resets it.
+	_effects_clean = false
 	return _effects
+
+
+var _effects_clean: bool = false
 
 
 ## The surface under the player, or the default. Never null.
