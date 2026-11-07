@@ -76,6 +76,17 @@ static func capsule_support(normal: Vector3, height: float, radius: float) -> fl
 	return maxf(height * 0.5 - radius, 0.0) * absf(normal.y) + radius
 
 
+## False runs the original query paths (no broad-phase rejection, no per-tick candidate lists). The motor sets it from [member DotFpsMotor.perf_caches] so the equivalence test can replay both and compare.
+var perf_caches: bool = true:
+	set(value):
+		perf_caches = value
+		_perf_caches_changed()
+
+
+func _perf_caches_changed() -> void:
+	pass
+
+
 ## Which collision layers to test against. Set by the controller from the tunables.
 var collision_mask: int = 1
 

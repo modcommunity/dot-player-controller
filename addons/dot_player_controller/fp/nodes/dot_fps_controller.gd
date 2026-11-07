@@ -625,6 +625,8 @@ func simulate_tick(tick: int, delta: float) -> void:
 	if not _started or drive == Drive.REMOTE:
 		return
 
+	var prof_t := Time.get_ticks_usec() if DotFpsMotor.profile else 0
+
 	# Re-applied every tick so it cannot be undone by anything that touches the
 	# tunables between ticks.
 	_gate_abilities()
@@ -656,6 +658,8 @@ func simulate_tick(tick: int, delta: float) -> void:
 	var before_wall_running := state.is_wall_running()
 	var before_wall_jumps := motor.wall_jumps
 
+	if prof_t != 0:
+		_lap_ctrl(0, prof_t)
 	_on_pre_simulate(tick, delta)
 
 	_consume_external_velocity(state, _replaying)
@@ -664,11 +668,19 @@ func simulate_tick(tick: int, delta: float) -> void:
 	if body != null and body.collision_mask != tunables.collision_mask:
 		body.collision_mask = tunables.collision_mask
 
+	if prof_t != 0:
+		_lap_ctrl(1, prof_t)
 	motor.simulate(state, current_command, delta)
+	if prof_t != 0:
+		_lap_ctrl(2, prof_t)
 
 	_tick = tick
 	_publish(before_mode, before_y, before_fall)
+	if prof_t != 0:
+		_lap_ctrl(3, prof_t)
 	_report_changes(before_crouched, before_surface)
+	if prof_t != 0:
+		_lap_ctrl(4, prof_t)
 
 	if not _replaying:
 		if state.is_sliding() != before_sliding:
@@ -694,11 +706,31 @@ func simulate_tick(tick: int, delta: float) -> void:
 	# Not during a replay: the statistics have seen that tick, and a lossy client would double-count.
 	if not _replaying:
 		stats.observe(state, current_command, _stats_previous, delta)
-		_stats_previous = current_command.duplicate_command()
+		if motor.perf_caches:
+			# Observe only asks whether there was a previous command (null on the first tick and after a style change), never reads it: one object kept, not one allocated a tick.
+			if _stats_previous == null:
+				_stats_previous = current_command.duplicate_command()
+		else:
+			_stats_previous = current_command.duplicate_command()
 
+	if prof_t != 0:
+		_lap_ctrl(5, prof_t)
 	_on_post_simulate(tick, delta)
 
 	simulated.emit(tick, state)
+	if prof_t != 0:
+		_lap_ctrl(6, prof_t)
+
+
+## Per-phase microseconds of [method simulate_tick] outside the motor, filled only while [member DotFpsMotor.profile] is on: pre (copy, gates), consume+mask, motor, publish, report, signals+stats, post.
+static var phase_us := PackedInt64Array([0, 0, 0, 0, 0, 0, 0, 0])
+var _lap_ctrl_at: int = 0
+
+
+func _lap_ctrl(phase: int, start: int) -> void:
+	var now := Time.get_ticks_usec()
+	phase_us[phase] += now - (start if phase == 0 else _lap_ctrl_at)
+	_lap_ctrl_at = now
 
 
 ## Emits the change signals for anything the tick altered.
@@ -768,8 +800,11 @@ func _publish(
 	before_y: float,
 	before_fall: float
 ) -> void:
+	var pt := Time.get_ticks_usec() if DotFpsMotor.profile else 0
 	if _body_node != null:
 		_body_node.global_position = state.position
+	if pt != 0:
+		phase_us[7] += Time.get_ticks_usec() - pt
 
 	_apply_collider(state)
 

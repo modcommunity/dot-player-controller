@@ -191,7 +191,9 @@ func copy_from(other: DotFpsState) -> void:
 	ground_normal = other.ground_normal
 	ground_id = other.ground_id
 	surface = other.surface
-	modifiers = other.modifiers.duplicate()
+	# Two empty lists are already equal: a duplicate of nothing allocates an Array to be thrown away next tick.
+	if not (modifiers.is_empty() and other.modifiers.is_empty()):
+		modifiers = other.modifiers.duplicate()
 	time_since_grounded = other.time_since_grounded
 	time_since_jump_pressed = other.time_since_jump_pressed
 	time_since_jump = other.time_since_jump
