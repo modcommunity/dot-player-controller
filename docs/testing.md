@@ -1,6 +1,6 @@
 # Testing
 
-The family's method is in [game-dev/docs/testing.md](../../../docs/testing.md); this is what is specific here.
+The family's method is in [docs/testing.md](../../../docs/testing.md); this is what is specific here.
 
 ## The seven suites
 
