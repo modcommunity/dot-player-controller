@@ -13,4 +13,4 @@ The reasoning behind the controllers, one subject per file. [CLAUDE.md](../CLAUD
 | [testing.md](testing.md) | The seven suites, why the flat-body and physics-body suites are both needed, negative controls, and the GDScript traps hit here |
 | [history.md](history.md) | Bug narratives worth keeping, and the original rewrite |
 
-Family-wide: [game-dev/docs/gdscript-hazards.md](../../../docs/gdscript-hazards.md), [testing.md](../../../docs/testing.md), [extension-points.md](../../../docs/extension-points.md), [bugs-found.md](../../../docs/bugs-found.md).
+Family-wide: [docs/gdscript-hazards.md](../../../docs/gdscript-hazards.md), [testing.md](../../../docs/testing.md), [extension-points.md](../../../docs/extension-points.md), [bugs-found.md](../../../docs/bugs-found.md).
