@@ -126,6 +126,10 @@ static func _same_wall(a: int, b: int) -> bool:
 	return apart <= 1 or apart >= WALL_HEADINGS - 1
 
 
+## Slack, in seconds, on the run's time cap. A cap that is a whole number of ticks (1 s at 66 Hz) is reached by a sum of tick lengths on the server, which lands a hair under it, and by the exactly decoded value ([constant DotFpsNetSync.timer_scale]) on a client that has just rewound, which lands on it; the run then ended a tick apart. With the slack both end on the cap's tick. Far under a tick at any rate; a cap that is not a whole number of ticks moves by nothing.
+const WALL_RUN_TIME_SLACK := 1e-4
+
+
 ## Starts, carries and ends a wall run.
 ## Entered only from the air, beside a steep enough wall, moving along it at [member DotFpsTunables.wall_run_min_speed] or more, not falling fast, forward held when required, and not after a run already ended this airborne stretch.
 ## Speed along the wall is left alone and gravity reduced ([method _wall_run_vertical]). Ends on the time cap, losing the wall, slowing, releasing forward, landing, or any jump or launch.
@@ -159,7 +163,7 @@ func _update_wall_run(
 			left_this_tick
 			or wall == null
 			or _effects.deny_move
-			or state.wall_run_time >= minf(tunables.wall_run_max_time, DotFpsTunables.WALL_RUN_TIME_LIMIT)
+			or state.wall_run_time >= minf(tunables.wall_run_max_time, DotFpsTunables.WALL_RUN_TIME_LIMIT) - WALL_RUN_TIME_SLACK
 			or _speed_along_wall(state, wall) < tunables.wall_run_end_speed
 			or (tunables.wall_run_requires_forward and command.move.y <= 0.0)
 			or (

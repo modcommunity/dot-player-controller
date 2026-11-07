@@ -1,4 +1,4 @@
-extends "res://examples/movement_selftest_walls.gd"
+extends "res://examples/movement_selftest_wallalign.gd"
 
 ## Proves the movement simulation does what the netcode needs. Run: [code]godot --headless --path . res://examples/movement_selftest.tscn[/code]; exits non-zero on any failure.
 ##
@@ -6,11 +6,11 @@ extends "res://examples/movement_selftest_walls.gd"
 ##
 ## Most tests run on [DotFpsFlatBody] so a failure has one possible cause, the [DotFpsMotor]; [method _test_physics_body] covers the real implementation.
 
-const CHECKS := 432
+const CHECKS := 441
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
-const SECTIONS := 58
+const SECTIONS := 59
 
 
 func _ready() -> void:
@@ -66,6 +66,7 @@ func _run_flat() -> void:
 	_test_wall_run_auto()
 	_test_wall_no_stick_walking()
 	_test_wall_run_min_size()
+	_test_wall_run_alignment()
 	_test_wall_replay()
 	_test_wall_hop_rewind()
 	_test_sprint_stamina()
