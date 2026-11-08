@@ -9,6 +9,8 @@
 /addons/dot_profile
 /addons/dot_net
 /addons/dot_player
+# dot-sim, the optional native library (examples/motor_native_parity); its CI job builds it.
+/addons/dot_sim
 
 # Exports
 build/
