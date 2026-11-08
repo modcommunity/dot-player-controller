@@ -52,6 +52,10 @@ var modifiers: Array[Vector2i] = []
 ## Seconds since last on the ground, 0 while grounded. Drives coyote time; simulated seconds, so a replay reproduces it.
 var time_since_grounded: float = 0.0
 
+## Seconds spent airborne in this stretch (mode AIR, a wall run included), 0 while anything else.
+## Observed by the controller on live ticks only, so it is not replicated, not copied by [method copy_from] and not compared by [method equals]: a server reads it for statistics, a replay never feeds it. Unlike [member time_since_grounded] a jump does not seed it.
+var airborne_time: float = 0.0
+
 ## Seconds since the jump button was pressed, or a large number if it never was.
 var time_since_jump_pressed: float = 1000.0
 
@@ -140,6 +144,11 @@ static func mode_name(id: int, motor: DotFpsMotor = null) -> String:
 
 func is_grounded() -> bool:
 	return mode == Mode.GROUND
+
+
+## Seconds airborne in the current stretch, 0 on the ground. See [member airborne_time].
+func airborne_seconds() -> float:
+	return airborne_time
 
 
 func is_crouched() -> bool:
