@@ -705,6 +705,7 @@ func simulate_tick(tick: int, delta: float) -> void:
 
 	# Not during a replay: the statistics have seen that tick, and a lossy client would double-count.
 	if not _replaying:
+		state.airborne_time = (state.airborne_time + delta) if state.mode == DotFpsState.Mode.AIR else 0.0
 		stats.observe(state, current_command, _stats_previous, delta)
 		if motor.perf_caches:
 			# Observe only asks whether there was a previous command (null on the first tick and after a style change), never reads it: one object kept, not one allocated a tick.
@@ -918,6 +919,7 @@ func teleport(
 	state.velocity = Vector3.ZERO
 	state.mode = DotFpsState.Mode.AIR
 	state.time_since_grounded = 0.0
+	state.airborne_time = 0.0
 
 	if is_finite(yaw):
 		state.yaw = yaw
@@ -937,6 +939,17 @@ func teleport(
 	if view != null:
 		view.snap()
 
+
+
+## Facts a statistics rule can read about this player right now: airborne, airborne_seconds, wall_running, sliding and speed. dot-combat reads it duck-typed from a victim's controller; only a simulating (server) controller has true values.
+func get_stats_facts() -> Dictionary:
+	return {
+		"airborne": state.mode == DotFpsState.Mode.AIR,
+		"airborne_seconds": state.airborne_time,
+		"wall_running": state.is_wall_running(),
+		"sliding": state.is_sliding(),
+		"speed": state.speed(),
+	}
 
 
 func describe() -> Dictionary:
