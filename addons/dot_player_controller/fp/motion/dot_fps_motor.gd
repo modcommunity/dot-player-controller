@@ -1160,13 +1160,15 @@ func _move(state: DotFpsState, delta: float, jumped: bool) -> bool:
 	# plane, because by the time it runs the categorise has already forgotten it.
 	var stood_on := state.ground_normal
 
-	var hulls_before := body.hull_blocks
-	var world_before := body.world_touches
-	var plain := _slide(state.position, state.velocity, motion, height)
-	# Only another player stopped the slide: no kerb to climb, and a step over a standing player won 1 in 5000 ticks.
-	var hull_only := body.hull_blocks > hulls_before and body.world_touches == world_before
+	var plain := _native_move(state.position, state.velocity, motion, height, 0, was_grounded and not jumped)
+	if plain == null:
+		var hulls_before := body.hull_blocks
+		var world_before := body.world_touches
+		plain = _slide(state.position, state.velocity, motion, height)
+		# Only another player stopped the slide: no kerb to climb, and a step over a standing player won 1 in 5000 ticks.
+		var hull_only := body.hull_blocks > hulls_before and body.world_touches == world_before
 
-	plain = _prefer_step(state, plain, motion, height, was_grounded and not jumped, hull_only)
+		plain = _prefer_step(state, plain, motion, height, was_grounded and not jumped, hull_only)
 
 	state.position = plain.position
 	state.velocity = plain.velocity
@@ -1200,6 +1202,33 @@ func _move(state: DotFpsState, delta: float, jumped: bool) -> bool:
 			_snap_to_ground(state, height, stood_on)
 
 	return false
+
+
+## [method _slide] then [method _prefer_step] (mode 0, [param flag] walking) or the slide and step of [method move_and_slide]
+## (mode 1, [param flag] step) in one native call, when the body runs one ([method DotFpsBody.native_slide]); null to run them here.
+## The native slide is this script's to the bit (dot-sim's motor parity suite), so a web client running the script agrees.
+func _native_move(
+	from: Vector3, velocity: Vector3, motion: Vector3, height: float, mode: int, flag: bool
+) -> MoveResult:
+	var tun := PackedFloat64Array([
+		tunables.max_slide_iterations, 1.0 if tunables.crease_slide else 0.0, tunables.skin_width,
+		tunables.max_slide_planes, tunables.step_height, tunables.radius, tunables.max_slope_radians(),
+	])
+	var r := body.native_slide(from, velocity, motion, height, mode, flag, tun)
+	if r.size() < 13:
+		return null
+	var m := MoveResult.new()
+	m.position = Vector3(r[0], r[1], r[2])
+	m.velocity = Vector3(r[3], r[4], r[5])
+	m.travelled = r[6]
+	var flags := int(r[7])
+	m.blocked = flags & 1 != 0
+	m.ran_out = flags & 2 != 0
+	m.stopped_on_duplicate = flags & 4 != 0
+	m.met_steep_face = flags & 8 != 0
+	crease_leg_ticks += int(r[8])
+	split_leg_ticks += int(r[9])
+	return m
 
 
 ## The collide-and-slide result to keep: the plain slide, or the stepped one when it got further.
@@ -1821,12 +1850,14 @@ func move_and_slide(
 	if motion.length_squared() <= 0.0:
 		return
 
-	var result := _slide(state.position, state.velocity, motion, height)
+	var result := _native_move(state.position, state.velocity, motion, height, 1, step)
+	if result == null:
+		result = _slide(state.position, state.velocity, motion, height)
 
-	if step and result.blocked and tunables.step_height > 0.0:
-		var stepped := _slide_with_step(state.position, state.velocity, motion, height)
-		if stepped.travelled > result.travelled + tunables.skin_width * 2.0:
-			result = stepped
+		if step and result.blocked and tunables.step_height > 0.0:
+			var stepped := _slide_with_step(state.position, state.velocity, motion, height)
+			if stepped.travelled > result.travelled + tunables.skin_width * 2.0:
+				result = stepped
 
 	state.position = result.position
 	state.velocity = result.velocity

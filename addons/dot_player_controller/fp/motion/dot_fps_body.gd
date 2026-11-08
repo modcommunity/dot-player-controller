@@ -51,6 +51,15 @@ func sweep(
 	return Hit.miss()
 
 
+## The motor's whole collide-and-slide in one native call, when this body can run one (see [DotFpsPhysicsBody]):
+## [code]DotSimFpsBody.move_slide[/code]'s answer, or empty to run it in script. [param hulls] are extra solid boxes when [param has_hulls].
+func native_slide(
+	_from: Vector3, _velocity: Vector3, _motion: Vector3, _height: float,
+	_mode: int, _flag: bool, _tun: PackedFloat64Array, _has_hulls: bool = false, _hulls: Array = []
+) -> PackedFloat64Array:
+	return PackedFloat64Array()
+
+
 ## The node a [member Hit.collider_id] names, or null when this body's ids are not engine instance ids.
 func collider_node(_id: int) -> Node3D:
 	return null
