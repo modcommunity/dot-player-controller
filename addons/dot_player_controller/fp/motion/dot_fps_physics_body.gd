@@ -29,7 +29,7 @@ var _queries: int = 0
 ## dot-sim's native body ([code]DotSimFpsBody[/code], the [code]motor[/code] module): the same sweep, rest contact and
 ## overlap, rounded the same way, so its answers are this script's to the bit (dot-sim's motor parity suite proves it over
 ## recorded input streams). Used when the extension is loaded, [member native_enabled] is on and [member profile] is off;
-## on the web, or with no library installed, this script answers. Nothing else changes: the motor above stays in script.
+## on the web, or with no library installed, this script answers. The motor's collide-and-slide runs there too ([method native_slide]).
 const NATIVE_CLASS := &"DotSimFpsBody"
 
 ## Whether the native body is used when present (a game's cvar; a suite turns it off to compare).
@@ -67,6 +67,25 @@ func _nat() -> Object:
 		_native.set_exclude(exclude)
 		_native_exclude = exclude.duplicate()
 	return _native
+
+
+## Slides run natively in one call ([method native_slide]), for a suite's check.
+static var native_slides: int = 0
+
+
+func native_slide(
+	from: Vector3, velocity: Vector3, motion: Vector3, height: float,
+	mode: int, flag: bool, tun: PackedFloat64Array, has_hulls: bool = false, hulls: Array = []
+) -> PackedFloat64Array:
+	if _space == null and not revalidate():
+		return PackedFloat64Array()
+	var nat := _nat()
+	if nat == null:
+		return PackedFloat64Array()
+	native_slides += 1
+	return nat.move_slide(
+		from, velocity, motion, height, mode, flag, tun, has_hulls, hulls, collision_mask, pass_out_mask
+	)
 
 
 ## Whether this body's queries have gone to the native body (a suite's check).

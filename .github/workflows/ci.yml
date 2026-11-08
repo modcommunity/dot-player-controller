@@ -30,7 +30,7 @@ jobs:
     # the motor replays recorded input streams at 22/33/66 Hz in script and native and every tick must
     # be identical, then thousands of random queries are compared field by field. Web clients run the
     # script and native ones the library, and they play together, so this is a gate, not a benchmark.
-    # dot-sim is resolved from .gitignore like every addon; its native-motor-2 branch is used while it
+    # dot-sim is resolved from .gitignore like every addon; its native-motor-3 branch is used while it
     # exists (the work lands there first), else main. DOT_SIM_REQUIRE_NATIVE is set only when the
     # checkout has the motor module, so a dot-sim without it is a skip rather than a red build.
     motor-native-parity:
@@ -62,7 +62,7 @@ jobs:
             - name: Use dot-sim's motor branch while it exists
               run: |
                   cd project/.deps/dot-sim
-                  if git fetch --quiet --depth 1 origin native-motor-2 2>/dev/null; then git checkout --quiet FETCH_HEAD; fi
+                  if git fetch --quiet --depth 1 origin native-motor-3 2>/dev/null; then git checkout --quiet FETCH_HEAD; fi
                   if grep -q DotSimFpsBody addons/dot_sim/dot_sim.gd; then echo "DOT_SIM_REQUIRE_NATIVE=1" >> "$GITHUB_ENV"; fi
                   git log --oneline -1
             - uses: dtolnay/rust-toolchain@stable
