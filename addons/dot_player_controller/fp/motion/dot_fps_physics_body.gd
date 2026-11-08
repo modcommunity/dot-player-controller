@@ -15,8 +15,82 @@ var _shape_params := PhysicsShapeQueryParameters3D.new()
 var _ray_params := PhysicsRayQueryParameters3D.new()
 var _ray_exclude: Array[RID] = []
 
-## Queries run this tick. Reset by the controller; watched by the server operator.
-var query_count: int = 0
+## Queries run this tick. Reset by the controller; watched by the server operator. Counts the native body's too.
+var query_count: int:
+	get:
+		return _queries + (_native.query_count() if _native != null else 0)
+	set(value):
+		_queries = value
+		if _native != null:
+			_native.set_query_count(0)
+
+var _queries: int = 0
+
+## dot-sim's native body ([code]DotSimFpsBody[/code], the [code]motor[/code] module): the same sweep, rest contact and
+## overlap, rounded the same way, so its answers are this script's to the bit (dot-sim's motor parity suite proves it over
+## recorded input streams). Used when the extension is loaded, [member native_enabled] is on and [member profile] is off;
+## on the web, or with no library installed, this script answers. Nothing else changes: the motor above stays in script.
+const NATIVE_CLASS := &"DotSimFpsBody"
+
+## Whether the native body is used when present (a game's cvar; a suite turns it off to compare).
+static var native_enabled: bool = true
+
+## This body's own switch beside [member native_enabled]: off, it answers in script whatever the game chose.
+var use_native: bool = true
+
+static var _native_known: int = -1
+var _native: Object = null
+var _native_space: PhysicsDirectSpaceState3D = null
+var _native_exclude: Array[RID] = []
+
+
+## Whether dot-sim's native body is loaded and enabled.
+static func native_available() -> bool:
+	if _native_known < 0:
+		_native_known = 1 if ClassDB.class_exists(NATIVE_CLASS) else 0
+	return native_enabled and _native_known == 1
+
+
+## The native body to ask, synced to this one's space and exclusions; null to answer in script.
+func _nat() -> Object:
+	if profile or not use_native or not native_available():
+		return null
+	if _native == null:
+		_native = ClassDB.instantiate(NATIVE_CLASS)
+		_native.set_perf_caches(perf_caches)
+		if _in_tick:
+			_native.begin_tick()
+	if _native_space != _space:
+		_native_space = _space
+		_native.set_space(_space)
+	if exclude != _native_exclude:
+		_native.set_exclude(exclude)
+		_native_exclude = exclude.duplicate()
+	return _native
+
+
+## Whether this body's queries have gone to the native body (a suite's check).
+func uses_native() -> bool:
+	return _native != null
+
+
+## A native answer as a [DotFpsBody.Hit]: empty for a miss, else fraction, normal, point, depth and the collider id in halves.
+static func _hit_of(a: PackedFloat64Array) -> Hit:
+	var h := Hit.new()
+	if a.is_empty():
+		return h
+	h.hit = true
+	h.fraction = a[0]
+	h.normal = Vector3(a[1], a[2], a[3])
+	h.point = Vector3(a[4], a[5], a[6])
+	h.depth = a[7]
+	h.collider_id = int(a[8]) | (int(a[9]) << 32)
+	return h
+
+
+func _perf_caches_changed() -> void:
+	if _native != null:
+		_native.set_perf_caches(perf_caches)
 
 ## Per engine query kind (cast, rest, overlap, ray): calls and microseconds, filled only while [member profile] is on.
 static var profile: bool = false
@@ -186,6 +260,10 @@ func sweep(
 	if _space == null and not revalidate():
 		return result
 
+	var nat := _nat()
+	if nat != null:
+		return _hit_of(nat.sweep(from, motion, height, radius, collision_mask, pass_out_mask))
+
 	# A zero-length sweep has no direction to report a normal against, and the
 	# physics server's answer for one is not meaningful. The motor never needs it —
 	# it uses overlaps() for that question.
@@ -193,7 +271,7 @@ func sweep(
 		return result
 
 	_configure(height, radius)
-	query_count += 1
+	_queries += 1
 
 	# The cast sees players' hulls too, unless the capsule starts inside one: a convex cast starting overlapping another
 	# reports it at fraction 0 and two players on one spot held each other still. Inside one, their layers are left out until apart.
@@ -336,7 +414,7 @@ func _downward_ray_fallback(
 		query.exclude = exclude
 		_ray_exclude = exclude.duplicate()
 	query.collide_with_areas = false
-	query_count += 1
+	_queries += 1
 
 	var contact: Dictionary = _q_ray(query)
 
@@ -405,6 +483,12 @@ func _blocking_rest_contact(
 
 
 func rest_contact(at: Vector3, height: float, radius: float) -> Hit:
+	if _space == null and not revalidate():
+		return Hit.miss()
+	var nat := _nat()
+	if nat != null:
+		return _hit_of(nat.rest_contact(at, height, radius, collision_mask, pass_out_mask))
+
 	var result := _raw_rest_contact(at, height, radius)
 
 	if not result.hit:
@@ -435,7 +519,7 @@ func _turn_round_flipped(result: Hit, at: Vector3, height: float, radius: float)
 
 	result.normal = -result.normal
 	result.depth = reversed_depth
-	flipped_normals += 1
+	_flipped += 1
 
 
 ## How clear the capsule has to be, moved out along a reversed normal, for the reversal
@@ -445,8 +529,14 @@ const FLIP_CHECK_CLEARANCE := 0.0005
 
 ## Rest contacts whose normal came back pointing into the surface and was turned round.
 ## See [method rest_contact]. Non-zero on any imported map with sloped brushes; a count
-## that is zero where riders are depenetrating every tick is this check not running.
-var flipped_normals: int = 0
+## that is zero where riders are depenetrating every tick is this check not running. Counts the native body's too.
+var flipped_normals: int:
+	get:
+		return _flipped + (_native.flipped_normals() if _native != null else 0)
+	set(value):
+		_flipped = value
+
+var _flipped: int = 0
 
 
 ## One [method PhysicsDirectSpaceState3D.get_rest_info], taken as the engine reports it.
@@ -467,7 +557,7 @@ func _raw_rest_or_null(at: Vector3, height: float, radius: float) -> Hit:
 	# Answered from the last result when the shape, place and filters are identical; a hit is rebuilt so callers may edit what they are given.
 	var memo := perf_caches and _in_tick
 	if memo and _rm_valid and at == _rm_at and height == _rm_height and radius == _rm_radius and _cfg_mask == _rm_mask:
-		rest_memo_hits += 1
+		_memo_hits += 1
 		if _rm_normal == Vector3.ZERO:
 			return null
 		var again := Hit.new()
@@ -498,8 +588,14 @@ func _raw_rest_or_null(at: Vector3, height: float, radius: float) -> Hit:
 	return found
 
 
-## Rest queries answered from [method _raw_rest_or_null]'s memo. Diagnostic.
-var rest_memo_hits: int = 0
+## Rest queries answered from [method _raw_rest_or_null]'s memo (the native body's included). Diagnostic.
+var rest_memo_hits: int:
+	get:
+		return _memo_hits + (_native.rest_memo_hits() if _native != null else 0)
+	set(value):
+		_memo_hits = value
+
+var _memo_hits: int = 0
 
 var _in_tick: bool = false
 var _rm_valid: bool = false
@@ -516,16 +612,20 @@ var _rm_depth := 0.0
 func begin_tick() -> void:
 	_in_tick = true
 	_rm_valid = false
+	if _native != null:
+		_native.begin_tick()
 
 
 func end_tick() -> void:
 	_in_tick = false
 	_rm_valid = false
+	if _native != null:
+		_native.end_tick()
 
 
 ## The query itself; see [method _raw_rest_or_null].
 func _raw_rest_query(at: Vector3, height: float, radius: float) -> Hit:
-	query_count += 1
+	_queries += 1
 
 	_shape_params.transform = Transform3D(Basis.IDENTITY, at)
 	_shape_params.motion = Vector3.ZERO
@@ -565,8 +665,12 @@ func overlaps(at: Vector3, height: float, radius: float) -> bool:
 	if _space == null and not revalidate():
 		return false
 
+	var nat := _nat()
+	if nat != null:
+		return nat.overlaps(at, height, radius, collision_mask, pass_out_mask)
+
 	_configure(height, radius)
-	query_count += 1
+	_queries += 1
 
 	_shape_params.transform = Transform3D(Basis.IDENTITY, at)
 	_shape_params.motion = Vector3.ZERO
