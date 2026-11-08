@@ -4,7 +4,7 @@ extends "res://examples/fps_controller_selftest_base.gd"
 ## [method movement_selftest] tests the simulation; this tests the wiring around it (reference resolution, collider following the crouch, fixed-step accumulator, drive modes, registry, the noclip safety gate), which a host game touches first.
 ## Scenes are built in code so a failure names a line and an editor change cannot silently pass.
 
-const CHECKS := 120
+const CHECKS := 124
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
@@ -597,6 +597,19 @@ func _test_teleport_and_signals() -> void:
 	_check_near(controller.state.yaw, 45.0, 0.001, "teleport sets the view angles")
 	_check( controller.state.velocity == Vector3.ZERO, "and discards velocity, so a fall does not carry through it" )
 	_check( (controller.get_parent() as Node3D).global_position.y == 4.0, "and moves the node immediately, not on the next tick" )
+
+	_check(controller.state.airborne_seconds() == 0.0 and controller.get_stats_facts()["airborne"], "teleport starts an airborne stretch at zero")
+	for i in range(30):
+		controller.apply_command(_command())
+		controller.simulate_tick(i + 1, STEP)
+	var air_facts := controller.get_stats_facts()
+	_check_near(air_facts["airborne_seconds"], 30.0 * STEP, 0.001, "airborne seconds count simulated ticks")
+	_check(air_facts["airborne"] and not air_facts["wall_running"], "facts report airborne, not wall running")
+	controller.begin_replay()
+	controller.apply_command(_command())
+	controller.simulate_tick(31, STEP)
+	controller.end_replay()
+	_check_near(controller.state.airborne_seconds(), 30.0 * STEP, 0.001, "a replayed tick does not add airborne time")
 
 	for i in range(240):
 		controller.apply_command(_command())
