@@ -138,6 +138,23 @@ func sweep(from: Vector3, motion: Vector3, height: float, radius: float) -> Hit:
 	return other
 
 
+## The inner body's native slide with this tick's hulls as boxes; the counters come back to this body's.
+func native_slide(
+	from: Vector3, velocity: Vector3, motion: Vector3, height: float,
+	mode: int, flag: bool, tun: PackedFloat64Array, has_hulls: bool = false, _hulls: Array = []
+) -> PackedFloat64Array:
+	# A hull body wrapping another one keeps the script path: one box list per call.
+	if inner == null or has_hulls:
+		return PackedFloat64Array()
+	_sync()
+	var r := inner.native_slide(from, velocity, motion, height, mode, flag, tun, true, _hull_list())
+	if r.size() >= 13:
+		world_touches += int(r[10])
+		hull_blocks += int(r[11])
+		hull_stops += int(r[12])
+	return r
+
+
 func overlaps(at: Vector3, height: float, radius: float) -> bool:
 	if inner == null:
 		return false

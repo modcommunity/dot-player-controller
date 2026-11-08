@@ -4,13 +4,15 @@ extends "res://examples/motor_determinism_selftest.gd"
 ## since web clients run the script and native clients and servers the library, and they play together.
 ## Two levels: the motor replays recorded input streams (the determinism world's twelve scenarios at 22, 33 and 66 Hz) once
 ## in script and once native, and every tick's state must be identical; then thousands of random sweeps, rest contacts and
-## overlaps, inside and outside motor ticks, are asked of both and every field compared exactly.
+## overlaps, inside and outside motor ticks, are asked of both and every field compared exactly. The replays run again with
+## other players' hulls ([DotFpsHullBody]), and random slides compare the native collide-and-slide with the script's.
 ## With no library it says the native half was skipped and passes; [code]DOT_SIM_REQUIRE_NATIVE=1[/code] (CI) fails instead.
 ## Run: [code]godot --headless --path . res://examples/motor_native_parity.tscn[/code]
 
 const RATES := [22, 33, 66]
 const RUN_TICKS := 900
 const FUZZ := 6000
+const SLIDE_FUZZ := 3000
 
 const SCENARIOS := [
 	["floor_run", Vector3(0, 0.05, 0), Vector3.ZERO, 1, 1],
@@ -38,40 +40,129 @@ func _record(seed: int, plan: int, ticks: int) -> Array[DotFpsCommand]:
 	return out
 
 
-## Every tick's state, as exact bytes, plus the body's counters at the end.
-func _replay(native: bool, sc: Array, stream: Array[DotFpsCommand], step: float) -> Dictionary:
+## Standing hulls on a lattice over the test world, so most scenarios meet one: the same list every call.
+func _hull_boxes() -> Array:
+	var out := []
+	for x in range(-30, 31, 6):
+		for z in range(-30, 31, 6):
+			out.append(AABB(Vector3(x + 1.6, 0.0, z + 2.3), Vector3(0.8, 1.8, 0.8)))
+	return out
+
+
+## Every tick's state, as exact bytes, plus the body's and motor's counters at the end.
+func _replay(native: bool, sc: Array, stream: Array[DotFpsCommand], step: float, hulls: bool = false) -> Dictionary:
 	DotFpsPhysicsBody.native_enabled = native
-	var body := DotFpsPhysicsBody.for_node(self)
-	body.pass_out_mask = 1 << 3
+	var physics := DotFpsPhysicsBody.for_node(self)
+	physics.pass_out_mask = 1 << 3
+	var body: DotFpsBody = physics
+	var boxes := _hull_boxes()
+	if hulls:
+		body = DotFpsHullBody.new().wrap(physics, func() -> Array: return boxes)
 	var motor := DotFpsMotor.new(_tunables(), body)
 	var s := DotFpsState.new()
 	s.position = sc[1]
 	s.velocity = sc[2]
 	s.mode = DotFpsState.Mode.AIR
 	var ticks: Array[PackedByteArray] = []
+	var slides_before := DotFpsPhysicsBody.native_slides
+	var stops_before := DotFpsHullBody.hull_stops
 	for c in stream:
 		motor.simulate(s, c, step)
 		ticks.append(var_to_bytes([s.position, s.velocity, s.mode, s.move_flags(), s.ground_normal, s.crouch_held, s.wall_jump_count]))
-	return {"ticks": ticks, "queries": body.query_count, "flipped": body.flipped_normals, "memo": body.rest_memo_hits, "end": s.position, "native": body.uses_native()}
+	var counters := [physics.query_count, physics.flipped_normals, physics.rest_memo_hits, body.hull_blocks, body.world_touches,
+		DotFpsHullBody.hull_stops - stops_before, motor.stuck_ticks, motor.duplicate_plane_ticks, motor.crease_leg_ticks, motor.split_leg_ticks]
+	return {"ticks": ticks, "counters": counters, "end": s.position, "native": physics.uses_native(),
+		"slides": DotFpsPhysicsBody.native_slides - slides_before}
 
 
 func _motor_runs() -> void:
-	for hz: int in RATES:
-		var step := 1.0 / float(hz)
-		for sc: Array in SCENARIOS:
-			var stream := _record(sc[3], sc[4], RUN_TICKS)
-			var a := _replay(false, sc, stream, step)
-			var b := _replay(true, sc, stream, step)
-			var first := -1
-			for i in range(a["ticks"].size()):
-				if a["ticks"][i] != b["ticks"][i]:
-					first = i
-					break
-			var label := "%s @%d Hz" % [sc[0], hz]
-			print("  %-20s end %s  queries %d/%d  flipped %d  memo %d" % [label, a["end"], a["queries"], b["queries"], a["flipped"], a["memo"]])
-			_check(b["native"] and not a["native"], label + ": the native run used the library, the script run did not")
-			_check(first < 0, label + ": every one of %d ticks identical%s" % [RUN_TICKS, "" if first < 0 else " (first differs at tick %d)" % first])
-			_check(a["queries"] == b["queries"] and a["flipped"] == b["flipped"] and a["memo"] == b["memo"], label + ": the same queries, flips and memo hits")
+	for hulls: bool in [false, true]:
+		for hz: int in RATES:
+			var step := 1.0 / float(hz)
+			for sc: Array in SCENARIOS:
+				var stream := _record(sc[3], sc[4], RUN_TICKS)
+				var a := _replay(false, sc, stream, step, hulls)
+				var b := _replay(true, sc, stream, step, hulls)
+				var first := -1
+				for i in range(a["ticks"].size()):
+					if a["ticks"][i] != b["ticks"][i]:
+						first = i
+						break
+				var label := "%s @%d Hz%s" % [sc[0], hz, " +hulls" if hulls else ""]
+				print("  %-27s end %s  counters %s" % [label, a["end"], a["counters"]])
+				_check(b["native"] and not a["native"] and b["slides"] > 0 and a["slides"] == 0, label + ": the native run slid in the library, the script run did not")
+				_check(first < 0, label + ": every one of %d ticks identical%s" % [RUN_TICKS, "" if first < 0 else " (first differs at tick %d)" % first])
+				_check(a["counters"] == b["counters"], label + ": the same queries, flips, memo hits, hull and slide counters %s" % [b["counters"]])
+	_sections += 1
+
+
+## Random single moves, both ways a motor slides (a walk's slide-and-step and [method DotFpsMotor.move_and_slide]),
+## from anywhere in the world with and without hulls, in and out of ticks: script and library must agree to the bit.
+func _slide_fuzz() -> void:
+	DotFpsPhysicsBody.native_enabled = true
+	var boxes := _hull_boxes()
+	var hull_fn := func() -> Array: return boxes
+	var sp := DotFpsPhysicsBody.for_node(self)
+	sp.use_native = false
+	var np := DotFpsPhysicsBody.for_node(self)
+	var sh := DotFpsHullBody.new().wrap(sp, hull_fn)
+	var nh := DotFpsHullBody.new().wrap(np, hull_fn)
+	var pairs := [
+		[DotFpsMotor.new(_tunables(), sp), DotFpsMotor.new(_tunables(), np)],
+		[DotFpsMotor.new(_tunables(), sh), DotFpsMotor.new(_tunables(), nh)],
+	]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20261109
+	var mismatched := 0
+	var slides_before := DotFpsPhysicsBody.native_slides
+	for i in range(SLIDE_FUZZ):
+		var pair: Array = pairs[i % 2]
+		var on := rng.randf() < 0.5
+		for m: DotFpsMotor in pair:
+			m.body.perf_caches = on
+			m.body.pass_out_mask = 1 << 3 if i % 5 == 0 else 0
+		var pos := Vector3(rng.randf_range(-31, 31), rng.randf_range(0.0, 3.0), rng.randf_range(-31, 31))
+		if rng.randf() < 0.5:
+			pos.y = rng.randf_range(0.0, 0.1)
+		if i % 2 == 1 and rng.randf() < 0.6:
+			# Beside a hull, so a short move meets it.
+			var near: AABB = boxes[rng.randi() % boxes.size()]
+			pos = near.get_center() + Vector3(rng.randf_range(-1.4, 1.4), 0.0, rng.randf_range(-1.4, 1.4))
+			pos.y = rng.randf_range(0.0, 0.1)
+		var vel := Vector3(rng.randf_range(-14, 14), rng.randf_range(-12, 8), rng.randf_range(-14, 14))
+		var delta: float = 1.0 / float(RATES[rng.randi() % RATES.size()])
+		var walk := rng.randf() < 0.6
+		var flag := rng.randf() < 0.7
+		var grounded := rng.randf() < 0.7
+		var tick := rng.randf() < 0.7
+		var out := []
+		for m: DotFpsMotor in pair:
+			var s := DotFpsState.new()
+			s.position = pos
+			s.velocity = vel
+			s.mode = DotFpsState.Mode.GROUND if grounded else DotFpsState.Mode.AIR
+			if tick:
+				m.body.begin_tick()
+			if walk:
+				m._move(s, delta, not flag)
+			else:
+				m.move_and_slide(s, delta, flag)
+			if tick:
+				m.body.end_tick()
+			out.append(var_to_bytes([s.position, s.velocity, s.mode, s.ground_normal, m.body.hull_blocks, m.body.world_touches,
+				m.stuck_ticks, m.duplicate_plane_ticks, m.crease_leg_ticks, m.split_leg_ticks]))
+		if out[0] != out[1]:
+			mismatched += 1
+			if mismatched <= 5:
+				print("  slide mismatch at %d: at %s v %s dt %s walk %s flag %s hulls %s" % [i, pos, vel, delta, walk, flag, i % 2])
+	var native_slides := DotFpsPhysicsBody.native_slides - slides_before
+	print("  %d slides, %d native; hull blocks %d/%d, world touches %d/%d, crease legs %d/%d, split legs %d/%d" % [
+		SLIDE_FUZZ, native_slides, sh.hull_blocks, nh.hull_blocks, sh.world_touches, nh.world_touches,
+		pairs[0][0].crease_leg_ticks + pairs[1][0].crease_leg_ticks, pairs[0][1].crease_leg_ticks + pairs[1][1].crease_leg_ticks,
+		pairs[0][0].split_leg_ticks + pairs[1][0].split_leg_ticks, pairs[0][1].split_leg_ticks + pairs[1][1].split_leg_ticks])
+	_check(native_slides > SLIDE_FUZZ / 2, "the slide fuzz ran the library's slide")
+	_check(mismatched == 0, "every slide answered identically (%d differed)" % mismatched)
+	_check(sh.hull_blocks > 50 and sh.world_touches > 50, "the slide fuzz met hulls and the world often enough to mean anything")
 	_sections += 1
 
 
@@ -161,7 +252,7 @@ func _query_fuzz() -> void:
 func _run() -> void:
 	print("dot-player-controller motor native parity")
 	var loaded := DotFpsPhysicsBody.native_available()
-	var expected := 2
+	var expected := 3
 	if not loaded:
 		print("  dot-sim's motor module is not loaded: the native half is skipped")
 		if OS.get_environment("DOT_SIM_REQUIRE_NATIVE") == "1":
@@ -173,6 +264,7 @@ func _run() -> void:
 		await get_tree().physics_frame
 		_motor_runs()
 		_query_fuzz()
+		_slide_fuzz()
 	DotFpsPhysicsBody.native_enabled = true
 	print("%d passed, %d failed" % [_passed, _failed])
 	print("%d of %d sections ran to their last line" % [_sections, expected])
