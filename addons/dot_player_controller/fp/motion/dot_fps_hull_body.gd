@@ -85,10 +85,17 @@ func _hull_list() -> Array:
 	return _boxes
 
 
+## perf-native-motor-1 research: inner (map body) sweep/overlap/rest calls and microseconds incl. its GDScript.
+static var inner_prof := PackedInt64Array([0, 0, 0, 0, 0, 0])
+
+
 func sweep(from: Vector3, motion: Vector3, height: float, radius: float) -> Hit:
 	if inner != null:
 		_sync()
+	var t_in := Time.get_ticks_usec()
 	var world: Hit = inner.sweep(from, motion, height, radius) if inner != null else Hit.miss()
+	inner_prof[0] += 1
+	inner_prof[1] += Time.get_ticks_usec() - t_in
 	if world.hit:
 		world_touches += 1
 	var boxes := _hull_list()
@@ -142,14 +149,22 @@ func overlaps(at: Vector3, height: float, radius: float) -> bool:
 	if inner == null:
 		return false
 	_sync()
-	return inner.overlaps(at, height, radius)
+	var t_in := Time.get_ticks_usec()
+	var r := inner.overlaps(at, height, radius)
+	inner_prof[2] += 1
+	inner_prof[3] += Time.get_ticks_usec() - t_in
+	return r
 
 
 func rest_contact(at: Vector3, height: float, radius: float) -> Hit:
 	if inner == null:
 		return Hit.miss()
 	_sync()
-	return inner.rest_contact(at, height, radius)
+	var t_in := Time.get_ticks_usec()
+	var r := inner.rest_contact(at, height, radius)
+	inner_prof[4] += 1
+	inner_prof[5] += Time.get_ticks_usec() - t_in
+	return r
 
 
 func describe() -> Dictionary:

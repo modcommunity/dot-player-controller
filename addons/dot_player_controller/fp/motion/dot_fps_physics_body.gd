@@ -22,6 +22,29 @@ var query_count: int = 0
 static var profile: bool = false
 static var prof := PackedInt64Array([0, 0, 0, 0, 0, 0, 0, 0])
 
+## perf-native-motor-1 research: per (query kind, motor caller) calls and engine microseconds. Only while [member profile_callers] is on (debug builds: uses get_stack()).
+static var profile_callers: bool = false
+static var callers := {}
+
+
+static func _attr(kind: String, usec: int) -> void:
+	if not profile_callers:
+		return
+	var st := get_stack()
+	var names := PackedStringArray()
+	for fr: Dictionary in st:
+		var src: String = fr.get("source", "")
+		if src.ends_with("dot_fps_physics_body.gd") or src.ends_with("arena_solid_body.gd") or src.ends_with("dot_fps_hull_body.gd"):
+			continue
+		names.append("%s:%s" % [src.get_file().get_basename().replace("dot_fps_", ""), fr.get("function", "?")])
+		if names.size() >= 2:
+			break
+	var key := "%s @ %s" % [kind, " < ".join(names)]
+	var row: PackedInt64Array = callers.get(key, PackedInt64Array([0, 0]))
+	row[0] += 1
+	row[1] += usec
+	callers[key] = row
+
 
 func _q_cast() -> PackedFloat32Array:
 	if not profile:
@@ -29,7 +52,9 @@ func _q_cast() -> PackedFloat32Array:
 	var t := Time.get_ticks_usec()
 	var r := _space.cast_motion(_shape_params)
 	prof[0] += 1
-	prof[1] += Time.get_ticks_usec() - t
+	var dt := Time.get_ticks_usec() - t
+	prof[1] += dt
+	_attr("cast", dt)
 	return r
 
 
@@ -39,7 +64,9 @@ func _q_rest() -> Dictionary:
 	var t := Time.get_ticks_usec()
 	var r := _space.get_rest_info(_shape_params)
 	prof[2] += 1
-	prof[3] += Time.get_ticks_usec() - t
+	var dt := Time.get_ticks_usec() - t
+	prof[3] += dt
+	_attr("rest", dt)
 	return r
 
 
@@ -49,7 +76,9 @@ func _q_overlap() -> Array[Dictionary]:
 	var t := Time.get_ticks_usec()
 	var r := _space.intersect_shape(_shape_params, 1)
 	prof[4] += 1
-	prof[5] += Time.get_ticks_usec() - t
+	var dt := Time.get_ticks_usec() - t
+	prof[5] += dt
+	_attr("overlap", dt)
 	return r
 
 
@@ -59,7 +88,9 @@ func _q_ray(query: PhysicsRayQueryParameters3D) -> Dictionary:
 	var t := Time.get_ticks_usec()
 	var r := _space.intersect_ray(query)
 	prof[6] += 1
-	prof[7] += Time.get_ticks_usec() - t
+	var dt := Time.get_ticks_usec() - t
+	prof[7] += dt
+	_attr("ray", dt)
 	return r
 
 
