@@ -6,11 +6,11 @@ extends "res://examples/movement_selftest_wallalign.gd"
 ##
 ## Most tests run on [DotFpsFlatBody] so a failure has one possible cause, the [DotFpsMotor]; [method _test_physics_body] covers the real implementation.
 
-const CHECKS := 441
+const CHECKS := 465
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
-const SECTIONS := 59
+const SECTIONS := 60
 
 
 func _ready() -> void:
@@ -90,6 +90,7 @@ func _run_physics() -> void:
 	await _test_physics_slope_landing()
 	await _test_physics_wall_hug_speed()
 	await _test_idle_parity()
+	await _test_settled_floor_removed()
 
 
 func _finish() -> void:
