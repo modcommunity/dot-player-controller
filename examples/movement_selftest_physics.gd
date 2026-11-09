@@ -768,3 +768,48 @@ func _test_idle_parity() -> void:
 	_check(fs.position.y < -2.0 and rs.position.y < -2.0, "a floor removed under an idle body wakes it and it falls", "%.2f and %.2f" % [fs.position.y, rs.position.y])
 	world.queue_free()
 	_done()
+
+
+## A settled player must notice a floor that goes away: the ground-reuse stamp and the idle fast path both skip ground
+## queries, so each way of losing the floor is run with both, for a body that stood still and one that just stopped walking.
+func _test_settled_floor_removed() -> void:
+	_section("settled floor removed")
+	for removal in ["shape disabled", "layer cleared", "body freed"]:
+		for walked in [false, true]:
+			for idle_fast in [false, true]:
+				var parts := _build_parity_world()
+				var world: Node3D = parts[0]
+				var pad_shape: CollisionShape3D = parts[1]
+				var body := DotFpsPhysicsBody.new()
+				if not body.bind(world).ok:
+					_check(false, "the body binds")
+					world.queue_free()
+					continue
+				await get_tree().physics_frame
+				await get_tree().physics_frame
+				var motor := DotFpsMotor.new(_tunables(), body)
+				motor.idle_fast_path = idle_fast
+				var st := DotFpsState.new()
+				st.mode = DotFpsState.Mode.GROUND
+				for i in range(120):
+					motor.simulate(st, _command(1.0 if walked and i < 30 else 0.0), STEP)
+				var label := "%s, %s, idle fast path %s" % [removal, "stopped walking" if walked else "standing", idle_fast]
+				_check(st.mode == DotFpsState.Mode.GROUND, "%s: settled before the floor goes" % label)
+				var pad: Node = pad_shape.get_parent()
+				match removal:
+					"shape disabled":
+						pad_shape.disabled = true
+					"layer cleared":
+						(pad as CollisionObject3D).collision_layer = 0
+					"body freed":
+						pad.free()
+				await get_tree().physics_frame
+				await get_tree().physics_frame
+				var left_at := -1
+				for i in range(60):
+					motor.simulate(st, _command(), STEP)
+					if left_at < 0 and st.mode != DotFpsState.Mode.GROUND:
+						left_at = i
+				_check(left_at >= 0 and left_at <= 2, "%s: leaves the ground within 3 ticks of the floor going" % label, "tick %d, y %.2f" % [left_at, st.position.y])
+				world.queue_free()
+	_done()
