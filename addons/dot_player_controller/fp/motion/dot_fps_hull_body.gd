@@ -12,6 +12,9 @@ static var hull_stops: int = 0
 var inner: DotFpsBody = null
 var hulls_fn: Callable = Callable()
 
+## dot-sim's hull world the native tick gathers from instead of [member hulls_fn] ([method set_hull_world]), or null.
+var hull_world: Object = null
+
 var _boxes: Array = []
 var _gathered: bool = false
 var _in_tick: bool = false
@@ -54,6 +57,11 @@ func wrap(map_body: DotFpsBody, hulls: Callable) -> DotFpsBody:
 		exclude = map_body.exclude
 		pass_out_mask = map_body.pass_out_mask
 	return self
+
+
+func set_hull_world(world: Object, slot: int) -> bool:
+	hull_world = world if inner != null and inner.set_hull_world(world, slot) else null
+	return hull_world != null
 
 
 func begin_tick() -> void:
@@ -168,12 +176,16 @@ func native_tick(
 	if inner == null or hulls_mode != 0:
 		return PackedFloat64Array()
 	_sync()
-	var boxes := _hull_list()
 	var r: PackedFloat64Array
 	if _in_tick and _sent:
 		r = inner.native_tick(phase, state, tun, 2, [])
 	else:
-		r = inner.native_tick(phase, state, tun, 1, boxes)
+		# The hull world gathers natively while the game's players' loop runs; otherwise, or for a
+		# lag-compensated mover, it answers empty and the script gathers.
+		if hull_world != null and not (_in_tick and _gathered):
+			r = inner.native_tick(phase, state, tun, 3, [])
+		if r.is_empty():
+			r = inner.native_tick(phase, state, tun, 1, _hull_list())
 	if r.size() >= 23:
 		_sent = _in_tick
 		world_touches += int(r[20])

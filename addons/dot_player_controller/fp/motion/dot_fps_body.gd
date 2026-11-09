@@ -62,11 +62,18 @@ func native_slide(
 
 ## Half of a motor tick in one native call (see [member DotFpsMotor.native_tick]): [param phase] 0 is
 ## [code]DotSimFpsBody.motor_pre[/code], 1 [code]motor_post[/code], 2 the whole tick [code]motor_tick[/code]; their answer, or empty to run it in script.
-## [param hulls_mode] 0 none, 1 [param hulls] as boxes, 2 the boxes the last call this tick sent.
+## [param hulls_mode] 0 none, 1 [param hulls] as boxes, 2 the boxes the last call this tick sent,
+## 3 the ones dot-sim's hull world gathers ([method set_hull_world]; empty when it has no answer).
 func native_tick(
 	_phase: int, _state: PackedFloat64Array, _tun: PackedFloat64Array, _hulls_mode: int = 0, _hulls: Array = []
 ) -> PackedFloat64Array:
 	return PackedFloat64Array()
+
+
+## Lets [method native_tick]'s hulls mode 3 gather from dot-sim's [code]DotSimHullWorld[/code] [param world] as roster slot [param slot] (null: none).
+## False when this body cannot (no native body, or a library without the hull world).
+func set_hull_world(_world: Object, _slot: int) -> bool:
+	return false
 
 
 ## The node a [member Hit.collider_id] names, or null when this body's ids are not engine instance ids.

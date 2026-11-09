@@ -57,6 +57,7 @@ func _nat() -> Object:
 		return null
 	if _native == null:
 		_native = ClassDB.instantiate(NATIVE_CLASS)
+		_hull_world_sent = false
 		_native.set_perf_caches(perf_caches)
 		if _in_tick:
 			_native.begin_tick()
@@ -116,6 +117,30 @@ static func native_full_available() -> bool:
 	return _full_known == 1 and native_tick_available()
 
 
+## Whether [method set_hull_world] can work: the loaded library has dot-sim's hull world.
+static func native_hull_world_available() -> bool:
+	if _world_known < 0:
+		_world_known = 1 if ClassDB.class_exists(&"DotSimHullWorld") and ClassDB.class_has_method(NATIVE_CLASS, &"set_hull_world") else 0
+	return _world_known == 1 and native_full_available()
+
+
+static var _world_known: int = -1
+var _hull_world: Object = null
+var _hull_slot: int = -1
+## [member _hull_world] has reached the current native body.
+var _hull_world_sent: bool = false
+
+
+func set_hull_world(world: Object, slot: int) -> bool:
+	if world != null and not native_hull_world_available():
+		world = null
+	if world != _hull_world or slot != _hull_slot:
+		_hull_world = world
+		_hull_slot = slot
+		_hull_world_sent = false
+	return world != null
+
+
 func native_tick(
 	phase: int, state: PackedFloat64Array, tun: PackedFloat64Array, hulls_mode: int = 0, hulls: Array = []
 ) -> PackedFloat64Array:
@@ -126,6 +151,12 @@ func native_tick(
 	var nat := _nat()
 	if nat == null:
 		return PackedFloat64Array()
+	if hulls_mode == 3:
+		if _hull_world == null:
+			return PackedFloat64Array()
+		if not _hull_world_sent:
+			nat.set_hull_world(_hull_world, _hull_slot)
+			_hull_world_sent = true
 	native_ticks += 1
 	if phase == 0:
 		return nat.motor_pre(state, tun, hulls_mode, hulls, collision_mask, pass_out_mask)
