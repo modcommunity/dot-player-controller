@@ -73,5 +73,5 @@ jobs:
               run: bash project/.deps/dot-sim/ci/install.sh --platform linux-x86_64
             - name: The parity suite, native loaded
               env:
-                  SUITES: examples/motor_native_parity examples/motor_determinism_selftest
+                  SUITES: examples/motor_native_parity examples/motor_native_tick_parity examples/motor_determinism_selftest
               run: dot-ci/scripts/check.sh project

@@ -110,15 +110,21 @@ func _simulate(
 		state.previous_buttons = command.buttons
 		return
 
-	# Before the ground is categorised, because a probe starting inside geometry reports nothing and the whole tick is built on that answer.
-	# Unconditional: the case it exists for is a player in AIR on a ramp, which every earlier guard excluded.
-	_depenetrate(state, _height(state))
-	if profile:
-		_lap(2)
+	# The tick's start and end in dot-sim when it can (see [member native_tick]); empty to run them here.
+	var tick_tun := _native_tick_tun(state)
+	var start_settled := false
+	if tick_tun.is_empty() or not _native_tick_pre(state, tick_tun):
+		# Before the ground is categorised, because a probe starting inside geometry reports nothing and the whole tick is built on that answer.
+		# Unconditional: the case it exists for is a player in AIR on a ramp, which every earlier guard excluded.
+		_depenetrate(state, _height(state))
+		if profile:
+			_lap(2)
 
-	var start_settled := _reuse_rest(state)
-	if not start_settled:
-		start_settled = _categorise_ground_settled(state)
+		start_settled = _reuse_rest(state)
+		if not start_settled:
+			start_settled = _categorise_ground_settled(state)
+	else:
+		start_settled = _native_start_settled
 	var start_position := state.position
 	var start_velocity := state.velocity
 	var start_height := _height(state)
@@ -148,6 +154,13 @@ func _simulate(
 	# before friction, because a slide is what decides which friction this tick gets.
 	_update_slide(state, command, delta, jumped or launched)
 	_update_wall_run(state, command, delta, wall, jumped or wall_jumped or launched)
+
+	if (
+		not tick_tun.is_empty() and not state.is_wall_running()
+		and _native_tick_post(state, command, delta, tick_tun, jumped or launched, wall, start_settled, start_position, start_velocity)
+	):
+		state.previous_buttons = command.buttons
+		return
 
 	if state.mode == DotFpsState.Mode.GROUND and not jumped and not launched:
 		_apply_friction(state, delta)
@@ -198,6 +211,118 @@ func _simulate(
 		_lap(8)
 
 	state.previous_buttons = command.buttons
+
+
+## [member native_tick]'s tunables for this tick, or empty when this tick may not run natively.
+func _native_tick_tun(state: DotFpsState) -> PackedFloat64Array:
+	if (
+		not native_tick or profile or surfaces != null or tunables.edge_friction > 1.0
+		or (state.mode != DotFpsState.Mode.GROUND and state.mode != DotFpsState.Mode.AIR)
+	):
+		return PackedFloat64Array()
+	return PackedFloat64Array([
+		tunables.max_slide_iterations, 1.0 if tunables.crease_slide else 0.0, tunables.skin_width,
+		tunables.max_slide_planes, tunables.step_height, tunables.radius, tunables.max_slope_radians(),
+		tunables.jump_velocity(), 1.0 if tunables.ground_snap else 0.0, tunables.ground_snap_distance,
+		tunables.crest_launch_speed_scale, tunables.max_speed, tunables.stop_speed, tunables.air_friction,
+		tunables.max_velocity, tunables.backward_speed_scale, tunables.max_air_wish_speed,
+		tunables.wall_slide_speed, tunables.wall_run_vertical_damping,
+	])
+
+
+## The start ground check's answer from [method _native_tick_pre].
+var _native_start_settled := false
+
+
+## [method _depenetrate], [method _reuse_rest] and [method _categorise_ground_settled] in one native call; false (nothing
+## written) when the body cannot. The script decides everything [method _reuse_rest] compares but the position, which the
+## native depenetration may move.
+func _native_tick_pre(state: DotFpsState, tun: PackedFloat64Array) -> bool:
+	var height := _height(state)
+	var rest_ok := (
+		_rest_valid and state.mode == DotFpsState.Mode.GROUND
+		and state.velocity == _rest_velocity
+		and state.ground_normal == _rest_normal and state.ground_id == _rest_ground_id
+		and state.surface == _rest_surface and height == _rest_height
+		and _rest_ground_unmoved()
+	)
+	var p := state.position
+	var v := state.velocity
+	var n := state.ground_normal
+	var id := state.ground_id
+	var r := body.native_tick(0, PackedFloat64Array([
+		p.x, p.y, p.z, v.x, v.y, v.z, n.x, n.y, n.z, state.mode, id & 0xFFFFFFFF, id >> 32, height,
+		1.0 if rest_ok else 0.0, _rest_position.x, _rest_position.y, _rest_position.z,
+	]), tun)
+	if r.size() < 23:
+		return false
+	_rest_valid = false
+	var flags := _native_tick_apply(state, r)
+	_native_start_settled = flags & 1 != 0
+	if flags & 2 != 0:
+		reused_ground_ticks += 1
+	return true
+
+
+## From friction to the end ground check in one native call; false (nothing written) when the body cannot.
+func _native_tick_post(
+	state: DotFpsState, command: DotFpsCommand, delta: float, tun: PackedFloat64Array, jumped: bool,
+	wall: DotFpsBody.Hit, start_settled: bool, start_position: Vector3, start_velocity: Vector3
+) -> bool:
+	if state.mode != DotFpsState.Mode.GROUND and state.mode != DotFpsState.Mode.AIR:
+		return false
+	var sliding := state.is_sliding()
+	var buttons := command.buttons if state.sprinting else command.buttons & ~DotFpsCommand.BUTTON_SPRINT
+	var flags := (
+		(1 if jumped else 0) | (2 if sliding else 0) | (4 if _effects.deny_move else 0)
+		| (8 if _wall_slide_ok(state, command, wall) else 0) | (16 if start_settled else 0)
+	)
+	var p := state.position
+	var v := state.velocity
+	var n := state.ground_normal
+	var id := state.ground_id
+	var push := _surface.push
+	var r := body.native_tick(1, PackedFloat64Array([
+		p.x, p.y, p.z, v.x, v.y, v.z, n.x, n.y, n.z, state.mode, id & 0xFFFFFFFF, id >> 32, _height(state),
+		delta, flags, command.move.x, command.move.y, state.yaw,
+		tunables.speed_for(buttons, load_fraction), _effects.max_speed, _surface.max_speed_scale,
+		tunables.slide_friction if sliding else tunables.friction, _surface.friction_scale, _effects.friction,
+		(tunables.slide_accelerate if sliding else tunables.accelerate) * _surface.accelerate_scale * _effects.accelerate,
+		tunables.air_accelerate * _effects.air_accelerate,
+		push.x, push.y, push.z, tunables.gravity * _effects.gravity,
+		start_position.x, start_position.y, start_position.z, start_velocity.x, start_velocity.y, start_velocity.z,
+	]), tun)
+	if r.size() < 23:
+		return false
+	var out := _native_tick_apply(state, r)
+	if out & 16 != 0:
+		DotLog.warn(CHANNEL, "velocity became non-finite; reset to zero")
+	if out & 8 != 0:
+		settled_ground_ticks += 1
+		_stamp_rest(state)
+	else:
+		_rest_valid = false
+	return true
+
+
+## Writes a native tick half's answer to [param state] and the counters; returns its flags.
+func _native_tick_apply(state: DotFpsState, r: PackedFloat64Array) -> int:
+	state.position = Vector3(r[0], r[1], r[2])
+	state.velocity = Vector3(r[3], r[4], r[5])
+	state.ground_normal = Vector3(r[6], r[7], r[8])
+	state.mode = int(r[9])
+	state.ground_id = int(r[10]) | (int(r[11]) << 32)
+	var flags := int(r[12])
+	if flags & 4 != 0:
+		state.surface = &""
+	depenetrated_ticks += int(r[13])
+	embedded_ticks += int(r[14])
+	lifted_ticks += int(r[15])
+	stuck_ticks += int(r[16])
+	duplicate_plane_ticks += int(r[17])
+	crease_leg_ticks += int(r[18])
+	split_leg_ticks += int(r[19])
+	return flags
 
 
 ## The whole tick for a walker standing still on the floor the last tick proved, or false (nothing written) when anything differs.

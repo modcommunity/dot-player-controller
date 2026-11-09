@@ -15,6 +15,8 @@ var hulls_fn: Callable = Callable()
 var _boxes: Array = []
 var _gathered: bool = false
 var _in_tick: bool = false
+## This tick's box list has reached the native body (a slide or a tick half), so the next tick half sends mode 2.
+var _sent: bool = false
 var _near := DotFpsFlatBody.new()
 var _near_index := PackedInt32Array()
 
@@ -57,6 +59,7 @@ func wrap(map_body: DotFpsBody, hulls: Callable) -> DotFpsBody:
 func begin_tick() -> void:
 	_in_tick = true
 	_gathered = false
+	_sent = false
 	_coarse_valid = false
 	if inner != null:
 		inner.begin_tick()
@@ -65,6 +68,7 @@ func begin_tick() -> void:
 func end_tick() -> void:
 	_in_tick = false
 	_gathered = false
+	_sent = false
 	_coarse_valid = false
 	if inner != null:
 		inner.end_tick()
@@ -81,6 +85,7 @@ func _hull_list() -> Array:
 		return _boxes
 	_boxes = hulls_fn.call() if hulls_fn.is_valid() else []
 	_gathered = _in_tick
+	_sent = false
 	_coarse_valid = false
 	return _boxes
 
@@ -149,9 +154,31 @@ func native_slide(
 	_sync()
 	var r := inner.native_slide(from, velocity, motion, height, mode, flag, tun, true, _hull_list())
 	if r.size() >= 13:
+		_sent = _in_tick
 		world_touches += int(r[10])
 		hull_blocks += int(r[11])
 		hull_stops += int(r[12])
+	return r
+
+
+## The inner body's native tick half with this tick's hulls; sent once a tick, then reused natively.
+func native_tick(
+	phase: int, state: PackedFloat64Array, tun: PackedFloat64Array, hulls_mode: int = 0, _hulls: Array = []
+) -> PackedFloat64Array:
+	if inner == null or hulls_mode != 0:
+		return PackedFloat64Array()
+	_sync()
+	var boxes := _hull_list()
+	var r: PackedFloat64Array
+	if _in_tick and _sent:
+		r = inner.native_tick(phase, state, tun, 2, [])
+	else:
+		r = inner.native_tick(phase, state, tun, 1, boxes)
+	if r.size() >= 23:
+		_sent = _in_tick
+		world_touches += int(r[20])
+		hull_blocks += int(r[21])
+		hull_stops += int(r[22])
 	return r
 
 
