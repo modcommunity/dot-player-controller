@@ -146,7 +146,8 @@ var perf_caches: bool = true:
 ## gravity or push, clamp, slide, ground check) in dot-sim's native motor ([code]DotSimFpsBody.motor_pre/motor_post[/code]),
 ## when the body can ([method DotFpsBody.native_tick]); the jump, wall and slide moves between stay here. Same bits as this
 ## script (examples/motor_native_tick_parity.gd). Off by default: a game turns it on; a body with no library answers in script.
-## Not used with [member surfaces], edge friction above 1, [member profile], or a wall run's end of tick.
+## Not used with [member surfaces], edge friction above 1, or a wall run's end of tick. With [member profile] on, the native
+## start is charged to the depenetrate phase and the native end to the move phase.
 static var native_tick: bool = false
 
 ## Per-phase microseconds of [method DotFpsMotor.simulate], filled only while [member profile] is on (a micro-benchmark and the server operator's debug flag). Index names are in [constant PHASES].
