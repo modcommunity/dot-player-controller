@@ -76,6 +76,11 @@ func apply_external_velocity(dv: Vector3) -> void:
 	_external_velocity += dv
 
 
+## Whether a push is waiting for the next tick's start (a game that began the tick earlier sees it came late).
+func has_external_velocity() -> bool:
+	return _external_velocity != Vector3.ZERO
+
+
 func _consume_external_velocity(s: DotFpsState, replaying: bool) -> void:
 	if _external_velocity == Vector3.ZERO or replaying:
 		return

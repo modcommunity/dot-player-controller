@@ -70,6 +70,17 @@ func native_tick(
 	return PackedFloat64Array()
 
 
+## This body's native body for a tick in dot-sim's batch ([DotFpsMotorBatch]), with its hulls mode and masks written at [param at]
+## in [param meta]; null when the tick must run through [method native_tick] or in script. [param hulls_mode] is a wrapper's ask.
+func native_batch(_meta: PackedInt64Array, _at: int, _hulls_mode: int = 0) -> Object:
+	return null
+
+
+## A batched tick of this body ran: what [method native_tick] would have counted.
+func native_batch_done(_world_touches: int, _hull_blocks: int, _hull_stops: int) -> void:
+	pass
+
+
 ## Lets [method native_tick]'s hulls mode 3 gather from dot-sim's [code]DotSimHullWorld[/code] [param world] as roster slot [param slot] (null: none).
 ## False when this body cannot (no native body, or a library without the hull world).
 func set_hull_world(_world: Object, _slot: int) -> bool:

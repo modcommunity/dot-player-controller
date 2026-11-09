@@ -622,8 +622,19 @@ func apply_command(command: DotFpsCommand) -> void:
 ## Advances the simulation by one tick.
 ## [param delta] must be the fixed tick duration, not a frame time. Under dot-net it runs on the server and the predicting client with the identical command.
 func simulate_tick(tick: int, delta: float) -> void:
-	if not _started or drive == Drive.REMOTE:
+	if not begin_tick(tick, delta):
 		return
+	motor.simulate(state, current_command, delta)
+	if DotFpsMotor.profile:
+		_lap_ctrl(2, 0)
+	end_tick(tick, delta)
+
+
+## [method simulate_tick] up to the motor, for a game that runs the motor itself ([DotFpsMotorBatch]); false when the tick does not run.
+## After the motor's tick the game calls [method end_tick].
+func begin_tick(tick: int, delta: float) -> bool:
+	if not _started or drive == Drive.REMOTE:
+		return false
 
 	var prof_t := Time.get_ticks_usec() if DotFpsMotor.profile else 0
 
@@ -647,16 +658,16 @@ func simulate_tick(tick: int, delta: float) -> void:
 	_position_two_back = _previous_state.position
 	_previous_state.copy_from(state)
 
-	var before_mode := state.mode
-	var before_y := state.position.y
-	var before_fall := state.velocity.y
-	var before_crouched := state.is_crouched()
-	var before_surface := state.surface
-	var before_sliding := state.is_sliding()
-	var before_launches := motor.launches
-	var before_dashes := motor.dashes
-	var before_wall_running := state.is_wall_running()
-	var before_wall_jumps := motor.wall_jumps
+	_before_mode = state.mode
+	_before_y = state.position.y
+	_before_fall = state.velocity.y
+	_before_crouched = state.is_crouched()
+	_before_surface = state.surface
+	_before_sliding = state.is_sliding()
+	_before_launches = motor.launches
+	_before_dashes = motor.dashes
+	_before_wall_running = state.is_wall_running()
+	_before_wall_jumps = motor.wall_jumps
 
 	if prof_t != 0:
 		_lap_ctrl(0, prof_t)
@@ -670,32 +681,49 @@ func simulate_tick(tick: int, delta: float) -> void:
 
 	if prof_t != 0:
 		_lap_ctrl(1, prof_t)
-	motor.simulate(state, current_command, delta)
+	return true
+
+
+var _before_mode: DotFpsState.Mode = DotFpsState.Mode.GROUND
+var _before_y: float = 0.0
+var _before_fall: float = 0.0
+var _before_crouched: bool = false
+var _before_surface: StringName = &""
+var _before_sliding: bool = false
+var _before_launches: int = 0
+var _before_dashes: int = 0
+var _before_wall_running: bool = false
+var _before_wall_jumps: int = 0
+
+
+## [method simulate_tick] after the motor: publishes the tick and emits what changed.
+func end_tick(tick: int, delta: float) -> void:
+	var prof_t := Time.get_ticks_usec() if DotFpsMotor.profile else 0
 	if prof_t != 0:
-		_lap_ctrl(2, prof_t)
+		_lap_ctrl_at = prof_t
 
 	_tick = tick
-	_publish(before_mode, before_y, before_fall)
+	_publish(_before_mode, _before_y, _before_fall)
 	if prof_t != 0:
 		_lap_ctrl(3, prof_t)
-	_report_changes(before_crouched, before_surface)
+	_report_changes(_before_crouched, _before_surface)
 	if prof_t != 0:
 		_lap_ctrl(4, prof_t)
 
 	if not _replaying:
-		if state.is_sliding() != before_sliding:
+		if state.is_sliding() != _before_sliding:
 			slide_changed.emit(state.is_sliding())
 
-		if motor.launches != before_launches:
+		if motor.launches != _before_launches:
 			launched.emit()
 
-		if motor.dashes != before_dashes:
+		if motor.dashes != _before_dashes:
 			dashed.emit()
 
-		if motor.wall_jumps != before_wall_jumps:
+		if motor.wall_jumps != _before_wall_jumps:
 			wall_jumped.emit()
 
-		if state.is_wall_running() != before_wall_running:
+		if state.is_wall_running() != _before_wall_running:
 			wall_run_changed.emit(state.is_wall_running())
 
 		if motor.view_turn != 0.0:
