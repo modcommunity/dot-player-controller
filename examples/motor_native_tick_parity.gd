@@ -130,8 +130,34 @@ func _tick_runs() -> void:
 	_sections += 1
 
 
+## The motor keeps its native tunables arrays between ticks; a changed value or a swapped resource must rebuild both.
+func _tun_cache_check() -> void:
+	var was := DotFpsMotor.native_tick
+	DotFpsMotor.native_tick = true
+	var t := _tunables()
+	var motor := DotFpsMotor.new(t, DotFpsPhysicsBody.for_node(self))
+	var s := DotFpsState.new()
+	s.mode = DotFpsState.Mode.GROUND
+	var tick := motor._native_tick_tun(s)
+	var full := motor._native_full_tun(tick)
+	_check(motor._native_tick_tun(s) == tick and motor._native_full_tun(tick) == full,
+		"the native tunables arrays are reused while nothing changes")
+	t.max_speed += 1.0
+	t.wall_jump_up_speed += 1.0
+	var tick2 := motor._native_tick_tun(s)
+	var full2 := motor._native_full_tun(tick2)
+	_check(tick2[11] == t.max_speed and full2[11] == t.max_speed and full2[full2.size() - 1] == t.wall_jump_up_speed,
+		"a changed tunable rebuilds the tick and full arrays (max_speed %s, wall_jump_up_speed %s)" % [tick2[11], full2[-1]])
+	var other := _tunables()
+	other.max_speed = t.max_speed + 2.0
+	motor.tunables = other
+	_check(motor._native_tick_tun(s)[11] == other.max_speed, "swapped tunables rebuild the arrays")
+	DotFpsMotor.native_tick = was
+
+
 func _run() -> void:
 	print("dot-player-controller motor native tick parity")
+	_tun_cache_check()
 	var loaded := DotFpsPhysicsBody.native_available()
 	var expected := 1
 	if not loaded or not ClassDB.class_has_method(DotFpsPhysicsBody.NATIVE_CLASS, &"motor_tick"):

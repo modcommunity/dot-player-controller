@@ -229,6 +229,23 @@ func _native_tick_tun(state: DotFpsState) -> PackedFloat64Array:
 		or (state.mode != DotFpsState.Mode.GROUND and state.mode != DotFpsState.Mode.AIR)
 	):
 		return PackedFloat64Array()
+	if tunables.get_instance_id() != _tun_for or tunables.revision != _tun_rev:
+		_tun_cache = _build_tick_tun()
+		_tun_full_cache = PackedFloat64Array()
+		_tun_for = tunables.get_instance_id()
+		_tun_rev = tunables.revision
+	return _tun_cache
+
+
+## [method _native_tick_tun]'s array and [method _native_full_tun]'s, kept until [member tunables] or one of its values
+## changes ([member DotFpsTunables.revision]): rebuilding them was a per-tick copy of about 75 values per player.
+var _tun_cache := PackedFloat64Array()
+var _tun_full_cache := PackedFloat64Array()
+var _tun_for := 0
+var _tun_rev := -1
+
+
+func _build_tick_tun() -> PackedFloat64Array:
 	return PackedFloat64Array([
 		tunables.max_slide_iterations, 1.0 if tunables.crease_slide else 0.0, tunables.skin_width,
 		tunables.max_slide_planes, tunables.step_height, tunables.radius, tunables.max_slope_radians(),
@@ -280,6 +297,8 @@ func _native_rest_ok(state: DotFpsState, height: float) -> bool:
 
 ## The move tunables [method _native_tick_full] sends after the tick ones.
 func _native_full_tun(tun: PackedFloat64Array) -> PackedFloat64Array:
+	if not _tun_full_cache.is_empty():
+		return _tun_full_cache
 	var t := tunables
 	var full := tun.duplicate()
 	full.append_array(PackedFloat64Array([
@@ -298,6 +317,7 @@ func _native_full_tun(tun: PackedFloat64Array) -> PackedFloat64Array:
 		t.wall_jump_max_per_wall, t.wall_jump_max_per_air, t.wall_jump_look_blend, t.wall_jump_push_speed,
 		t.wall_jump_up_speed,
 	]))
+	_tun_full_cache = full
 	return full
 
 
