@@ -83,9 +83,13 @@ func native_slide(
 	if nat == null:
 		return PackedFloat64Array()
 	native_slides += 1
-	return nat.move_slide(
+	var t := DotFrameCost.now()
+	var before: int = nat.query_count() if t > 0 else 0
+	var r: PackedFloat64Array = nat.move_slide(
 		from, velocity, motion, height, mode, flag, tun, has_hulls, hulls, collision_mask, pass_out_mask
 	)
+	_charge_native(&"native_slide", t, before)
+	return r
 
 
 ## Whether this body's queries have gone to the native body (a suite's check).
@@ -114,46 +118,58 @@ func _perf_caches_changed() -> void:
 ## Per engine query kind (cast, rest, overlap, ray): calls and microseconds, filled only while [member profile] is on.
 static var profile: bool = false
 static var prof := PackedInt64Array([0, 0, 0, 0, 0, 0, 0, 0])
+## The system queries are charged to in DotFrameCost (dot-profiler's query table) while it is enabled.
+static var cost_system: StringName = &"p_controller"
 
 
 func _q_cast() -> PackedFloat32Array:
-	if not profile:
+	if not profile and not DotFrameCost.enabled:
 		return _space.cast_motion(_shape_params)
 	var t := Time.get_ticks_usec()
 	var r := _space.cast_motion(_shape_params)
-	prof[0] += 1
-	prof[1] += Time.get_ticks_usec() - t
+	_charge(0, DotSpaceQuery.CAST, t)
 	return r
 
 
 func _q_rest() -> Dictionary:
-	if not profile:
+	if not profile and not DotFrameCost.enabled:
 		return _space.get_rest_info(_shape_params)
 	var t := Time.get_ticks_usec()
 	var r := _space.get_rest_info(_shape_params)
-	prof[2] += 1
-	prof[3] += Time.get_ticks_usec() - t
+	_charge(2, DotSpaceQuery.REST, t)
 	return r
 
 
 func _q_overlap() -> Array[Dictionary]:
-	if not profile:
+	if not profile and not DotFrameCost.enabled:
 		return _space.intersect_shape(_shape_params, 1)
 	var t := Time.get_ticks_usec()
 	var r := _space.intersect_shape(_shape_params, 1)
-	prof[4] += 1
-	prof[5] += Time.get_ticks_usec() - t
+	_charge(4, DotSpaceQuery.SHAPE, t)
 	return r
 
 
 func _q_ray(query: PhysicsRayQueryParameters3D) -> Dictionary:
-	if not profile:
+	if not profile and not DotFrameCost.enabled:
 		return _space.intersect_ray(query)
 	var t := Time.get_ticks_usec()
 	var r := _space.intersect_ray(query)
-	prof[6] += 1
-	prof[7] += Time.get_ticks_usec() - t
+	_charge(6, DotSpaceQuery.RAY, t)
 	return r
+
+
+## Times one script-path query into [member prof] and DotFrameCost, whichever is on.
+static func _charge(i: int, kind: StringName, t: int) -> void:
+	if profile:
+		prof[i] += 1
+		prof[i + 1] += Time.get_ticks_usec() - t
+	DotFrameCost.add_query(cost_system, kind, t)
+
+
+## Charges a native call to DotFrameCost as [param kind], counting the engine queries it ran; a no-op while off.
+func _charge_native(kind: StringName, t: int, before: int) -> void:
+	if t > 0:
+		DotFrameCost.add_query(cost_system, kind, t, maxi(_native.query_count() - before, 1))
 
 
 static func for_node(node: Node3D) -> DotFpsPhysicsBody:
@@ -281,7 +297,11 @@ func sweep(
 
 	var nat := _nat()
 	if nat != null:
-		return _hit_of(nat.sweep(from, motion, height, radius, collision_mask, pass_out_mask))
+		var t := DotFrameCost.now()
+		var before: int = nat.query_count() if t > 0 else 0
+		var h := _hit_of(nat.sweep(from, motion, height, radius, collision_mask, pass_out_mask))
+		_charge_native(&"native_sweep", t, before)
+		return h
 
 	# A zero-length sweep has no direction to report a normal against, and the
 	# physics server's answer for one is not meaningful. The motor never needs it —
@@ -506,7 +526,11 @@ func rest_contact(at: Vector3, height: float, radius: float) -> Hit:
 		return Hit.miss()
 	var nat := _nat()
 	if nat != null:
-		return _hit_of(nat.rest_contact(at, height, radius, collision_mask, pass_out_mask))
+		var t := DotFrameCost.now()
+		var before: int = nat.query_count() if t > 0 else 0
+		var h := _hit_of(nat.rest_contact(at, height, radius, collision_mask, pass_out_mask))
+		_charge_native(&"native_rest", t, before)
+		return h
 
 	var result := _raw_rest_contact(at, height, radius)
 
