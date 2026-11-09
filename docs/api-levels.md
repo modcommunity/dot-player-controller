@@ -16,3 +16,4 @@ Moved from `dot_player_controller_api.gd`; one line per level, newest last. The 
 - 12: DotPlayerController.apply_external_velocity(dv): a push (tornado, explosion) the controller keeps.
 - 13: DotPlayerViewRules.first_person_body (BODY_OFF, BODY_LEGS, BODY_FULL), own_body(choice) and the `mp_fp_body` cvar (off, legs and feet, whole body; default legs). `mp_fp_legs` is still accepted by set_cvar but no longer registered; `first_person_legs` reads the new value.
 - 14: `DotFpsMotor.idle_fast_path`, `idle_full_every` and `idle_ticks`: a cheap tick for a settled, idle, grounded body that wakes on any change (docs/collision.md).
+- 15: `DotFpsPhysicsBody.cost_system`: while dot-core's `DotFrameCost` is enabled (dot-core level 30), every script-path query and each native slide, sweep and rest call is charged to it by kind, so dot-profiler's query table shows the controller's collision work.
