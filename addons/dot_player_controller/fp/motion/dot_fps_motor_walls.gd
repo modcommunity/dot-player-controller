@@ -438,7 +438,12 @@ func _wall_run_vertical(state: DotFpsState, delta: float) -> void:
 ## Whether an airborne player is sliding down a wall this tick: falling, beside a wall, and
 ## either pushing into it or done running on it (so a run that ends decays into a slide).
 func _wall_slides(state: DotFpsState, command: DotFpsCommand, wall: DotFpsBody.Hit) -> bool:
-	if tunables.wall_slide_speed <= 0.0 or wall == null or state.velocity.y >= 0.0:
+	return state.velocity.y < 0.0 and _wall_slide_ok(state, command, wall)
+
+
+## [method _wall_slides] without the falling test, which the native tick end makes after gravity itself.
+func _wall_slide_ok(state: DotFpsState, command: DotFpsCommand, wall: DotFpsBody.Hit) -> bool:
+	if tunables.wall_slide_speed <= 0.0 or wall == null:
 		return false
 
 	if state.mode != DotFpsState.Mode.AIR or state.is_wall_running():
