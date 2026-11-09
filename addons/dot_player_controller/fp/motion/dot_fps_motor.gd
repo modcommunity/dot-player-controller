@@ -112,6 +112,11 @@ func _simulate(
 
 	# The tick's start and end in dot-sim when it can (see [member native_tick]); empty to run them here.
 	var tick_tun := _native_tick_tun(state)
+	if not tick_tun.is_empty() and native_full and _native_tick_full(state, command, delta, tick_tun):
+		if profile:
+			_lap(7)
+		state.previous_buttons = command.buttons
+		return
 	var start_settled := false
 	if tick_tun.is_empty() or not _native_tick_pre(state, tick_tun):
 		# Before the ground is categorised, because a probe starting inside geometry reports nothing and the whole tick is built on that answer.
@@ -243,13 +248,7 @@ var _native_start_settled := false
 ## native depenetration may move.
 func _native_tick_pre(state: DotFpsState, tun: PackedFloat64Array) -> bool:
 	var height := _height(state)
-	var rest_ok := (
-		_rest_valid and state.mode == DotFpsState.Mode.GROUND
-		and state.velocity == _rest_velocity
-		and state.ground_normal == _rest_normal and state.ground_id == _rest_ground_id
-		and state.surface == _rest_surface and height == _rest_height
-		and _rest_ground_unmoved()
-	)
+	var rest_ok := _native_rest_ok(state, height)
 	var p := state.position
 	var v := state.velocity
 	var n := state.ground_normal
@@ -265,6 +264,103 @@ func _native_tick_pre(state: DotFpsState, tun: PackedFloat64Array) -> bool:
 	_native_start_settled = flags & 1 != 0
 	if flags & 2 != 0:
 		reused_ground_ticks += 1
+	return true
+
+
+## Whether [method _reuse_rest] may reuse the last rest, for the native start: all it compares but the position.
+func _native_rest_ok(state: DotFpsState, height: float) -> bool:
+	return (
+		_rest_valid and state.mode == DotFpsState.Mode.GROUND
+		and state.velocity == _rest_velocity
+		and state.ground_normal == _rest_normal and state.ground_id == _rest_ground_id
+		and state.surface == _rest_surface and height == _rest_height
+		and _rest_ground_unmoved()
+	)
+
+
+## The move tunables [method _native_tick_full] sends after the tick ones.
+func _native_full_tun(tun: PackedFloat64Array) -> PackedFloat64Array:
+	var t := tunables
+	var full := tun.duplicate()
+	full.append_array(PackedFloat64Array([
+		t.can_jump, t.auto_hop, t.jump_buffer_time, t.jump_cooldown, t.coyote_time, t.bhop_speed_cap_scale,
+		t.jump_adds_to_velocity,
+		t.launch_enabled, t.launch_button, t.launch_from_air, t.launch_velocity, t.launch_forward, t.launch_cooldown,
+		t.dash_enabled, t.dash_button, t.dash_from_air, t.dash_speed, t.dash_cooldown, t.dash_lift,
+		t.slide_enabled, t.slide_duration, t.slide_end_speed, t.can_crouch, t.slide_requires_sprint,
+		t.slide_min_speed, t.slide_boost, t.slide_max_speed, t.slide_cooldown,
+		t.friction, t.slide_friction, t.accelerate, t.slide_accelerate,
+		t.wall_run_enabled, t.wall_jump_enabled, t.wall_run_auto, t.wall_run_on_jump, t.wall_run_jump_min_speed,
+		t.wall_run_min_speed, t.wall_max_angle_from_vertical, t.wall_reach, t.wall_run_max_time,
+		t.wall_run_end_speed, t.wall_run_requires_forward, t.wall_run_max_fall_speed,
+		t.wall_run_max_approach_angle, t.wall_run_min_height, t.wall_run_min_length, t.wall_run_cooldown,
+		t.wall_run_jump_max_angle, t.wall_run_turn_view, t.wall_run_turn_view_max_angle,
+		t.wall_jump_max_per_wall, t.wall_jump_max_per_air, t.wall_jump_look_blend, t.wall_jump_push_speed,
+		t.wall_jump_up_speed,
+	]))
+	return full
+
+
+## The whole tick from the start ground check to the end one in one native call: the halves and every move between;
+## false (nothing written) when the body cannot.
+func _native_tick_full(state: DotFpsState, command: DotFpsCommand, delta: float, tun: PackedFloat64Array) -> bool:
+	var height := _height(state)
+	var p := state.position
+	var v := state.velocity
+	var n := state.ground_normal
+	var id := state.ground_id
+	var push := _surface.push
+	var w := state.wall_normal
+	var buttons := command.buttons if state.sprinting else command.buttons & ~DotFpsCommand.BUTTON_SPRINT
+	var effects := (
+		(1 if _effects.deny_move else 0) | (2 if _effects.deny_jump else 0) | (4 if _effects.deny_crouch else 0)
+	)
+	var r := body.native_tick(2, PackedFloat64Array([
+		p.x, p.y, p.z, v.x, v.y, v.z, n.x, n.y, n.z, state.mode, id & 0xFFFFFFFF, id >> 32, height,
+		1.0 if _native_rest_ok(state, height) else 0.0, _rest_position.x, _rest_position.y, _rest_position.z,
+		delta, command.buttons, state.previous_buttons, command.move.x, command.move.y, state.yaw,
+		effects, _effects.jump, tunables.jump_velocity() * _surface.jump_scale * _effects.jump,
+		tunables.speed_for(buttons, load_fraction), _effects.max_speed, _surface.max_speed_scale,
+		_surface.friction_scale, _effects.friction, _surface.accelerate_scale, _effects.accelerate,
+		tunables.air_accelerate * _effects.air_accelerate, push.x, push.y, push.z,
+		tunables.gravity * _effects.gravity,
+		tunables.gravity * tunables.wall_run_gravity_scale * _effects.gravity,
+		state.time_since_jump, state.time_since_grounded, state.time_since_jump_pressed, state.slide_time,
+		state.slide_cooldown_left, state.launch_cooldown_left, state.dash_cooldown_left,
+		state.wall_run_cooldown_left, state.wall_run_time, state.wall_run_spent, state.wall_jump_count,
+		state.wall_jumps_in_air, state.wall_jump_heading, w.x, w.y, w.z,
+	]), _native_full_tun(tun))
+	if r.size() < 45:
+		return false
+	_rest_valid = false
+	var flags := _native_tick_apply(state, r)
+	if flags & 2 != 0:
+		reused_ground_ticks += 1
+	if flags & 16 != 0:
+		DotLog.warn(CHANNEL, "velocity became non-finite; reset to zero")
+	if flags & 8 != 0:
+		settled_ground_ticks += 1
+		_stamp_rest(state)
+	state.time_since_jump = r[23]
+	state.time_since_grounded = r[24]
+	state.time_since_jump_pressed = r[25]
+	state.slide_time = r[26]
+	state.slide_cooldown_left = r[27]
+	state.launch_cooldown_left = r[28]
+	state.dash_cooldown_left = r[29]
+	state.wall_run_cooldown_left = r[30]
+	state.wall_run_time = r[31]
+	state.wall_run_spent = r[32] != 0.0
+	state.wall_jump_count = int(r[33])
+	state.wall_jumps_in_air = int(r[34])
+	state.wall_jump_heading = int(r[35])
+	state.wall_normal = Vector3(r[36], r[37], r[38])
+	view_turn = r[39]
+	slides += int(r[40])
+	launches += int(r[41])
+	dashes += int(r[42])
+	wall_runs += int(r[43])
+	wall_jumps += int(r[44])
 	return true
 
 
