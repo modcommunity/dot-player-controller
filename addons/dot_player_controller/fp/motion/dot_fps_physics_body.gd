@@ -98,6 +98,9 @@ static var native_ticks: int = 0
 ## 1 when the loaded library has the motor tick ([code]motor_pre[/code]; dot-sim releases before it do not), 0 when not, -1 unknown.
 static var _tick_known: int = -1
 
+## 1 when the loaded library has the whole motor tick ([code]motor_tick[/code]), 0 when not, -1 unknown.
+static var _full_known: int = -1
+
 
 ## Whether [method native_tick] can run: the native body is available and its library has the motor tick.
 static func native_tick_available() -> bool:
@@ -106,10 +109,19 @@ static func native_tick_available() -> bool:
 	return _tick_known == 1 and native_available()
 
 
+## Whether [method native_tick] phase 2, the whole tick, can run.
+static func native_full_available() -> bool:
+	if _full_known < 0:
+		_full_known = 1 if ClassDB.class_exists(NATIVE_CLASS) and ClassDB.class_has_method(NATIVE_CLASS, &"motor_tick") else 0
+	return _full_known == 1 and native_tick_available()
+
+
 func native_tick(
 	phase: int, state: PackedFloat64Array, tun: PackedFloat64Array, hulls_mode: int = 0, hulls: Array = []
 ) -> PackedFloat64Array:
-	if not native_tick_available() or (_space == null and not revalidate()):
+	if not native_tick_available() or (phase == 2 and not native_full_available()):
+		return PackedFloat64Array()
+	if _space == null and not revalidate():
 		return PackedFloat64Array()
 	var nat := _nat()
 	if nat == null:
@@ -117,6 +129,8 @@ func native_tick(
 	native_ticks += 1
 	if phase == 0:
 		return nat.motor_pre(state, tun, hulls_mode, hulls, collision_mask, pass_out_mask)
+	if phase == 2:
+		return nat.motor_tick(state, tun, hulls_mode, hulls, collision_mask, pass_out_mask)
 	return nat.motor_post(state, tun, hulls_mode, hulls, collision_mask, pass_out_mask)
 
 

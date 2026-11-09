@@ -150,6 +150,10 @@ var perf_caches: bool = true:
 ## start is charged to the depenetrate phase and the native end to the move phase.
 static var native_tick: bool = false
 
+## With [member native_tick], run the whole tick from the start ground check to the end one in one native call when the
+## library has it ([method DotFpsPhysicsBody.native_full_available]); off runs only the two halves natively.
+static var native_full: bool = true
+
 ## Per-phase microseconds of [method DotFpsMotor.simulate], filled only while [member profile] is on (a micro-benchmark and the server operator's debug flag). Index names are in [constant PHASES].
 static var profile: bool = false
 static var phase_us := PackedInt64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
