@@ -321,6 +321,10 @@ func _native_full_tun(tun: PackedFloat64Array) -> PackedFloat64Array:
 	return full
 
 
+## [method _native_tick_full]'s input, kept and refilled each tick.
+var _full_in := PackedFloat64Array()
+
+
 ## The whole tick from the start ground check to the end one in one native call: the halves and every move between;
 ## false (nothing written) when the body cannot.
 func _native_tick_full(state: DotFpsState, command: DotFpsCommand, delta: float, tun: PackedFloat64Array) -> bool:
@@ -335,21 +339,66 @@ func _native_tick_full(state: DotFpsState, command: DotFpsCommand, delta: float,
 	var effects := (
 		(1 if _effects.deny_move else 0) | (2 if _effects.deny_jump else 0) | (4 if _effects.deny_crouch else 0)
 	)
-	var r := body.native_tick(2, PackedFloat64Array([
-		p.x, p.y, p.z, v.x, v.y, v.z, n.x, n.y, n.z, state.mode, id & 0xFFFFFFFF, id >> 32, height,
-		1.0 if _native_rest_ok(state, height) else 0.0, _rest_position.x, _rest_position.y, _rest_position.z,
-		delta, command.buttons, state.previous_buttons, command.move.x, command.move.y, state.yaw,
-		effects, _effects.jump, tunables.jump_velocity() * _surface.jump_scale * _effects.jump,
-		tunables.speed_for(buttons, load_fraction), _effects.max_speed, _surface.max_speed_scale,
-		_surface.friction_scale, _effects.friction, _surface.accelerate_scale, _effects.accelerate,
-		tunables.air_accelerate * _effects.air_accelerate, push.x, push.y, push.z,
-		tunables.gravity * _effects.gravity,
-		tunables.gravity * tunables.wall_run_gravity_scale * _effects.gravity,
-		state.time_since_jump, state.time_since_grounded, state.time_since_jump_pressed, state.slide_time,
-		state.slide_cooldown_left, state.launch_cooldown_left, state.dash_cooldown_left,
-		state.wall_run_cooldown_left, state.wall_run_time, state.wall_run_spent, state.wall_jump_count,
-		state.wall_jumps_in_air, state.wall_jump_heading, w.x, w.y, w.z,
-	]), _native_full_tun(tun))
+	# Into one kept array set by index: a literal built a Variant Array of every value and converted it, each tick.
+	var a := _full_in
+	if a.size() != 55:
+		a.resize(55)
+	a[0] = p.x
+	a[1] = p.y
+	a[2] = p.z
+	a[3] = v.x
+	a[4] = v.y
+	a[5] = v.z
+	a[6] = n.x
+	a[7] = n.y
+	a[8] = n.z
+	a[9] = state.mode
+	a[10] = id & 0xFFFFFFFF
+	a[11] = id >> 32
+	a[12] = height
+	a[13] = 1.0 if _native_rest_ok(state, height) else 0.0
+	a[14] = _rest_position.x
+	a[15] = _rest_position.y
+	a[16] = _rest_position.z
+	a[17] = delta
+	a[18] = command.buttons
+	a[19] = state.previous_buttons
+	a[20] = command.move.x
+	a[21] = command.move.y
+	a[22] = state.yaw
+	a[23] = effects
+	a[24] = _effects.jump
+	a[25] = tunables.jump_velocity() * _surface.jump_scale * _effects.jump
+	a[26] = tunables.speed_for(buttons, load_fraction)
+	a[27] = _effects.max_speed
+	a[28] = _surface.max_speed_scale
+	a[29] = _surface.friction_scale
+	a[30] = _effects.friction
+	a[31] = _surface.accelerate_scale
+	a[32] = _effects.accelerate
+	a[33] = tunables.air_accelerate * _effects.air_accelerate
+	a[34] = push.x
+	a[35] = push.y
+	a[36] = push.z
+	a[37] = tunables.gravity * _effects.gravity
+	a[38] = tunables.gravity * tunables.wall_run_gravity_scale * _effects.gravity
+	a[39] = state.time_since_jump
+	a[40] = state.time_since_grounded
+	a[41] = state.time_since_jump_pressed
+	a[42] = state.slide_time
+	a[43] = state.slide_cooldown_left
+	a[44] = state.launch_cooldown_left
+	a[45] = state.dash_cooldown_left
+	a[46] = state.wall_run_cooldown_left
+	a[47] = state.wall_run_time
+	a[48] = 1.0 if state.wall_run_spent else 0.0
+	a[49] = state.wall_jump_count
+	a[50] = state.wall_jumps_in_air
+	a[51] = state.wall_jump_heading
+	a[52] = w.x
+	a[53] = w.y
+	a[54] = w.z
+	var r := body.native_tick(2, a, _native_full_tun(tun))
 	if r.size() < 45:
 		return false
 	_rest_valid = false
