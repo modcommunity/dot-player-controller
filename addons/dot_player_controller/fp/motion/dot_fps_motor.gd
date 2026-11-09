@@ -46,15 +46,82 @@ func simulate(
 	if delta <= 0.0:
 		return
 	body.begin_tick()
-	_simulate(state, command, delta)
+	if not _simulate_head(state, command, delta):
+		_simulate_tail(state, command, delta, false)
 	body.end_tick()
 
 
-func _simulate(
+## [method batch_prepare]'s answers: the tick is over, the caller runs [method batch_resume], or the row is filled for dot-sim's batch.
+const BATCH_DONE := 0
+const BATCH_DEFER := 1
+const BATCH_READY := 2
+
+## After a [constant BATCH_READY] answer: the native body and tunables of the row.
+var batch_body: Object = null
+var batch_tun := PackedFloat64Array()
+
+
+## The start of [method simulate] for a tick that may run in dot-sim's batch with other players' ([DotFpsMotorBatch]): everything
+## before the first world query that depends on another player. On [constant BATCH_READY] row [param row] of [param input]
+## (55 values) and [param meta] (3) is filled and [method batch_apply] ends the tick; on [constant BATCH_DEFER]
+## [method batch_resume] does, the same way [method simulate] would have.
+func batch_prepare(
+	state: DotFpsState, command: DotFpsCommand, delta: float, input: PackedFloat64Array, meta: PackedInt64Array, row: int
+) -> int:
+	body.begin_tick()
+	if _simulate_head(state, command, delta):
+		body.end_tick()
+		return BATCH_DONE
+	if profile:
+		_lap(0)
+	_update_crouch(state, command, delta)
+	if profile:
+		_lap(1)
+	# A walker that may take the idle path asks the world its own way: left to the single tick.
+	if profile or (idle_fast_path and _rest_valid and command.move == Vector2.ZERO and command.buttons == 0):
+		return BATCH_DEFER
+	var tick_tun := _native_tick_tun(state)
+	if tick_tun.is_empty() or not native_full:
+		return BATCH_DEFER
+	batch_body = body.native_batch(meta, row * 3)
+	if batch_body == null:
+		return BATCH_DEFER
+	batch_tun = _native_full_tun(tick_tun)
+	_fill_full_in(state, command, delta, input, row * 55)
+	return BATCH_READY
+
+
+## Row [param row] again from the state as it is now (something moved the player after [method batch_prepare]).
+func batch_refill(state: DotFpsState, command: DotFpsCommand, delta: float, input: PackedFloat64Array, row: int) -> void:
+	_fill_full_in(state, command, delta, input, row * 55)
+
+
+## Ends a [constant BATCH_READY] tick with the batch's answer, the 45 values at [param at] in [param out].
+func batch_apply(state: DotFpsState, command: DotFpsCommand, out: PackedFloat64Array, at: int) -> void:
+	var r := out.slice(at, at + 45)
+	body.native_batch_done(int(r[20]), int(r[21]), int(r[22]))
+	_native_full_apply(state, r)
+	state.previous_buttons = command.buttons
+	body.end_tick()
+
+
+## Ends a [constant BATCH_DEFER] tick, or a [constant BATCH_READY] one the batch had no answer for, in this motor.
+func batch_resume(state: DotFpsState, command: DotFpsCommand, delta: float) -> void:
+	_simulate_tail(state, command, delta, true)
+	body.end_tick()
+
+
+## Drops a prepared tick whose player will not tick after all.
+func batch_cancel() -> void:
+	body.end_tick()
+
+
+## The tick up to where a custom mode or noclip ends it (true) or the walker's tick starts (false).
+func _simulate_head(
 	state: DotFpsState,
 	command: DotFpsCommand,
 	delta: float
-) -> void:
+) -> bool:
 	if profile:
 		_lap_at = Time.get_ticks_usec()
 	view_turn = 0.0
@@ -93,18 +160,23 @@ func _simulate(
 
 		custom._simulate(state, command, delta, self)
 		state.previous_buttons = command.buttons
-		return
+		return true
 
 	if state.mode == DotFpsState.Mode.NOCLIP:
 		_simulate_noclip(state, command, delta)
 		state.previous_buttons = command.buttons
-		return
+		return true
+	return false
 
-	if profile:
-		_lap(0)
-	_update_crouch(state, command, delta)
-	if profile:
-		_lap(1)
+
+## The walker's tick; [param crouched] when [method batch_prepare] has already run the crouch.
+func _simulate_tail(state: DotFpsState, command: DotFpsCommand, delta: float, crouched: bool) -> void:
+	if not crouched:
+		if profile:
+			_lap(0)
+		_update_crouch(state, command, delta)
+		if profile:
+			_lap(1)
 
 	if idle_fast_path and _idle_tick(state, command):
 		state.previous_buttons = command.buttons
@@ -328,6 +400,19 @@ var _full_in := PackedFloat64Array()
 ## The whole tick from the start ground check to the end one in one native call: the halves and every move between;
 ## false (nothing written) when the body cannot.
 func _native_tick_full(state: DotFpsState, command: DotFpsCommand, delta: float, tun: PackedFloat64Array) -> bool:
+	var a := _full_in
+	if a.size() != 55:
+		a.resize(55)
+	_fill_full_in(state, command, delta, a, 0)
+	var r := body.native_tick(2, a, _native_full_tun(tun))
+	if r.size() < 45:
+		return false
+	_native_full_apply(state, r)
+	return true
+
+
+## The whole tick's input, 55 values from [param o] in [param a] (set by index: a literal built a Variant Array of every value, each tick).
+func _fill_full_in(state: DotFpsState, command: DotFpsCommand, delta: float, a: PackedFloat64Array, o: int) -> void:
 	var height := _height(state)
 	var p := state.position
 	var v := state.velocity
@@ -339,68 +424,65 @@ func _native_tick_full(state: DotFpsState, command: DotFpsCommand, delta: float,
 	var effects := (
 		(1 if _effects.deny_move else 0) | (2 if _effects.deny_jump else 0) | (4 if _effects.deny_crouch else 0)
 	)
-	# Into one kept array set by index: a literal built a Variant Array of every value and converted it, each tick.
-	var a := _full_in
-	if a.size() != 55:
-		a.resize(55)
-	a[0] = p.x
-	a[1] = p.y
-	a[2] = p.z
-	a[3] = v.x
-	a[4] = v.y
-	a[5] = v.z
-	a[6] = n.x
-	a[7] = n.y
-	a[8] = n.z
-	a[9] = state.mode
-	a[10] = id & 0xFFFFFFFF
-	a[11] = id >> 32
-	a[12] = height
-	a[13] = 1.0 if _native_rest_ok(state, height) else 0.0
-	a[14] = _rest_position.x
-	a[15] = _rest_position.y
-	a[16] = _rest_position.z
-	a[17] = delta
-	a[18] = command.buttons
-	a[19] = state.previous_buttons
-	a[20] = command.move.x
-	a[21] = command.move.y
-	a[22] = state.yaw
-	a[23] = effects
-	a[24] = _effects.jump
-	a[25] = tunables.jump_velocity() * _surface.jump_scale * _effects.jump
-	a[26] = tunables.speed_for(buttons, load_fraction)
-	a[27] = _effects.max_speed
-	a[28] = _surface.max_speed_scale
-	a[29] = _surface.friction_scale
-	a[30] = _effects.friction
-	a[31] = _surface.accelerate_scale
-	a[32] = _effects.accelerate
-	a[33] = tunables.air_accelerate * _effects.air_accelerate
-	a[34] = push.x
-	a[35] = push.y
-	a[36] = push.z
-	a[37] = tunables.gravity * _effects.gravity
-	a[38] = tunables.gravity * tunables.wall_run_gravity_scale * _effects.gravity
-	a[39] = state.time_since_jump
-	a[40] = state.time_since_grounded
-	a[41] = state.time_since_jump_pressed
-	a[42] = state.slide_time
-	a[43] = state.slide_cooldown_left
-	a[44] = state.launch_cooldown_left
-	a[45] = state.dash_cooldown_left
-	a[46] = state.wall_run_cooldown_left
-	a[47] = state.wall_run_time
-	a[48] = 1.0 if state.wall_run_spent else 0.0
-	a[49] = state.wall_jump_count
-	a[50] = state.wall_jumps_in_air
-	a[51] = state.wall_jump_heading
-	a[52] = w.x
-	a[53] = w.y
-	a[54] = w.z
-	var r := body.native_tick(2, a, _native_full_tun(tun))
-	if r.size() < 45:
-		return false
+	a[o + 0] = p.x
+	a[o + 1] = p.y
+	a[o + 2] = p.z
+	a[o + 3] = v.x
+	a[o + 4] = v.y
+	a[o + 5] = v.z
+	a[o + 6] = n.x
+	a[o + 7] = n.y
+	a[o + 8] = n.z
+	a[o + 9] = state.mode
+	a[o + 10] = id & 0xFFFFFFFF
+	a[o + 11] = id >> 32
+	a[o + 12] = height
+	a[o + 13] = 1.0 if _native_rest_ok(state, height) else 0.0
+	a[o + 14] = _rest_position.x
+	a[o + 15] = _rest_position.y
+	a[o + 16] = _rest_position.z
+	a[o + 17] = delta
+	a[o + 18] = command.buttons
+	a[o + 19] = state.previous_buttons
+	a[o + 20] = command.move.x
+	a[o + 21] = command.move.y
+	a[o + 22] = state.yaw
+	a[o + 23] = effects
+	a[o + 24] = _effects.jump
+	a[o + 25] = tunables.jump_velocity() * _surface.jump_scale * _effects.jump
+	a[o + 26] = tunables.speed_for(buttons, load_fraction)
+	a[o + 27] = _effects.max_speed
+	a[o + 28] = _surface.max_speed_scale
+	a[o + 29] = _surface.friction_scale
+	a[o + 30] = _effects.friction
+	a[o + 31] = _surface.accelerate_scale
+	a[o + 32] = _effects.accelerate
+	a[o + 33] = tunables.air_accelerate * _effects.air_accelerate
+	a[o + 34] = push.x
+	a[o + 35] = push.y
+	a[o + 36] = push.z
+	a[o + 37] = tunables.gravity * _effects.gravity
+	a[o + 38] = tunables.gravity * tunables.wall_run_gravity_scale * _effects.gravity
+	a[o + 39] = state.time_since_jump
+	a[o + 40] = state.time_since_grounded
+	a[o + 41] = state.time_since_jump_pressed
+	a[o + 42] = state.slide_time
+	a[o + 43] = state.slide_cooldown_left
+	a[o + 44] = state.launch_cooldown_left
+	a[o + 45] = state.dash_cooldown_left
+	a[o + 46] = state.wall_run_cooldown_left
+	a[o + 47] = state.wall_run_time
+	a[o + 48] = 1.0 if state.wall_run_spent else 0.0
+	a[o + 49] = state.wall_jump_count
+	a[o + 50] = state.wall_jumps_in_air
+	a[o + 51] = state.wall_jump_heading
+	a[o + 52] = w.x
+	a[o + 53] = w.y
+	a[o + 54] = w.z
+
+
+## Writes a whole native tick's 45 values into the state and the counters.
+func _native_full_apply(state: DotFpsState, r: PackedFloat64Array) -> void:
 	_rest_valid = false
 	var flags := _native_tick_apply(state, r)
 	if flags & 2 != 0:
@@ -430,7 +512,6 @@ func _native_tick_full(state: DotFpsState, command: DotFpsCommand, delta: float,
 	dashes += int(r[42])
 	wall_runs += int(r[43])
 	wall_jumps += int(r[44])
-	return true
 
 
 ## From friction to the end ground check in one native call; false (nothing written) when the body cannot.

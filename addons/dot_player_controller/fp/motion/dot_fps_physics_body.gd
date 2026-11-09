@@ -165,6 +165,28 @@ func native_tick(
 	return nat.motor_post(state, tun, hulls_mode, hulls, collision_mask, pass_out_mask)
 
 
+func native_batch(meta: PackedInt64Array, at: int, hulls_mode: int = 0) -> Object:
+	if not native_full_available() or (_space == null and not revalidate()):
+		return null
+	var nat := _nat()
+	if nat == null:
+		return null
+	if hulls_mode == 3:
+		if _hull_world == null:
+			return null
+		if not _hull_world_sent:
+			nat.set_hull_world(_hull_world, _hull_slot)
+			_hull_world_sent = true
+	meta[at] = hulls_mode
+	meta[at + 1] = collision_mask
+	meta[at + 2] = pass_out_mask
+	return nat
+
+
+func native_batch_done(_world_touches: int, _hull_blocks: int, _hull_stops: int) -> void:
+	native_ticks += 1
+
+
 ## Whether this body's queries have gone to the native body (a suite's check).
 func uses_native() -> bool:
 	return _native != null

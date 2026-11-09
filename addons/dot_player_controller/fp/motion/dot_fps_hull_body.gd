@@ -194,6 +194,22 @@ func native_tick(
 	return r
 
 
+## Only with the hull world, which gathers natively: a script gather stays with [method native_tick].
+func native_batch(meta: PackedInt64Array, at: int, hulls_mode: int = 0) -> Object:
+	if inner == null or hulls_mode != 0 or hull_world == null or not _in_tick or _gathered or _sent:
+		return null
+	_sync()
+	return inner.native_batch(meta, at, 3)
+
+
+func native_batch_done(touches: int, blocks: int, stops: int) -> void:
+	_sent = _in_tick
+	world_touches += touches
+	hull_blocks += blocks
+	hull_stops += stops
+	inner.native_batch_done(touches, blocks, stops)
+
+
 func overlaps(at: Vector3, height: float, radius: float) -> bool:
 	if inner == null:
 		return false
