@@ -125,8 +125,9 @@ func _simulate(
 		if profile:
 			_lap(2)
 
-		start_settled = _reuse_rest(state)
-		if not start_settled:
+		# A reused stamp skipped the probe, so it cannot vouch for the end of the tick: a stationary body would re-stamp itself for ever
+		# and never see its floor go. `start_settled` stays false then, the end check runs, and the next tick's start probes again.
+		if not _reuse_rest(state):
 			start_settled = _categorise_ground_settled(state)
 	else:
 		start_settled = _native_start_settled
@@ -278,7 +279,8 @@ func _native_tick_pre(state: DotFpsState, tun: PackedFloat64Array) -> bool:
 		return false
 	_rest_valid = false
 	var flags := _native_tick_apply(state, r)
-	_native_start_settled = flags & 1 != 0
+	# As in [method simulate]: a reused start proves nothing about the end of the tick.
+	_native_start_settled = flags & 1 != 0 and flags & 2 == 0
 	if flags & 2 != 0:
 		reused_ground_ticks += 1
 	return true
