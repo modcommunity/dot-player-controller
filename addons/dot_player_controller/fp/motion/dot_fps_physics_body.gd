@@ -88,6 +88,24 @@ func native_slide(
 	)
 
 
+## Tick halves run natively ([method native_tick]), for a suite's check.
+static var native_ticks: int = 0
+
+
+func native_tick(
+	phase: int, state: PackedFloat64Array, tun: PackedFloat64Array, hulls_mode: int = 0, hulls: Array = []
+) -> PackedFloat64Array:
+	if _space == null and not revalidate():
+		return PackedFloat64Array()
+	var nat := _nat()
+	if nat == null:
+		return PackedFloat64Array()
+	native_ticks += 1
+	if phase == 0:
+		return nat.motor_pre(state, tun, hulls_mode, hulls, collision_mask, pass_out_mask)
+	return nat.motor_post(state, tun, hulls_mode, hulls, collision_mask, pass_out_mask)
+
+
 ## Whether this body's queries have gone to the native body (a suite's check).
 func uses_native() -> bool:
 	return _native != null
