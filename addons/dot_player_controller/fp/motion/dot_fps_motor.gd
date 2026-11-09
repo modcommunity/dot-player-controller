@@ -125,6 +125,8 @@ func _simulate(
 			start_settled = _categorise_ground_settled(state)
 	else:
 		start_settled = _native_start_settled
+		if profile:
+			_lap(2)
 	var start_position := state.position
 	var start_velocity := state.velocity
 	var start_height := _height(state)
@@ -159,6 +161,8 @@ func _simulate(
 		not tick_tun.is_empty() and not state.is_wall_running()
 		and _native_tick_post(state, command, delta, tick_tun, jumped or launched, wall, start_settled, start_position, start_velocity)
 	):
+		if profile:
+			_lap(7)
 		state.previous_buttons = command.buttons
 		return
 
@@ -216,7 +220,7 @@ func _simulate(
 ## [member native_tick]'s tunables for this tick, or empty when this tick may not run natively.
 func _native_tick_tun(state: DotFpsState) -> PackedFloat64Array:
 	if (
-		not native_tick or profile or surfaces != null or tunables.edge_friction > 1.0
+		not native_tick or surfaces != null or tunables.edge_friction > 1.0
 		or (state.mode != DotFpsState.Mode.GROUND and state.mode != DotFpsState.Mode.AIR)
 	):
 		return PackedFloat64Array()

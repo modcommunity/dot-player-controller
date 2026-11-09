@@ -95,11 +95,21 @@ func native_slide(
 ## Tick halves run natively ([method native_tick]), for a suite's check.
 static var native_ticks: int = 0
 
+## 1 when the loaded library has the motor tick ([code]motor_pre[/code]; dot-sim releases before it do not), 0 when not, -1 unknown.
+static var _tick_known: int = -1
+
+
+## Whether [method native_tick] can run: the native body is available and its library has the motor tick.
+static func native_tick_available() -> bool:
+	if _tick_known < 0:
+		_tick_known = 1 if ClassDB.class_exists(NATIVE_CLASS) and ClassDB.class_has_method(NATIVE_CLASS, &"motor_pre") else 0
+	return _tick_known == 1 and native_available()
+
 
 func native_tick(
 	phase: int, state: PackedFloat64Array, tun: PackedFloat64Array, hulls_mode: int = 0, hulls: Array = []
 ) -> PackedFloat64Array:
-	if _space == null and not revalidate():
+	if not native_tick_available() or (_space == null and not revalidate()):
 		return PackedFloat64Array()
 	var nat := _nat()
 	if nat == null:
