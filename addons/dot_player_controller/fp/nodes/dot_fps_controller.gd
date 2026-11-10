@@ -625,7 +625,7 @@ func simulate_tick(tick: int, delta: float) -> void:
 	if not begin_tick(tick, delta):
 		return
 	motor.simulate(state, current_command, delta)
-	if DotFpsMotor.profile:
+	if DotFpsMotor.profile or phase_timers:
 		_lap_ctrl(2, 0)
 	end_tick(tick, delta)
 
@@ -636,7 +636,7 @@ func begin_tick(tick: int, delta: float) -> bool:
 	if not _started or drive == Drive.REMOTE:
 		return false
 
-	var prof_t := Time.get_ticks_usec() if DotFpsMotor.profile else 0
+	var prof_t := Time.get_ticks_usec() if (DotFpsMotor.profile or phase_timers) else 0
 
 	# Re-applied every tick so it cannot be undone by anything that touches the
 	# tunables between ticks.
@@ -698,7 +698,7 @@ var _before_wall_jumps: int = 0
 
 ## [method simulate_tick] after the motor: publishes the tick and emits what changed.
 func end_tick(tick: int, delta: float) -> void:
-	var prof_t := Time.get_ticks_usec() if DotFpsMotor.profile else 0
+	var prof_t := Time.get_ticks_usec() if (DotFpsMotor.profile or phase_timers) else 0
 	if prof_t != 0:
 		_lap_ctrl_at = prof_t
 
@@ -753,6 +753,8 @@ func end_tick(tick: int, delta: float) -> void:
 
 ## Per-phase microseconds of [method simulate_tick] outside the motor, filled only while [member DotFpsMotor.profile] is on: pre (copy, gates), consume+mask, motor, publish, report, signals+stats, post.
 static var phase_us := PackedInt64Array([0, 0, 0, 0, 0, 0, 0, 0])
+## Fills [member phase_us] without [member DotFpsMotor.profile], which also turns the native motor off: the phases of the path players really run.
+static var phase_timers := false
 var _lap_ctrl_at: int = 0
 
 
@@ -829,7 +831,7 @@ func _publish(
 	before_y: float,
 	before_fall: float
 ) -> void:
-	var pt := Time.get_ticks_usec() if DotFpsMotor.profile else 0
+	var pt := Time.get_ticks_usec() if (DotFpsMotor.profile or phase_timers) else 0
 	if _body_node != null:
 		_body_node.global_position = state.position
 	if pt != 0:
