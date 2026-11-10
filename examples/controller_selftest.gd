@@ -3,8 +3,8 @@ extends Node
 ## Exercises dot-player-controller with a stub controller, no physics and no input. Run: [code]godot --headless --path . res://examples/controller_selftest.tscn[/code]
 ## The addon is abstract, so this checks the part that is not: intent edges, the look arithmetic every project rewrites, and the switch handover. The stub is also a worked example of the five methods a subclass overrides.
 
-const SECTIONS := 9
-const CHECKS := 146
+const SECTIONS := 10
+const CHECKS := 158
 
 var _passed := 0
 var _failed := 0
@@ -27,6 +27,7 @@ func _run() -> void:
 	await _test_switch()
 	await _test_handover()
 	_test_rules()
+	_test_slide_preset()
 	_test_hull_body()
 	_test_space_query_audit()
 
@@ -130,6 +131,34 @@ func _stub(id: StringName, under: Node) -> StubController:
 	under.add_child(c)
 	return c
 
+
+
+func _test_slide_preset() -> void:
+	_section("DotFpsSlidePreset matches what the games carried")
+
+	var d := DotFpsTunables.new()
+	_check(not d.slide_enabled, "a slide is off until a game asks")
+
+	# Arena's arena_player_tunables.gd, as it was before the preset moved here.
+	var a := DotFpsTunables.new()
+	DotFpsSlidePreset.apply_run(a)
+	_check(a.slide_enabled and not a.slide_requires_sprint, "the run preset slides with no sprint")
+	_check(is_equal_approx(a.slide_min_speed, 4.1) and is_equal_approx(a.slide_boost, 3.5), "min speed 4.1, boost 3.5")
+	_check(is_equal_approx(a.slide_max_speed, 14.0) and is_equal_approx(a.slide_friction, 0.9), "max speed 14, friction 0.9")
+	_check(is_equal_approx(a.slide_duration, 0.9) and is_equal_approx(a.slide_cooldown, 0.6), "duration 0.9, cooldown 0.6")
+	_check(is_equal_approx(a.slide_accelerate, d.slide_accelerate), "steering stays at the default")
+
+	# Zombie Zone's ZzPlayer.apply_slide, with its ZzConfig defaults (1.5, 10.5, 0.9, 1.0).
+	var z := DotFpsTunables.new()
+	z.max_speed = 6.0
+	DotFpsSlidePreset.apply_sprint(z, true, 1.5, 10.5, 0.9, 1.0)
+	_check(z.slide_enabled and z.slide_requires_sprint, "the sprint preset needs the sprint button")
+	_check(is_equal_approx(z.slide_min_speed, 6.0 * 1.05), "its minimum speed is 5 percent over max_speed")
+	_check(is_equal_approx(z.slide_boost, 1.5) and is_equal_approx(z.slide_max_speed, 10.5), "boost and max speed are the game's")
+	_check(is_equal_approx(z.slide_duration, 0.9) and is_equal_approx(z.slide_cooldown, 1.0), "duration and cooldown too")
+	_check(is_equal_approx(z.slide_friction, d.slide_friction), "friction stays at the default")
+	DotFpsSlidePreset.apply_sprint(z, false, 1.5, 10.5, 0.9, 1.0)
+	_check(not z.slide_enabled, "the game's switch turns it off")
 
 
 func _test_rules() -> void:
