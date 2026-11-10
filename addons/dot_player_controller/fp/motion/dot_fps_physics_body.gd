@@ -144,8 +144,10 @@ func set_hull_world(world: Object, slot: int) -> bool:
 func native_tick(
 	phase: int, state: PackedFloat64Array, tun: PackedFloat64Array, hulls_mode: int = 0, hulls: Array = []
 ) -> PackedFloat64Array:
-	if not native_tick_available() or (phase == 2 and not native_full_available()):
-		return PackedFloat64Array()
+	# The answers once known, read here: the two checks are five script calls a player a tick.
+	if _full_known != 1 or _tick_known != 1 or _native_known != 1 or not native_enabled:
+		if not native_tick_available() or (phase == 2 and not native_full_available()):
+			return PackedFloat64Array()
 	if _space == null and not revalidate():
 		return PackedFloat64Array()
 	var nat := _nat()

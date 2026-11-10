@@ -20,6 +20,8 @@ var _gathered: bool = false
 var _in_tick: bool = false
 ## This tick's box list has reached the native body (a slide or a tick half), so the next tick half sends mode 2.
 var _sent: bool = false
+## Sent where the native tick reads no list (modes 2 and 3), instead of a new Array a player a tick; never written.
+var _no_hulls: Array = []
 var _near := DotFpsFlatBody.new()
 var _near_index := PackedInt32Array()
 
@@ -178,12 +180,12 @@ func native_tick(
 	_sync()
 	var r: PackedFloat64Array
 	if _in_tick and _sent:
-		r = inner.native_tick(phase, state, tun, 2, [])
+		r = inner.native_tick(phase, state, tun, 2, _no_hulls)
 	else:
 		# The hull world gathers natively while the game's players' loop runs; otherwise, or for a
 		# lag-compensated mover, it answers empty and the script gathers.
 		if hull_world != null and not (_in_tick and _gathered):
-			r = inner.native_tick(phase, state, tun, 3, [])
+			r = inner.native_tick(phase, state, tun, 3, _no_hulls)
 		if r.is_empty():
 			r = inner.native_tick(phase, state, tun, 1, _hull_list())
 	if r.size() >= 23:
