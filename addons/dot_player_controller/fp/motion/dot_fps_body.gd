@@ -81,6 +81,12 @@ func native_batch_done(_world_touches: int, _hull_blocks: int, _hull_stops: int)
 	pass
 
 
+## Declares that nothing this body queries moves between ticks ([member DotFpsMotor.static_world]), so a native body may remember
+## its first rest query across ticks. Off by default; a body without a native one ignores it.
+func set_static_world(_on: bool) -> void:
+	pass
+
+
 ## Lets [method native_tick]'s hulls mode 3 gather from dot-sim's [code]DotSimHullWorld[/code] [param world] as roster slot [param slot] (null: none).
 ## False when this body cannot (no native body, or a library without the hull world).
 func set_hull_world(_world: Object, _slot: int) -> bool:

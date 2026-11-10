@@ -58,9 +58,14 @@ func _nat() -> Object:
 	if _native == null:
 		_native = ClassDB.instantiate(NATIVE_CLASS)
 		_hull_world_sent = false
+		_static_world_sent = false
 		_native.set_perf_caches(perf_caches)
 		if _in_tick:
 			_native.begin_tick()
+	if not _static_world_sent:
+		_static_world_sent = true
+		if _native.has_method(&"set_static_world"):
+			_native.set_static_world(_static_world)
 	if _native_space != _space:
 		_native_space = _space
 		_native.set_space(_space)
@@ -129,6 +134,17 @@ var _hull_world: Object = null
 var _hull_slot: int = -1
 ## [member _hull_world] has reached the current native body.
 var _hull_world_sent: bool = false
+
+
+## What [method set_static_world] was told; sent to the native body when it has the method.
+var _static_world := false
+var _static_world_sent := false
+
+
+func set_static_world(on: bool) -> void:
+	if on != _static_world:
+		_static_world = on
+		_static_world_sent = false
 
 
 func set_hull_world(world: Object, slot: int) -> bool:
