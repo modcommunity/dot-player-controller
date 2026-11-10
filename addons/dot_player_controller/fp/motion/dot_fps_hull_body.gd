@@ -52,6 +52,7 @@ func _perf_caches_changed() -> void:
 func wrap(map_body: DotFpsBody, hulls: Callable) -> DotFpsBody:
 	inner = map_body
 	if map_body != null:
+		map_body.set_static_world(_static_world)
 		map_body.perf_caches = perf_caches
 	hulls_fn = hulls
 	if map_body != null:
@@ -59,6 +60,15 @@ func wrap(map_body: DotFpsBody, hulls: Callable) -> DotFpsBody:
 		exclude = map_body.exclude
 		pass_out_mask = map_body.pass_out_mask
 	return self
+
+
+var _static_world := false
+
+
+func set_static_world(on: bool) -> void:
+	_static_world = on
+	if inner != null:
+		inner.set_static_world(on)
 
 
 func set_hull_world(world: Object, slot: int) -> bool:

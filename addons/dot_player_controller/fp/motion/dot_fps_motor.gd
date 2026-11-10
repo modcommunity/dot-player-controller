@@ -1472,6 +1472,7 @@ var static_world := false:
 			_qf_valid = false
 			_gp_valid = false
 			_en_valid = false
+			body.set_static_world(value)
 		static_world = value
 
 
