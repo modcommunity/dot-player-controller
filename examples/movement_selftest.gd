@@ -250,7 +250,7 @@ func _test_jump_height() -> void:
 func _test_jump_reach() -> void:
 	_section("jump reach")
 
-	# game-playground's numbers, which its comments quote: 0.68 s flat, 0.53 s onto 0.8 m.
+	# game-playlot's numbers, which its comments quote: 0.68 s flat, 0.53 s onto 0.8 m.
 	_check_near(DotFpsTunables.airtime_for(20.0, 1.15, 0.0), 0.678, 0.002, "airborne 0.68 s flat at 1.15 m under 20")
 	_check_near(DotFpsTunables.airtime_for(20.0, 1.15, 0.8), 0.528, 0.002, "and 0.53 s onto a step 0.8 m up")
 	_check(

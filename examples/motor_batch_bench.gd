@@ -1,6 +1,6 @@
 extends "res://examples/motor_bench.gd"
 
-## Micro-benchmark of the players' loop a dedicated server runs with [DotFpsMotorBatch] (game-arena's
+## Micro-benchmark of the players' loop a dedicated server runs with [DotFpsMotorBatch] (game-fatal-contact's
 ## `_tick_players_batched`): N controllers in a collision world, their hulls in dot-sim's hull world, each tick
 ## begin_tick and add for every player, then finish and end_tick for every player. Prints microseconds per player per
 ## tick for each of the four steps, and a digest of every tick's states: one build prints one digest, and a change that
@@ -10,7 +10,7 @@ extends "res://examples/motor_bench.gd"
 ## Run: [code]godot --headless --path . res://examples/motor_batch_bench.tscn [-- --n=32 --ticks=1000][/code]
 
 
-## A controller whose physics body is wrapped in a hull body, as game-arena's players are (ArenaSolidBody).
+## A controller whose physics body is wrapped in a hull body, as game-fatal-contact's players are (ArenaSolidBody).
 class HullController extends DotFpsController:
 	func _make_body() -> DotFpsBody:
 		return DotFpsHullBody.new().wrap(super._make_body(), Callable())
