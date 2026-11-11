@@ -44,7 +44,7 @@ On game-g2gfast's surf_mesa a rider resting on a ramp read clear one tick and de
 
 ## The collision mask that never arrived
 
-The body copied `tunables.collision_mask` once, in `_make_body`, and every game sets the mask after setup, so game-playground's players walked through every prop, NPC and vehicle with the tunables reading the right mask the whole time; found by a player standing on a platform for the first time and falling through it. Then a style threw the mask away on clients, which set a style straight after joining. Fixed by passing the mask every tick and by `set_collision_mask`.
+The body copied `tunables.collision_mask` once, in `_make_body`, and every game sets the mask after setup, so game-playlot's players walked through every prop, NPC and vehicle with the tunables reading the right mask the whole time; found by a player standing on a platform for the first time and falling through it. Then a style threw the mask away on clients, which set a style straight after joining. Fixed by passing the mask every tick and by `set_collision_mask`.
 
 ## A fast crest (`[slope-crest-1]`)
 
@@ -64,7 +64,7 @@ The slide and launch timers first stayed out of the snapshot "like the jump time
 
 ## Jump reach copied five times
 
-Before `DotFpsTunables.jump_reach` existed, game-playground, game-arena, game-g2gfast, mg-buses-from-hell and mg-smash-copter each had their own copy of the arithmetic, and two of them sized courses with the airtime back to the height they left, which nobody could finish. They now delegate to the tunables.
+Before `DotFpsTunables.jump_reach` existed, game-playlot, game-arena, game-g2gfast, mg-buses-from-hell and mg-smash-copter each had their own copy of the arithmetic, and two of them sized courses with the airtime back to the height they left, which nobody could finish. They now delegate to the tunables.
 
 ## A wall run that ended four ticks in
 
