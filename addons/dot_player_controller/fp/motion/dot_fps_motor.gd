@@ -98,9 +98,8 @@ func batch_refill(state: DotFpsState, command: DotFpsCommand, delta: float, inpu
 
 ## Ends a [constant BATCH_READY] tick with the batch's answer, the 45 values at [param at] in [param out].
 func batch_apply(state: DotFpsState, command: DotFpsCommand, out: PackedFloat64Array, at: int) -> void:
-	var r := out.slice(at, at + 45)
-	body.native_batch_done(int(r[20]), int(r[21]), int(r[22]))
-	_native_full_apply(state, r)
+	body.native_batch_done(int(out[at + 20]), int(out[at + 21]), int(out[at + 22]))
+	_native_full_apply(state, out, at)
 	state.previous_buttons = command.buttons
 	body.end_tick()
 
@@ -484,9 +483,9 @@ func _fill_full_in(state: DotFpsState, command: DotFpsCommand, delta: float, a: 
 
 
 ## Writes a whole native tick's 45 values into the state and the counters.
-func _native_full_apply(state: DotFpsState, r: PackedFloat64Array) -> void:
+func _native_full_apply(state: DotFpsState, r: PackedFloat64Array, o: int = 0) -> void:
 	_rest_valid = false
-	var flags := _native_tick_apply(state, r)
+	var flags := _native_tick_apply(state, r, o)
 	if flags & 2 != 0:
 		reused_ground_ticks += 1
 	if flags & 16 != 0:
@@ -494,26 +493,26 @@ func _native_full_apply(state: DotFpsState, r: PackedFloat64Array) -> void:
 	if flags & 8 != 0:
 		settled_ground_ticks += 1
 		_stamp_rest(state)
-	state.time_since_jump = r[23]
-	state.time_since_grounded = r[24]
-	state.time_since_jump_pressed = r[25]
-	state.slide_time = r[26]
-	state.slide_cooldown_left = r[27]
-	state.launch_cooldown_left = r[28]
-	state.dash_cooldown_left = r[29]
-	state.wall_run_cooldown_left = r[30]
-	state.wall_run_time = r[31]
-	state.wall_run_spent = r[32] != 0.0
-	state.wall_jump_count = int(r[33])
-	state.wall_jumps_in_air = int(r[34])
-	state.wall_jump_heading = int(r[35])
-	state.wall_normal = Vector3(r[36], r[37], r[38])
-	view_turn = r[39]
-	slides += int(r[40])
-	launches += int(r[41])
-	dashes += int(r[42])
-	wall_runs += int(r[43])
-	wall_jumps += int(r[44])
+	state.time_since_jump = r[o + 23]
+	state.time_since_grounded = r[o + 24]
+	state.time_since_jump_pressed = r[o + 25]
+	state.slide_time = r[o + 26]
+	state.slide_cooldown_left = r[o + 27]
+	state.launch_cooldown_left = r[o + 28]
+	state.dash_cooldown_left = r[o + 29]
+	state.wall_run_cooldown_left = r[o + 30]
+	state.wall_run_time = r[o + 31]
+	state.wall_run_spent = r[o + 32] != 0.0
+	state.wall_jump_count = int(r[o + 33])
+	state.wall_jumps_in_air = int(r[o + 34])
+	state.wall_jump_heading = int(r[o + 35])
+	state.wall_normal = Vector3(r[o + 36], r[o + 37], r[o + 38])
+	view_turn = r[o + 39]
+	slides += int(r[o + 40])
+	launches += int(r[o + 41])
+	dashes += int(r[o + 42])
+	wall_runs += int(r[o + 43])
+	wall_jumps += int(r[o + 44])
 
 
 ## From friction to the end ground check in one native call; false (nothing written) when the body cannot.
@@ -558,22 +557,22 @@ func _native_tick_post(
 
 
 ## Writes a native tick half's answer to [param state] and the counters; returns its flags.
-func _native_tick_apply(state: DotFpsState, r: PackedFloat64Array) -> int:
-	state.position = Vector3(r[0], r[1], r[2])
-	state.velocity = Vector3(r[3], r[4], r[5])
-	state.ground_normal = Vector3(r[6], r[7], r[8])
-	state.mode = int(r[9])
-	state.ground_id = int(r[10]) | (int(r[11]) << 32)
-	var flags := int(r[12])
+func _native_tick_apply(state: DotFpsState, r: PackedFloat64Array, o: int = 0) -> int:
+	state.position = Vector3(r[o], r[o + 1], r[o + 2])
+	state.velocity = Vector3(r[o + 3], r[o + 4], r[o + 5])
+	state.ground_normal = Vector3(r[o + 6], r[o + 7], r[o + 8])
+	state.mode = int(r[o + 9])
+	state.ground_id = int(r[o + 10]) | (int(r[o + 11]) << 32)
+	var flags := int(r[o + 12])
 	if flags & 4 != 0:
 		state.surface = &""
-	depenetrated_ticks += int(r[13])
-	embedded_ticks += int(r[14])
-	lifted_ticks += int(r[15])
-	stuck_ticks += int(r[16])
-	duplicate_plane_ticks += int(r[17])
-	crease_leg_ticks += int(r[18])
-	split_leg_ticks += int(r[19])
+	depenetrated_ticks += int(r[o + 13])
+	embedded_ticks += int(r[o + 14])
+	lifted_ticks += int(r[o + 15])
+	stuck_ticks += int(r[o + 16])
+	duplicate_plane_ticks += int(r[o + 17])
+	crease_leg_ticks += int(r[o + 18])
+	split_leg_ticks += int(r[o + 19])
 	return flags
 
 
