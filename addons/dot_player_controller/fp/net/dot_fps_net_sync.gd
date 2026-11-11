@@ -296,6 +296,8 @@ static func pull(state: DotFpsState, target: Variant) -> void:
 	target.set(&"net_modifiers", pack_modifiers(state))
 	if &"net_timers" in target:
 		target.set(&"net_timers", pack_timers(state))
+	if &"net_timers2" in target:
+		target.set(&"net_timers2", pack_timers2(state))
 	if &"net_stamina" in target:
 		target.set(&"net_stamina", pack_stamina(state))
 
@@ -359,6 +361,44 @@ static func unpack_timers(state: DotFpsState, code: int) -> void:
 	state.wall_run_cooldown_left = minf(_timer_value(code >> (3 * JUMP_TIMER_BITS)), 10.0) if code >> (3 * JUMP_TIMER_BITS) != 0 else 0.0
 
 
+## The slide time, the slide cooldown and the wall-run time in 1/7680 s, 14 bits each (up to 2.13 s),
+## for a game that runs above [constant EXACT_RATE_LIMIT], where the coarse fields of net_flags are in
+## sixty-fourths and a rewind lands up to half a code off. Opt in with [code]var net_timers2: int[/code]
+## and replicate [method rewind_specs2]; [method pull] writes it and [method push] prefers it over
+## the flags fields. Slide time: 0 not sliding, n+1 else. Wall run: 0 ready, 1 spent, n+2 running.
+const TIMERS2_BITS := 3 * JUMP_TIMER_BITS
+const _T2_MAX := (1 << JUMP_TIMER_BITS) - 1
+
+
+static func rewind_specs2() -> Array[Dictionary]:
+	return [{"property": &"net_timers2", "type": "UINT", "bits": TIMERS2_BITS,
+		"interpolated": false, "owner_only": true, "source": "slide and wall-run timers"}]
+
+
+static func pack_timers2(state: DotFpsState) -> int:
+	var slide := 0
+	if state.slide_time >= 0.0:
+		slide = mini(roundi(state.slide_time * JUMP_TIMER_SCALE) + 1, _T2_MAX)
+	var cooldown := mini(roundi(maxf(state.slide_cooldown_left, 0.0) * JUMP_TIMER_SCALE), _T2_MAX)
+	var run := WALL_RUN_READY
+	if state.wall_run_time >= 0.0:
+		run = mini(roundi(state.wall_run_time * JUMP_TIMER_SCALE) + WALL_RUN_FIRST_TIME, _T2_MAX)
+	elif state.wall_run_spent:
+		run = WALL_RUN_SPENT
+	return slide | cooldown << JUMP_TIMER_BITS | run << (2 * JUMP_TIMER_BITS)
+
+
+static func unpack_timers2(state: DotFpsState, code: int) -> void:
+	var slide := code & _T2_MAX
+	state.slide_time = -1.0 if slide == 0 else float(slide - 1) / JUMP_TIMER_SCALE
+	state.slide_cooldown_left = float((code >> JUMP_TIMER_BITS) & _T2_MAX) / JUMP_TIMER_SCALE
+	var run := (code >> (2 * JUMP_TIMER_BITS)) & _T2_MAX
+	state.wall_run_time = (
+		float(run - WALL_RUN_FIRST_TIME) / JUMP_TIMER_SCALE if run >= WALL_RUN_FIRST_TIME else -1.0
+	)
+	state.wall_run_spent = run == WALL_RUN_SPENT
+
+
 static func _timer_code(seconds: float) -> int:
 	var n := roundi(maxf(seconds, 0.0) * JUMP_TIMER_SCALE)
 	return 0 if n >= (1 << JUMP_TIMER_BITS) - 2 else n + 1
@@ -382,6 +422,9 @@ static func push(source: Variant, state: DotFpsState) -> void:
 	var timers: Variant = source.get(&"net_timers")
 	if timers != null:
 		unpack_timers(state, int(timers))
+	var timers2: Variant = source.get(&"net_timers2")
+	if timers2 != null:
+		unpack_timers2(state, int(timers2))
 	var stamina: Variant = source.get(&"net_stamina")
 	if stamina != null:
 		unpack_stamina(state, int(stamina))

@@ -5,5 +5,5 @@ extends RefCounted
 ## something a game could have called is removed or changes meaning.
 
 # One line per level, 1..23: docs/api-levels.md.
-const LEVEL := 23
+const LEVEL := 24
 const OLDEST := 1

@@ -306,6 +306,13 @@ func _timers_carrier_script() -> GDScript:
 	return script
 
 
+func _timers2_carrier_script() -> GDScript:
+	var script := GDScript.new()
+	script.source_code = (_timers_carrier_script().source_code as String) + "var net_timers2: int\n"
+	script.reload()
+	return script
+
+
 func _slide_tunables() -> DotFpsTunables:
 	var t := _tunables()
 	t.slide_enabled = true
@@ -415,6 +422,26 @@ func _check_timer_and_button_packing() -> void:
 	)
 	DotFpsNetSync.set_tick_rate(128)
 	_check(DotFpsNetSync.timer_scale == 64.0, "and above 64 Hz the wire keeps its 1/64 s scale")
+	var hi := DotFpsState.new()
+	hi.slide_time = 37.0 / 128.0
+	hi.slide_cooldown_left = 101.0 / 128.0
+	hi.wall_run_time = 243.0 / 128.0
+	var hi_back := DotFpsState.new()
+	DotFpsNetSync.unpack_timers2(hi_back, DotFpsNetSync.pack_timers2(hi))
+	var hi_idle := DotFpsState.new()
+	DotFpsNetSync.unpack_timers2(hi_idle, DotFpsNetSync.pack_timers2(DotFpsState.new()))
+	var hi_spent := DotFpsState.new()
+	hi_spent.wall_run_spent = true
+	DotFpsNetSync.unpack_timers2(hi_spent, DotFpsNetSync.pack_timers2(hi_spent))
+	_check(
+		is_equal_approx(hi_back.slide_time, 37.0 / 128.0)
+			and is_equal_approx(hi_back.slide_cooldown_left, 101.0 / 128.0)
+			and is_equal_approx(hi_back.wall_run_time, 243.0 / 128.0)
+			and not hi_idle.is_sliding() and hi_idle.wall_run_time < 0.0 and not hi_idle.wall_run_spent
+			and hi_spent.wall_run_spent and hi_spent.wall_run_time < 0.0,
+		"at 128 Hz net_timers2 round-trips slide, cooldown and a 1.9 s wall run to the tick",
+		"%.5f %.5f %.5f" % [hi_back.slide_time, hi_back.slide_cooldown_left, hi_back.wall_run_time]
+	)
 	DotFpsNetSync.set_tick_rate(66)
 	var sixty_six := DotFpsState.new()
 	sixty_six.wall_run_time = 19.0 / 66.0
