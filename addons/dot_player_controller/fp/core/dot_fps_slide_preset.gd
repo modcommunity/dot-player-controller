@@ -41,3 +41,24 @@ static func apply_sprint(
 	t.slide_max_speed = p_max_speed
 	t.slide_duration = p_duration
 	t.slide_cooldown = p_cooldown
+
+
+## The operator cvars of a slide, by suffix: `suffix -> [tunables member, description]`. A game names them with its
+## own prefix through [method cvar_table] (Arena: `arena_slide`, `arena_slide_boost`...), so the members and the
+## words are written once.
+const CVAR_SUFFIXES := {
+	"": ["slide_enabled", "Crouch at a run slides (1) or only crouches (0)"],
+	"_boost": ["slide_boost", "Speed a slide adds when it starts, m/s (0 for none)"],
+	"_min_speed": ["slide_min_speed", "Speed needed to slide, m/s"],
+	"_duration": ["slide_duration", "Longest a slide lasts, seconds"],
+	"_friction": ["slide_friction", "Friction while sliding (lower carries further)"],
+	"_cooldown": ["slide_cooldown", "Seconds between slides"],
+}
+
+
+## [constant CVAR_SUFFIXES] with [param prefix] in front: `cvar -> [member, description]`, in the order above.
+static func cvar_table(prefix: String) -> Dictionary:
+	var out := {}
+	for suffix: String in CVAR_SUFFIXES:
+		out[prefix + suffix] = CVAR_SUFFIXES[suffix]
+	return out
