@@ -382,7 +382,7 @@ func _check_mode_packing() -> void:
 func _check_timer_and_button_packing() -> void:
 	# The slide and launch timers ride in the same word, and must not disturb the mode or
 	# crouch below them. Without them a rewind kept the client's own cooldown and refused
-	# a launch the server made (game-arena measured 3.2 m apart).
+	# a launch the server made (game-fatal-contact measured 3.2 m apart).
 	var timed := DotFpsState.new()
 	timed.mode = DotFpsState.Mode.AIR
 	timed.crouch_held = true

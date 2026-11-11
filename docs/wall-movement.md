@@ -73,4 +73,4 @@ A body drawn from outside (third person, or anyone else's) is posed by `DotFpsVi
 
 ## Signals
 
-`DotFpsController.wall_run_changed(running)` and `wall_jumped()`, not emitted during a prediction replay, like `slide_changed`: they are where a game hangs a footstep or a sound, and a replayed tick is one the player already heard. **The game marks the replay** (`begin_replay` / `end_replay` around each replayed tick); one that does not hears a run once per correction, which is how game-arena found it had never marked one.
+`DotFpsController.wall_run_changed(running)` and `wall_jumped()`, not emitted during a prediction replay, like `slide_changed`: they are where a game hangs a footstep or a sound, and a replayed tick is one the player already heard. **The game marks the replay** (`begin_replay` / `end_replay` around each replayed tick); one that does not hears a run once per correction, which is how game-fatal-contact found it had never marked one.

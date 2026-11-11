@@ -5,7 +5,7 @@ extends "res://examples/movement_selftest_walls.gd"
 ## a client rewound from the wire ending a run on the tick the server does.
 
 const ALIGN_HZ := 66
-## The arena's attach ease (game-arena VIEW_TURN_RATE): the share of the pending turn applied each second.
+## The arena's attach ease (game-fatal-contact VIEW_TURN_RATE): the share of the pending turn applied each second.
 const ALIGN_EASE_RATE := 22.0
 
 

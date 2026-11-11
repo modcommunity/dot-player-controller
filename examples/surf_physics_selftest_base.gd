@@ -124,7 +124,7 @@ func _on_ramp(normal: Vector3, z: float, above: float) -> DotFpsState:
 	return s
 
 
-## A slab like game-playground's long bank: 20 x 1 x 40 m, rolled [param roll] about its
+## A slab like game-playlot's long bank: 20 x 1 x 40 m, rolled [param roll] about its
 ## length so its +X edge is high, then pitched [param pitch] down toward -Z. Its top
 ## face's near edge runs through the origin. Returns the basis.
 func _add_bank(roll: float, pitch: float, length: float) -> Basis:
@@ -213,7 +213,7 @@ func _add_wall_and_open_door() -> void:
 
 ## Two slabs leaning 40 degrees from upright, so each broad face is a 50 degree surf
 ## face, crossing to make a V whose crease runs level along Z at x = [param x0]: the
-## geometry of game-g2gfast's stages bonus, in metres.
+## geometry of game-airdrift's stages bonus, in metres.
 func _add_crease(x0: float) -> void:
 	var unit := 0.01905
 	for side: float in [1.0, -1.0]:
