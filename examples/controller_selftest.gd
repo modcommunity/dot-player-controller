@@ -4,7 +4,7 @@ extends Node
 ## The addon is abstract, so this checks the part that is not: intent edges, the look arithmetic every project rewrites, and the switch handover. The stub is also a worked example of the five methods a subclass overrides.
 
 const SECTIONS := 10
-const CHECKS := 158
+const CHECKS := 161
 
 var _passed := 0
 var _failed := 0
@@ -159,6 +159,14 @@ func _test_slide_preset() -> void:
 	_check(is_equal_approx(z.slide_friction, d.slide_friction), "friction stays at the default")
 	DotFpsSlidePreset.apply_sprint(z, false, 1.5, 10.5, 0.9, 1.0)
 	_check(not z.slide_enabled, "the game's switch turns it off")
+
+	var cv := DotFpsSlidePreset.cvar_table("arena_slide")
+	_check(cv.size() == 6 and cv["arena_slide"][0] == "slide_enabled", "the cvar table names the switch under the bare prefix")
+	_check(cv["arena_slide_min_speed"][0] == "slide_min_speed" and cv["arena_slide_cooldown"][0] == "slide_cooldown", "and each number under its suffix")
+	var all_members := true
+	for key: String in cv:
+		all_members = all_members and DotFpsTunables.new().get(cv[key][0]) != null
+	_check(all_members, "every cvar names a real tunables member")
 
 
 func _test_rules() -> void:
