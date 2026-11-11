@@ -810,7 +810,9 @@ static func _contains_modifier(entries: Array[Vector2i], index: int) -> bool:
 ## Closes off anything this instance is not permitted to do.
 ## Two gates: [member DotFpsTunables.can_noclip] is shared config the client holds and sets the command bit for; [member allow_noclip] is one controller's property a server grants per player.
 func _gate_abilities() -> void:
-	if tunables != null and not allow_noclip:
+	# Only when it is on: the setter bumps [member DotFpsTunables.revision] even for the same value, and a bump every tick
+	# rebuilt the motor's native tunables arrays (about 75 values) every tick.
+	if tunables != null and not allow_noclip and tunables.can_noclip:
 		tunables.can_noclip = false
 
 
