@@ -24,12 +24,12 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | --- | --- |
 | `addons/dot_player_controller/core/` | `DotPlayerIntent` (one tick of intent and its wire form), `DotPlayerLook`, `DotPlayerViewRules` (`mp_forceview`, `mp_fp_body`), `DotPlayerBodyRules` (`mp_solidplayers`) |
 | `addons/dot_player_controller/nodes/` | `DotPlayerController` (abstract base, five methods), `DotPlayerControllerSwitch` |
-| `addons/dot_player_controller/fp/core/` | data: `DotFpsTunables`, `DotFpsCvars` (binds the `sv_*` movement cvars of tunables, swim and ladder to a console and `DotGameMapConfig`), `DotFpsSprintRules` (the sprint/stamina cvars as one replicated group), `DotFpsSlidePreset` (the shared slide setups), `DotFpsLiftCycle` (a lift car's height as a pure function of time, and the carry of a rider standing on it; the motor does not carry riders, the game adds the carry after each move on every end that simulates; `lift_cycle_selftest`), `DotFpsState`, `DotFpsCommand`, styles, surfaces, modifiers, admin modifiers, stats |
+| `addons/dot_player_controller/fp/core/` | data: `DotFpsTunables`, `DotFpsCvars` (binds the `sv_*` movement cvars of tunables, swim and ladder to a console and `DotGameMapConfig`), `DotFpsSprintRules` (the sprint/stamina cvars as one replicated group), `DotFpsSlidePreset` (the shared slide setups), `DotFpsLiftCycle` (a lift car's height as a pure function of time, and the carry of a rider standing on it, and `gate_open`, when a landing barrier may be open; the motor does not carry riders, the game adds the carry after each move on every end that simulates; `lift_cycle_selftest`), `DotFpsState`, `DotFpsCommand`, styles, surfaces, modifiers, admin modifiers, stats |
 | `addons/dot_player_controller/fp/motion/` | the simulation: `DotFpsMotor`, `DotFpsBody` and its flat and physics implementations, `DotFpsMoveMode`, `DotFpsSwimMode`, `DotFpsLadderMode` (boxes as data; the game calls `update` each tick), `DotFpsSimulator` (a second motor a bot runs ahead) |
 | `addons/dot_player_controller/fp/nodes/` | `DotFpsController`, `DotFpsSampler`, `DotFpsTouchSampler`, `DotFpsView`, `DotFpsViewMotion` (its motion cues without nodes) |
 | `addons/dot_player_controller/fp/net/` | `DotFpsNetSync`: what replicates, at what precision |
 | `addons/dot_player_controller/tp/` | `core/` (motor, state, tunables) and `nodes/` (controller, `DotTpsCameraRig` on dot-core's `DotCameraBoom` and `DotCameraFade`) |
-| `addons/dot_player_controller/dot_player_controller_api.gd` | the API level (18) |
+| `addons/dot_player_controller/dot_player_controller_api.gd` | the API level (22) |
 | `examples/` | ten self-test scenes, `sandbox.tscn` (a course to feel the movement out, not a test) |
 
 ## Running and testing
