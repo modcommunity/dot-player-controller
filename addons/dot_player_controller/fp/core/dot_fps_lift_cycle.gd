@@ -50,6 +50,14 @@ func at_stop(seconds: float) -> bool:
 	return f <= 0.0 or f >= 1.0
 
 
+## Whether the landing at a stop is open: true only while the car stands at that stop ([param at_top] picks the top
+## stop, false the bottom one). The game closes a barrier across the landing's edge while this is false, so a person
+## cannot walk off a landing into an empty shaft (the car is at the other stop or on its way). Pure, like [method fraction],
+## so every end agrees which tick the barrier is up.
+func gate_open(seconds: float, at_top: bool) -> bool:
+	return fraction(seconds) >= 1.0 if at_top else fraction(seconds) <= 0.0
+
+
 ## How far a rider moves up this tick: the car's rise between [param from_seconds] and [param to_seconds] times
 ## [param rise], when the rider's feet are on the car ([param feet_y] within [param tolerance] of the car's top at
 ## [param from_seconds]), and zero otherwise.
