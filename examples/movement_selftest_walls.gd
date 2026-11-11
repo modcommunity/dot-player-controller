@@ -660,6 +660,55 @@ func _test_wall_replay() -> void:
 	_done()
 
 
+## A wall run rewound at 128 Hz, where net_flags holds the timers in sixty-fourths.
+func _test_wall_replay_128() -> void:
+	_section("net_timers2 rewinds a wall run exactly at 128 Hz")
+	var rate := 1.0 / 128.0
+	DotFpsNetSync.set_tick_rate(128)
+	var t := _wall_tunables()
+	t.wall_slide_speed = 2.0
+	var commands: Array[DotFpsCommand] = []
+	for i in range(480):
+		var buttons := DotFpsCommand.BUTTON_JUMP if i % 90 == 60 else 0
+		commands.append(_command(1.0, sin(float(i) * 0.05) * 0.3, sin(float(i) * 0.035) * 12.0, buttons))
+	var full_motor := _motor(t, _wall_world())
+	var full := _beside_wall(9.0)
+	var states: Array[DotFpsState] = []
+	for c in commands:
+		full_motor.simulate(full, c, rate)
+		states.append(full.duplicate_state())
+	_check(full_motor.wall_runs >= 2, "the scripted run wall-runs more than once at 128 Hz", "%d runs" % full_motor.wall_runs)
+	var plain: Object = _timers_carrier_script().new()
+	var timed: Object = _timers2_carrier_script().new()
+	var counts := []
+	for carrier: Object in [timed, plain]:
+		var bad := 0
+		var tested := 0
+		for k in range(20, commands.size() - 24):
+			if not states[k].is_wall_running():
+				continue
+			tested += 1
+			var lead := 6
+			var replay := states[k].duplicate_state()
+			replay.slide_time = 99.0
+			replay.slide_cooldown_left = 99.0
+			replay.wall_run_time = 99.0
+			DotFpsNetSync.pull(states[k], carrier)
+			DotFpsNetSync.push(carrier, replay)
+			var replay_motor := _motor(t, _wall_world())
+			for j in range(k + 1, k + lead + 1):
+				replay_motor.simulate(replay, commands[j], rate)
+			if replay.position != states[k + lead].position or not replay.equals(states[k + lead], 0.0):
+				bad += 1
+		counts.append([bad, tested])
+	plain.free()
+	timed.free()
+	DotFpsNetSync.set_tick_rate(64)
+	_check(counts[0][1] > 20 and counts[0][0] == 0, "every wall-run rewind through net_timers2 lands where the server did", "%d of %d diverged" % counts[0])
+	_check(counts[1][0] > 0, "negative control: a rewind through the 1/64 s flags diverges at 128 Hz", "%d of %d diverged" % counts[1])
+	_done()
+
+
 ## The rewind a client really does: the snapshot pushed over its CURRENT state, then replayed.
 ## A player pinned against a wall, holding forward and hopping with auto-hop and coyote time.
 func _test_wall_hop_rewind() -> void:
