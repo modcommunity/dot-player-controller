@@ -4,7 +4,7 @@ extends "res://examples/fps_controller_selftest_base.gd"
 ## [method movement_selftest] tests the simulation; this tests the wiring around it (reference resolution, collider following the crouch, fixed-step accumulator, drive modes, registry, the noclip safety gate), which a host game touches first.
 ## Scenes are built in code so a failure names a line and an editor change cannot silently pass.
 
-const CHECKS := 125
+const CHECKS := 128
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
@@ -278,6 +278,12 @@ func _test_zero_configuration() -> void:
 	# The one thing the whole family exists to avoid: a hardcoded path. Every
 	# reference above was resolved by type, from the body, with nothing configured.
 	_check( controller.view.camera() != null, "the view finds the camera without a camera_ref being set" )
+	_check(controller.is_processing(), "a controller with a view draws it every frame")
+	var kept := controller.view
+	controller.view = null
+	_check(not controller.is_processing(), "and one without a view has no frame work")
+	controller.view = kept
+	_check(controller.is_processing(), "until a view is assigned again")
 
 	world.queue_free()
 	await get_tree().process_frame
