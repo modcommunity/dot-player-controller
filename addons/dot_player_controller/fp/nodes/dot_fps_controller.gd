@@ -910,6 +910,14 @@ var _held_centre := NAN
 
 
 
+## The position of the tick before this one: [code]render_state(0.0).position[/code] without the copied state, for a
+## server that keeps a trail of positions every tick (API 25). [constant Drive.REMOTE], or no [member tick_rate], is [member state]'s.
+func previous_position() -> Vector3:
+	if drive == Drive.REMOTE or tick_rate <= 0:
+		return state.position
+	return _previous_state.position
+
+
 ## The state to render this frame, interpolated between the last two ticks.
 ## Rendering the tick state directly quantises motion to the tick rate. Purely cosmetic: the returned state is a copy and nothing writes it back.
 ## [param alpha] is how far this frame sits between the last two ticks; left at -1 it is derived from who drives:

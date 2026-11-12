@@ -4,7 +4,7 @@ extends "res://examples/fps_controller_selftest_base.gd"
 ## [method movement_selftest] tests the simulation; this tests the wiring around it (reference resolution, collider following the crouch, fixed-step accumulator, drive modes, registry, the noclip safety gate), which a host game touches first.
 ## Scenes are built in code so a failure names a line and an editor change cannot silently pass.
 
-const CHECKS := 124
+const CHECKS := 125
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
@@ -731,6 +731,12 @@ func _test_local_drive_accumulator() -> void:
 		controller.render_state(0.0).position.is_equal_approx(Vector3.ZERO)
 		and controller.render_state(1.0).position.is_equal_approx(Vector3(0.0, 0.0, 10.0)),
 		"and reaches both ends of the tick it is drawn across"
+	)
+	# previous_position() is render_state(0.0).position without building a state: a host keeping the eye two ticks back asks it once per player per tick.
+	_check(
+		controller.previous_position() == controller.render_state(0.0).position,
+		"previous_position is the start of the tick render_state draws across",
+		"%s %s" % [controller.previous_position(), controller.render_state(0.0).position]
 	)
 
 	# A connected client draws at its clock's alpha, which leaves 0..1 after a slip: the clock stretches its ticks while it settles, so a frame runs none or two, and at the engine's fraction the eye stood still or moved double.
