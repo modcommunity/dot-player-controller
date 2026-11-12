@@ -107,7 +107,11 @@ var state: DotFpsState = DotFpsState.new()
 var motor: DotFpsMotor = null
 var body: DotFpsBody = null
 var sampler: DotFpsSampler = null
-var view: DotFpsView = null
+## Processing follows it: [method _process] only draws the view, so a controller without one (a remote body) skips the frame call.
+var view: DotFpsView = null:
+	set(value):
+		view = value
+		set_process(value != null)
 
 ## The command applied on the most recent tick. Held so a driver can resend it.
 var current_command: DotFpsCommand = null
@@ -168,6 +172,8 @@ func _ready() -> void:
 	super()
 
 	var res := setup()
+	# READY switched processing on for the overridden _process; only a view needs it.
+	set_process(view != null)
 
 	if not res.ok:
 		DotLog.result(CHANNEL, "controller setup", res)
