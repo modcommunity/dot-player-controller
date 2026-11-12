@@ -53,7 +53,7 @@ static func native_available() -> bool:
 
 ## The native body to ask, synced to this one's space and exclusions; null to answer in script.
 func _nat() -> Object:
-	if profile or not use_native or not native_available():
+	if profile or not use_native or ((_native_known != 1 or not native_enabled) and not native_available()):
 		return null
 	if _native == null:
 		_native = ClassDB.instantiate(NATIVE_CLASS)
@@ -184,7 +184,10 @@ func native_tick(
 
 
 func native_batch(meta: PackedInt64Array, at: int, hulls_mode: int = 0) -> Object:
-	if not native_full_available() or (_space == null and not revalidate()):
+	if _full_known != 1 or _tick_known != 1 or _native_known != 1 or not native_enabled:
+		if not native_full_available():
+			return null
+	if _space == null and not revalidate():
 		return null
 	var nat := _nat()
 	if nat == null:
