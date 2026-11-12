@@ -26,3 +26,4 @@ Moved from `dot_player_controller_api.gd`; one line per level, newest last. The 
 - 22: `DotFpsLiftCycle.gate_open(seconds, at_top)`: true only while the car stands at that stop, so a game can shut a barrier across a landing's edge whenever the car is elsewhere.
 - 23: `DotFpsSlidePreset.cvar_table(prefix)`: the slide's operator cvars (`<prefix>`, `_boost`, `_min_speed`, `_duration`, `_friction`, `_cooldown`) as `cvar -> [member, description]`, so a game names them without copying the table.
 - 24: `DotFpsNetSync.rewind_specs2()`/`pack_timers2()`/`unpack_timers2()`: opt-in owner-only `net_timers2` (slide, slide cooldown, wall run in 1/7680 s) so a rewind above 66 Hz restores them exactly; absent, behaviour is unchanged.
+- 25: `DotFpsController.previous_position()`: the previous tick's position, equal to `render_state(0.0).position` without copying the state (a server reading it per player per tick).

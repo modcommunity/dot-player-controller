@@ -4,6 +4,6 @@ extends RefCounted
 ## LEVEL rises by one for anything new a game could call; OLDEST rises to LEVEL when
 ## something a game could have called is removed or changes meaning.
 
-# One line per level, 1..23: docs/api-levels.md.
-const LEVEL := 24
+# One line per level, 1..25: docs/api-levels.md.
+const LEVEL := 25
 const OLDEST := 1
