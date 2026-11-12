@@ -27,6 +27,8 @@ var _commands: Array[DotFpsCommand] = []
 var _bodies: Array = []
 var _tuns: Array = []
 var _stage := PackedByteArray()
+## Each row's tick length ([method add]'s delta, else [method start]'s).
+var _deltas := PackedFloat64Array()
 var _meta := PackedInt64Array()
 var _in := PackedFloat64Array()
 var _sent_position := PackedVector3Array()
@@ -56,8 +58,9 @@ func start(delta: float) -> bool:
 	return true
 
 
-## Adds [param motor]'s tick and runs its start; the row to [method finish].
-func add(motor: DotFpsMotor, state: DotFpsState, command: DotFpsCommand) -> int:
+## Adds [param motor]'s tick and runs its start; the row to [method finish]. [param delta] above zero is this row's tick
+## length instead of [method start]'s (a body that sat out ticks makes them up in one, API 26).
+func add(motor: DotFpsMotor, state: DotFpsState, command: DotFpsCommand, delta: float = -1.0) -> int:
 	var row := _count
 	_count += 1
 	if _stage.size() < _count:
@@ -67,6 +70,7 @@ func add(motor: DotFpsMotor, state: DotFpsState, command: DotFpsCommand) -> int:
 		_bodies.resize(_count)
 		_tuns.resize(_count)
 		_stage.resize(_count)
+		_deltas.resize(_count)
 		_meta.resize(_count * 3)
 		_in.resize(_count * _IN)
 		_sent_position.resize(_count)
@@ -74,7 +78,8 @@ func add(motor: DotFpsMotor, state: DotFpsState, command: DotFpsCommand) -> int:
 	_motors[row] = motor
 	_states[row] = state
 	_commands[row] = command
-	var stage := motor.batch_prepare(state, command, _delta, _in, _meta, row)
+	_deltas[row] = delta if delta > 0.0 else _delta
+	var stage := motor.batch_prepare(state, command, _deltas[row], _in, _meta, row)
 	_stage[row] = stage
 	if stage == DotFpsMotor.BATCH_READY:
 		_bodies[row] = motor.batch_body
@@ -97,13 +102,13 @@ func finish(row: int) -> bool:
 			# Something moved the player between add and its turn: the row and the ones after it are redone from here.
 			stale += 1
 			_take_back(row)
-			motor.batch_refill(state, _commands[row], _delta, _in, row)
+			motor.batch_refill(state, _commands[row], _deltas[row], _in, row)
 		if row >= _out_to or row < _out_from:
 			_run(row)
 		if row < _out_to:
 			motor.batch_apply(state, _commands[row], _out, (row - _out_from) * _OUT)
 			return _meta[row * 3] == 3
-	motor.batch_resume(state, _commands[row], _delta)
+	motor.batch_resume(state, _commands[row], _deltas[row])
 	return false
 
 
@@ -132,6 +137,7 @@ func clear() -> void:
 	_bodies.clear()
 	_tuns.clear()
 	_stage.clear()
+	_deltas.clear()
 
 
 func _take_back(row: int) -> void:

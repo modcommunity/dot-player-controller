@@ -4,7 +4,8 @@ extends "res://examples/motor_native_tick_parity.gd"
 ## [method DotFpsMotor.simulate] one player after another, to the bit: eight players walking into each other on random
 ## streams, six in dot-sim's hull world, one with no hulls and one gathering by script, at two rates under two tunable
 ## sets. A push between the add and a player's turn, a teleport after its tick and a death during another player's turn
-## take the rows after them back; every tick's state and the counters stay identical.
+## take the rows after them back; every tick's state and the counters stay identical. One player ticks every other tick
+## two ticks long ([method DotFpsMotorBatch.add]'s delta), as a server's far bot does.
 ## With no library it says so and passes; [code]DOT_SIM_REQUIRE_NATIVE=1[/code] (CI) fails instead.
 ## Run: [code]godot --headless --path . res://examples/motor_batch_parity.tscn[/code]
 
@@ -14,6 +15,8 @@ const PLAIN := 6
 const SCRIPTED := 7
 const DIES := 3
 const DEATH_TICK := 900
+## Sits out every odd tick and makes it up on the even one.
+const SKIPS := 5
 
 
 func _start(i: int) -> Vector3:
@@ -80,14 +83,17 @@ func _batch_replay(batched: bool, hz: int, variant: int, streams: Array) -> Dict
 		if batched:
 			wired = batch.start(step) and wired
 			for i in range(PLAYERS):
-				rows[i] = batch.add(motors[i], states[i], streams[i][tick]) if alive[i] else -1
+				if not alive[i] or (i == SKIPS and tick % 2 == 1):
+					rows[i] = -1
+				else:
+					rows[i] = batch.add(motors[i], states[i], streams[i][tick], step * 2.0 if i == SKIPS else -1.0)
 		for i in range(PLAYERS):
 			if batched and rows[i] >= 0 and not alive[i]:
 				# The one tick the loops differ in: its start had run when the player died, and stays counted.
 				batch.skip(rows[i])
 				rows[i] = -1
 				motors[i].ticks_simulated -= 1
-			if not alive[i]:
+			if not alive[i] or (i == SKIPS and tick % 2 == 1):
 				continue
 			var s := states[i]
 			if i == 2 and tick % 97 == 13:
@@ -96,7 +102,7 @@ func _batch_replay(batched: bool, hz: int, variant: int, streams: Array) -> Dict
 			if batched:
 				told = batch.finish(rows[i])
 			else:
-				motors[i].simulate(s, streams[i][tick], step)
+				motors[i].simulate(s, streams[i][tick], step * 2.0 if i == SKIPS else step)
 			if not told:
 				world.moved(i, s.position.x, s.position.y, s.position.z)
 			var changed := false
