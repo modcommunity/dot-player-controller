@@ -259,12 +259,15 @@ func _run() -> void:
 			_check(false, "the library is loaded (DOT_SIM_REQUIRE_NATIVE=1)")
 		expected = 0
 	else:
+		# This suite holds the body's queries; the whole native tick has motor_native_tick_parity.
+		DotFpsMotor.native_tick = false
 		_build_world()
 		await get_tree().physics_frame
 		await get_tree().physics_frame
 		_motor_runs()
 		_query_fuzz()
 		_slide_fuzz()
+		DotFpsMotor.native_tick = true
 	DotFpsPhysicsBody.native_enabled = true
 	print("%d passed, %d failed" % [_passed, _failed])
 	print("%d of %d sections ran to their last line" % [_sections, expected])
