@@ -412,6 +412,20 @@ var revision: int = 0
 		sprint_shot_follows_barrel = value
 		revision += 1
 
+## The move-command button that says the player is aiming down sights, as a [DotFpsCommand]
+## button bit; 0 means none. A move bit rather than the weapon's, so prediction and the server
+## read the same input in [method DotFpsTunables.speed_for].
+@export_range(0, 255, 1) var aim_button: int = 0:
+	set(value):
+		aim_button = value
+		revision += 1
+
+## Ground speed while [member aim_button] is held, as a fraction of the speed it would be; 1 off.
+@export_range(0.0, 1.0, 0.01) var aim_speed_scale: float = 1.0:
+	set(value):
+		aim_speed_scale = value
+		revision += 1
+
 ## Whether taking damage drops the player out of the sights ([DotFpsAimBreak]). Off: the sights stay and the hit shakes the view and wobbles the aim instead (the `hit_*` members).
 @export var unscope_on_hit: bool = false:
 	set(value):

@@ -3,7 +3,7 @@ extends "res://examples/motor_native_parity.gd"
 ## Holds [member DotFpsMotor.native_tick] (the tick's start and end in dot-sim) and [member DotFpsMotor.native_full]
 ## (the whole tick in one call, [code]DotSimFpsBody.motor_tick[/code]) to the all-script motor, to the bit: the determinism
 ## world's scenarios at 22, 33 and 66 Hz, with and without other players' hulls, under four tunable sets (default; wall
-## slides and jumps; launch, dash and auto-hop; auto and jump-started wall runs that turn the view), the last two on long
+## slides and jumps; launch, dash, auto-hop and aimed walking; auto and jump-started wall runs that turn the view), the last two on long
 ## randomized streams. Every tick's state, timers, wall fields and view turn, and the motor's counters, are identical.
 ## With no library it says the native half was skipped and passes; [code]DOT_SIM_REQUIRE_NATIVE=1[/code] (CI) fails instead.
 ## Run: [code]godot --headless --path . res://examples/motor_native_tick_parity.tscn[/code]
@@ -29,6 +29,8 @@ func _tick_tunables(variant: int) -> DotFpsTunables:
 		t.bhop_speed_cap_scale = 1.4
 		t.slide_requires_sprint = true
 		t.wall_jump_enabled = true
+		t.aim_button = DotFpsCommand.BUTTON_USER_2
+		t.aim_speed_scale = 0.45
 	elif variant == 3:
 		t.wall_run_auto = true
 		t.wall_run_on_jump = true
@@ -37,10 +39,13 @@ func _tick_tunables(variant: int) -> DotFpsTunables:
 		t.launch_enabled = true
 		t.launch_button = DotFpsCommand.BUTTON_USER_0
 		t.launch_from_air = false
+		t.aim_button = DotFpsCommand.BUTTON_USER_2
+		t.aim_speed_scale = 0.6
+		t.sprint_blocks_aim = true
 	return t
 
 
-## A seeded stream that changes its inputs every few ticks: any move, sprint, crouch, jump and the two move buttons.
+## A seeded stream that changes its inputs every few ticks: any move, sprint, crouch, jump and the three move buttons.
 func _random_stream(seed: int, ticks: int) -> Array[DotFpsCommand]:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
@@ -53,7 +58,7 @@ func _random_stream(seed: int, ticks: int) -> Array[DotFpsCommand]:
 			c.move = Vector2(rng.randi_range(-1, 1), -1.0 if rng.randf() < 0.6 else float(rng.randi_range(-1, 1)))
 			var b := 0
 			for bit: int in [DotFpsCommand.BUTTON_SPRINT, DotFpsCommand.BUTTON_CROUCH, DotFpsCommand.BUTTON_JUMP,
-					DotFpsCommand.BUTTON_USER_0, DotFpsCommand.BUTTON_USER_1]:
+					DotFpsCommand.BUTTON_USER_0, DotFpsCommand.BUTTON_USER_1, DotFpsCommand.BUTTON_USER_2]:
 				if rng.randf() < (0.5 if bit == DotFpsCommand.BUTTON_SPRINT else 0.18):
 					b |= bit
 			c.buttons = b
