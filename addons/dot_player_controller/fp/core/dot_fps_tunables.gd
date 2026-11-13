@@ -334,18 +334,32 @@ func climb_limit(margin: float = CLIMB_MARGIN) -> float:
 	return jump_height * margin
 
 
+static var _fp_keys := PackedStringArray()
+var _fp_cache := ""
+var _fp_revision := -1
+
+
 ## A short hash of every value that affects the simulation.
 ## Differing tunables look exactly like packet loss (constant small corrections); compare fingerprints at connect to fail loudly.
 ## Look-only values (mouse sensitivity) are excluded.
 func fingerprint() -> String:
+	# Every exported value's setter bumps revision, so a cached answer is exact until one changes.
+	if _fp_revision == revision and _fp_cache != "":
+		return _fp_cache
+
+	if _fp_keys.is_empty():
+		for key in config_keys():
+			if not (key.begins_with("mouse_") or key == "invert_look_y"):
+				_fp_keys.append(key)
+
 	var parts := PackedStringArray()
 
-	for key in config_keys():
-		if key.begins_with("mouse_") or key == "invert_look_y":
-			continue
+	for key in _fp_keys:
 		parts.append("%s=%s" % [key, str(get(key))])
 
-	return DotHash.sha256_text("|".join(parts)).substr(0, 16)
+	_fp_cache = DotHash.sha256_text("|".join(parts)).substr(0, 16)
+	_fp_revision = revision
+	return _fp_cache
 
 
 func describe_summary() -> String:
