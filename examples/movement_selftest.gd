@@ -6,7 +6,7 @@ extends "res://examples/movement_selftest_wallalign.gd"
 ##
 ## Most tests run on [DotFpsFlatBody] so a failure has one possible cause, the [DotFpsMotor]; [method _test_physics_body] covers the real implementation.
 
-const CHECKS := 469
+const CHECKS := 477
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
@@ -431,6 +431,33 @@ func _test_speed_modifiers() -> void:
 	disabled.can_sprint = false
 	disabled.max_speed = 8.0
 	_check_near( disabled.speed_for(DotFpsCommand.BUTTON_SPRINT), 8.0, 0.001, "a disabled ability ignores its button" )
+
+	# Aiming down sights (sv_ads_speed_mult): off until a game names the bit, then on top of the stance.
+	var aim := DotFpsCommand.BUTTON_USER_2
+	_check_near(t.speed_for(aim), 8.0, 0.001, "the aim bit does nothing while aim_button is 0")
+	t.aim_button = aim
+	t.aim_speed_scale = 0.45
+	_check_near(t.speed_for(aim), 3.6, 0.001, "aiming runs at aim_speed_scale")
+	_check_near(t.speed_for(aim | DotFpsCommand.BUTTON_CROUCH), 1.8, 0.001, "aiming crouched multiplies both")
+	_check_near(t.speed_for(aim | DotFpsCommand.BUTTON_SPRINT), 5.4, 0.001, "an aimed sprint is slowed when sprint allows aiming")
+	t.sprint_blocks_aim = true
+	_check_near(t.speed_for(aim | DotFpsCommand.BUTTON_SPRINT), 12.0, 0.001, "a sprint that blocks the sights is not slowed")
+	_check_near(t.speed_for(aim), 3.6, 0.001, "sprint_blocks_aim leaves an unsprinting aim slowed")
+	var cvars := DotFpsTunables.new()
+	_check(cvars.set_cvar("sv_ads_speed_mult", "0.5") and is_equal_approx(cvars.aim_speed_scale, 0.5),
+		"sv_ads_speed_mult sets aim_speed_scale")
+
+	var walker := _tunables()
+	walker.max_speed = 7.0
+	walker.aim_button = aim
+	walker.aim_speed_scale = 0.45
+	var motor := _motor(walker)
+	var s := _standing(motor)
+	var c := _command(1.0)
+	c.buttons |= aim
+	for _i in range(240):
+		motor.simulate(s, c, STEP)
+	_check_near(s.horizontal_speed(), 7.0 * 0.45, 0.1, "the motor settles at the aimed speed")
 	_done()
 
 

@@ -60,6 +60,7 @@ const _CVARS := {
 	"sv_sprint_loadspeed": ["sprint_load_speed", 1.0, "How strongly carry load cuts the sprint bonus; 0 off"],
 	"sv_sprint_loaddrain": ["sprint_load_drain", 1.0, "How strongly carry load raises the stamina drain; 0 off"],
 	"sv_sprint_noaim": ["sprint_blocks_aim", 1.0, "1 stops aiming and reloading while sprinting"],
+	"sv_ads_speed_mult": ["aim_speed_scale", 1.0, "Speed while aiming down sights, fraction of the speed it would be; 1 off"],
 	"sv_sprint_shoot": ["sprint_can_shoot", 1.0, "0 blocks firing while sprinting"],
 	"sv_sprint_barrel": ["sprint_shot_follows_barrel", 1.0, "1 sends a sprinting shot along the lowered barrel, not the crosshair"],
 	"sv_unscope_hit": ["unscope_on_hit", 1.0, "1 drops a player out of the sights when hit; 0 keeps them aiming (shake and wobble instead)"],
@@ -249,6 +250,7 @@ func height_at(crouch_fraction: float) -> float:
 ## Ground speed for the modifiers held in [param buttons]. Most restrictive wins; see [member crouch_speed_scale].
 func speed_for(buttons: int, load_fraction: float = 0.0) -> float:
 	var scale := 1.0
+	var sprinting := false
 
 	if can_crouch and (buttons & DotFpsCommand.BUTTON_CROUCH):
 		scale = crouch_speed_scale
@@ -256,6 +258,11 @@ func speed_for(buttons: int, load_fraction: float = 0.0) -> float:
 		scale = walk_speed_scale
 	elif can_sprint and (buttons & DotFpsCommand.BUTTON_SPRINT):
 		scale = 1.0 + (sprint_speed_scale - 1.0) * (1.0 - clampf(load_fraction * sprint_load_speed, 0.0, 1.0))
+		sprinting = true
+
+	# Aiming slows on top of the stance; a sprint that refuses the sights is not aiming.
+	if aim_button > 0 and (buttons & aim_button) and not (sprinting and sprint_blocks_aim):
+		scale *= aim_speed_scale
 
 	var wish := max_speed * scale
 	wish = minf(wish, max_wish_speed) if max_wish_speed > 0.0 else wish
