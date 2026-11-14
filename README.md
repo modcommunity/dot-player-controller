@@ -1,5 +1,3 @@
-# dot-player-controller
-
 Everything that drives a player: a shared base, a first-person movement model built for prediction and reconciliation, and a third-person model with a camera rig.
 
 ```
