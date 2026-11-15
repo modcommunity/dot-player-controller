@@ -24,10 +24,9 @@ var query_count: int:
 
 var _queries: int = 0
 
-## dot-sim's native body ([code]DotSimFpsBody[/code], the [code]motor[/code] module): the same sweep, rest contact and
-## overlap, rounded the same way, so its answers are this script's to the bit (dot-sim's motor parity suite proves it over
-## recorded input streams). Used when the extension is loaded, [member native_enabled] is on and [member profile] is off;
-## on the web, or with no library installed, this script answers. The motor's collide-and-slide runs there too ([method native_slide]).
+## dot-sim's native body ([code]DotSimFpsBody[/code], the [code]motor[/code] module): the same sweep, rest contact and overlap, rounded the same way, so its answers are this script's to the bit (dot-sim's motor parity suite proves it over recorded input streams).
+## Used when the extension is loaded, [member native_enabled] is on and [member profile] is off; on the web, or with no library installed, this script answers.
+## The motor's collide-and-slide runs there too ([method native_slide]).
 const NATIVE_CLASS := &"DotSimFpsBody"
 
 ## Whether the native body is used when present (a game's cvar; a suite turns it off to compare).

@@ -340,65 +340,11 @@ func _test_view_motion() -> void:
 		widest = maxf(widest, absf(motion.roll()))
 	_check(widest <= 7.0 + 1e-4 and widest > 6.9, "the strafe and wall-run rolls add, never past roll_limit", "%.3f degrees" % widest)
 
-	# The widening: none under the floor, the gain at the reference, eased.
-	var widening := DotFpsViewMotion.new()
-	widening.strafe_roll = 0.0
-	widening.fov_speed_gain = 5.0
-	widening.fov_speed_floor = 9.0
-	widening.fov_speed_reference = 15.0
-	var running := DotFpsState.new()
-	running.mode = DotFpsState.Mode.GROUND
-	running.velocity = Vector3(0.0, 0.0, -9.0)
-	for _i in range(144):
-		widening.advance(running, frame)
-	_check(absf(widening.fov_added()) < 1e-4, "no widening at or under fov_speed_floor")
-	running.velocity = Vector3(0.0, 0.0, -15.0)
-	widening.advance(running, frame)
-	var first := widening.fov_added()
-	for _i in range(287):
-		widening.advance(running, frame)
-	_check(first < 0.05 and absf(widening.fov_added() - 5.0) < 0.1,
-		"the widening eases to fov_speed_gain at the reference speed",
-		"first frame %.3f, after two seconds %.2f degrees" % [first, widening.fov_added()])
+	_widening_checks(frame)
 
-	# Each amount at 0 is off.
-	var off := DotFpsViewMotion.new()
-	off.strafe_roll = 0.0
-	off.slide_roll = 0.0
-	off.wall_run_roll = 0.0
-	off.landing_dip = 0.0
-	off.fov_speed_gain = 0.0
-	off.slide_fov_gain = 0.0
-	off.note_landing(30.0)
-	strafing.slide_time = 0.1
-	for _i in range(60):
-		off.advance(strafing, frame)
-	_check(off.roll() == 0.0 and off.eye_drop() == 0.0 and off.pitch() == 0.0 and off.fov_added() == 0.0,
-		"every amount at 0 moves nothing", str(off.describe()))
+	_off_checks(strafing, frame)
 
-	# DotFpsView forwards every field of the motion object, read by reflection, so a field added to DotFpsViewMotion and not to the view fails here instead of leaving a game stuck at the default.
-	# Armed: without the five forwards left out, this names landing_min_speed, landing_pitch, roll_limit, fov_speed_floor and wall_run_fov_gain.
-	var forwarding := DotFpsView.new()
-	var unforwarded := PackedStringArray()
-	var fields := 0
-	for property in DotFpsViewMotion.new().get_property_list():
-		var field := String(property.name)
-		if not (property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE) or field.begins_with("_"):
-			continue
-		fields += 1
-		if not field in forwarding:
-			unforwarded.append(field + " (no export)")
-			continue
-		forwarding.set(field, float(forwarding.get(field)) + 0.25)
-	forwarding._sync_motion()
-	for property in forwarding._motion.get_property_list():
-		var field := String(property.name)
-		if (property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE) and not field.begins_with("_") \
-				and field in forwarding and forwarding._motion.get(field) != forwarding.get(field):
-			unforwarded.append(field)
-	_check(fields >= 18 and unforwarded.is_empty(), "DotFpsView exports and forwards every DotFpsViewMotion field",
-		"%d fields, not reaching the motion: %s" % [fields, ", ".join(unforwarded)])
-	forwarding.free()
+	_forwarding_checks()
 
 	# And one of them end to end: a landing under landing_min_speed dips nothing through the view.
 	var floor_body := Node3D.new()
@@ -422,6 +368,73 @@ func _test_view_motion() -> void:
 	_check(absf(floor_deepest) < 1e-5, "a landing under DotFpsView.landing_min_speed dips nothing", "%.2f mm" % (-floor_deepest * 1000.0))
 	floor_body.queue_free()
 	_done()
+
+
+## Each amount at 0 is off.
+func _off_checks(strafing: DotFpsState, frame: float) -> void:
+	var off := DotFpsViewMotion.new()
+	off.strafe_roll = 0.0
+	off.slide_roll = 0.0
+	off.wall_run_roll = 0.0
+	off.landing_dip = 0.0
+	off.fov_speed_gain = 0.0
+	off.slide_fov_gain = 0.0
+	off.note_landing(30.0)
+	strafing.slide_time = 0.1
+	for _i in range(60):
+		off.advance(strafing, frame)
+	_check(off.roll() == 0.0 and off.eye_drop() == 0.0 and off.pitch() == 0.0 and off.fov_added() == 0.0,
+		"every amount at 0 moves nothing", str(off.describe()))
+
+
+## The widening: none under the floor, the gain at the reference, eased.
+func _widening_checks(frame: float) -> void:
+	var widening := DotFpsViewMotion.new()
+	widening.strafe_roll = 0.0
+	widening.fov_speed_gain = 5.0
+	widening.fov_speed_floor = 9.0
+	widening.fov_speed_reference = 15.0
+	var running := DotFpsState.new()
+	running.mode = DotFpsState.Mode.GROUND
+	running.velocity = Vector3(0.0, 0.0, -9.0)
+	for _i in range(144):
+		widening.advance(running, frame)
+	_check(absf(widening.fov_added()) < 1e-4, "no widening at or under fov_speed_floor")
+	running.velocity = Vector3(0.0, 0.0, -15.0)
+	widening.advance(running, frame)
+	var first := widening.fov_added()
+	for _i in range(287):
+		widening.advance(running, frame)
+	_check(first < 0.05 and absf(widening.fov_added() - 5.0) < 0.1,
+		"the widening eases to fov_speed_gain at the reference speed",
+		"first frame %.3f, after two seconds %.2f degrees" % [first, widening.fov_added()])
+
+
+## DotFpsView forwards every field of the motion object, read by reflection.
+func _forwarding_checks() -> void:
+	# So a field added to DotFpsViewMotion and not to the view fails here instead of leaving a game stuck at the default.
+	# Armed: without the five forwards left out, this names landing_min_speed, landing_pitch, roll_limit, fov_speed_floor and wall_run_fov_gain.
+	var forwarding := DotFpsView.new()
+	var unforwarded := PackedStringArray()
+	var fields := 0
+	for property in DotFpsViewMotion.new().get_property_list():
+		var field := String(property.name)
+		if not (property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE) or field.begins_with("_"):
+			continue
+		fields += 1
+		if not field in forwarding:
+			unforwarded.append(field + " (no export)")
+			continue
+		forwarding.set(field, float(forwarding.get(field)) + 0.25)
+	forwarding._sync_motion()
+	for property in forwarding._motion.get_property_list():
+		var field := String(property.name)
+		if (property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE) and not field.begins_with("_") \
+				and field in forwarding and forwarding._motion.get(field) != forwarding.get(field):
+			unforwarded.append(field)
+	_check(fields >= 18 and unforwarded.is_empty(), "DotFpsView exports and forwards every DotFpsViewMotion field",
+		"%d fields, not reaching the motion: %s" % [fields, ", ".join(unforwarded)])
+	forwarding.free()
 
 
 ## A landing through the view, as DotFpsController wires it.
