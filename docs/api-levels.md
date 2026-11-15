@@ -30,3 +30,4 @@ Moved from `dot_player_controller_api.gd`; one line per level, newest last. The 
 - 26: `DotFpsMotorBatch.add(..., delta)`: a row's own tick length (a server body that sat out ticks makes them up in one row); without it the row ticks `start`'s delta as before.
 - 27: `DotFpsMotor.native_tick` is on by default, so every game's plain ground and air ticks run in dot-sim when the library is there (bit-identical to the script); a game that wants the script sets it false.
 - 28: `DotFpsTunables.aim_button`/`aim_speed_scale` (`sv_ads_speed_mult`): ground speed while a move-command aim bit is held, applied in `speed_for` so prediction, the server and the native tick agree.
+- 29: `DotFpsController.observe_stats`: off skips folding each tick into `stats` (jumps, strafe sync) for a game with no run HUD; `airborne_time` is kept either way.

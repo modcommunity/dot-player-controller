@@ -120,6 +120,10 @@ var current_command: DotFpsCommand = null
 ## Folded once per simulated tick and not during a replay, or a client under packet loss would count jumps that climb on their own.
 var stats := DotFpsStats.new()
 
+## Whether each tick is folded into [member stats]. A game that never reads them (a server, a shooter with no run HUD)
+## turns this off and saves the fold every tick per player; [member DotFpsState.airborne_time] is kept either way.
+@export var observe_stats: bool = true
+
 ## The tunables before the style was applied. See [method set_style].
 ## A style derives from the original, not the previous style's output, or two changes compound their scales.
 var _pass_out_mask: int = 0
@@ -133,7 +137,8 @@ var _body_node: Node3D = null
 var _collider: CollisionShape3D = null
 var _capsule: CapsuleShape3D = null
 
-## State at the end of the previous tick, for render interpolation.
+## State at the end of the previous tick, for render interpolation. Each tick refreshes only its position and
+## crouch_fraction, the fields the blend reads; setup and teleport copy it whole.
 var _previous_state: DotFpsState = DotFpsState.new()
 
 ## Where the player stood two ticks back, for a frame drawn before [member _previous_state]
@@ -662,7 +667,10 @@ func begin_tick(tick: int, delta: float) -> bool:
 
 	# A reset (setup, teleport) makes the previous state the current one.
 	_position_two_back = _previous_state.position
-	_previous_state.copy_from(state)
+	# Only what the render blend reads ([method render_state], [method previous_position]): a whole copy_from is about
+	# 30 property reads a tick per player, on a server that never draws one. Setup and teleport still copy it whole.
+	_previous_state.position = state.position
+	_previous_state.crouch_fraction = state.crouch_fraction
 
 	_before_mode = state.mode
 	_before_y = state.position.y
@@ -740,6 +748,7 @@ func end_tick(tick: int, delta: float) -> void:
 	# Not during a replay: the statistics have seen that tick, and a lossy client would double-count.
 	if not _replaying:
 		state.airborne_time = (state.airborne_time + delta) if state.mode == DotFpsState.Mode.AIR else 0.0
+	if not _replaying and observe_stats:
 		stats.observe(state, current_command, _stats_previous, delta)
 		if motor.perf_caches:
 			# Observe only asks whether there was a previous command (null on the first tick and after a style change), never reads it: one object kept, not one allocated a tick.
@@ -840,7 +849,9 @@ func _publish(
 	before_fall: float
 ) -> void:
 	var pt := Time.get_ticks_usec() if (DotFpsMotor.profile or phase_timers) else 0
-	if _body_node != null:
+	# Written only when the node is elsewhere: a write, even of the same place, walks the whole body subtree (hitboxes, figure)
+	# marking transforms dirty, several microseconds a player a tick, and a player standing still did that every tick.
+	if _body_node != null and _body_node.global_position != state.position:
 		_body_node.global_position = state.position
 	if pt != 0:
 		phase_us[7] += Time.get_ticks_usec() - pt
