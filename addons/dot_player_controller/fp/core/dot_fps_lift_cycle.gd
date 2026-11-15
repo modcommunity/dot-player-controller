@@ -1,10 +1,7 @@
 class_name DotFpsLiftCycle
 extends RefCounted
 
-## A lift car's travel as a pure function of time: rest at the bottom, rise, rest at the top, descend, and again.
-## Nothing is stored between ticks, so the server and a predicting client that agree on the tick agree on the car
-## to the bit, and a replay reads the same height. The game poses its car (a kinematic body) from [method fraction]
-## and carries riders by [method carry]; the motor itself does not move a person with the ground.
+## A lift car's travel as a pure function of time: rest at the bottom, rise, rest at the top, descend, and again. Nothing is stored between ticks, so the server and a predicting client that agree on the tick agree on the car to the bit, and a replay reads the same height. The game poses its car (a kinematic body) from [method fraction] and carries riders by [method carry]; the motor itself does not move a person with the ground.
 
 ## Seconds the car waits at each stop.
 var rest := 3.0
@@ -50,10 +47,7 @@ func at_stop(seconds: float) -> bool:
 	return f <= 0.0 or f >= 1.0
 
 
-## Whether the landing at a stop is open: true only while the car stands at that stop ([param at_top] picks the top
-## stop, false the bottom one). The game closes a barrier across the landing's edge while this is false, so a person
-## cannot walk off a landing into an empty shaft (the car is at the other stop or on its way). Pure, like [method fraction],
-## so every end agrees which tick the barrier is up.
+## Whether the landing at a stop is open: true only while the car stands at that stop ([param at_top] picks the top stop, false the bottom one). The game closes a barrier across the landing's edge while this is false, so a person cannot walk off a landing into an empty shaft (the car is at the other stop or on its way). Pure, like [method fraction], so every end agrees which tick the barrier is up.
 func gate_open(seconds: float, at_top: bool) -> bool:
 	return fraction(seconds) >= 1.0 if at_top else fraction(seconds) <= 0.0
 

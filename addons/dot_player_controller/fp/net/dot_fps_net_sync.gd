@@ -54,10 +54,7 @@ const TIMER_SCALE := 64.0
 ## The highest tick rate whose ticks are the wire's unit: 125 codes of the wall-run field are 1.89 s at 66 Hz.
 const EXACT_RATE_LIMIT := 66
 
-## The scale in use: the tick rate up to [constant EXACT_RATE_LIMIT], so a timer counted a tick at a
-## time round-trips exactly (the client rewinds to a decoded value and must land where the server is),
-## and [constant TIMER_SCALE] above it, where the 7-bit fields could not hold their documented range.
-## Set by [method set_tick_rate] (the simulator and the controller do), one value per process.
+## The scale in use: the tick rate up to [constant EXACT_RATE_LIMIT], so a timer counted a tick at a time round-trips exactly (the client rewinds to a decoded value and must land where the server is), and [constant TIMER_SCALE] above it, where the 7-bit fields could not hold their documented range. Set by [method set_tick_rate] (the simulator and the controller do), one value per process.
 static var timer_scale: float = TIMER_SCALE
 const LAUNCH_BITS := 12
 const SLIDE_BITS := 7
@@ -361,11 +358,7 @@ static func unpack_timers(state: DotFpsState, code: int) -> void:
 	state.wall_run_cooldown_left = minf(_timer_value(code >> (3 * JUMP_TIMER_BITS)), 10.0) if code >> (3 * JUMP_TIMER_BITS) != 0 else 0.0
 
 
-## The slide time, the slide cooldown and the wall-run time in 1/7680 s, 14 bits each (up to 2.13 s),
-## for a game that runs above [constant EXACT_RATE_LIMIT], where the coarse fields of net_flags are in
-## sixty-fourths and a rewind lands up to half a code off. Opt in with [code]var net_timers2: int[/code]
-## and replicate [method rewind_specs2]; [method pull] writes it and [method push] prefers it over
-## the flags fields. Slide time: 0 not sliding, n+1 else. Wall run: 0 ready, 1 spent, n+2 running.
+## The slide time, the slide cooldown and the wall-run time in 1/7680 s, 14 bits each (up to 2.13 s), for a game that runs above [constant EXACT_RATE_LIMIT], where the coarse fields of net_flags are in sixty-fourths and a rewind lands up to half a code off. Opt in with [code]var net_timers2: int[/code] and replicate [method rewind_specs2]; [method pull] writes it and [method push] prefers it over the flags fields. Slide time: 0 not sliding, n+1 else. Wall run: 0 ready, 1 spent, n+2 running.
 const TIMERS2_BITS := 3 * JUMP_TIMER_BITS
 const _T2_MAX := (1 << JUMP_TIMER_BITS) - 1
 

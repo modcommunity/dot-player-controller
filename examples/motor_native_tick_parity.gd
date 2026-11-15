@@ -1,12 +1,6 @@
 extends "res://examples/motor_native_parity.gd"
 
-## Holds [member DotFpsMotor.native_tick] (the tick's start and end in dot-sim) and [member DotFpsMotor.native_full]
-## (the whole tick in one call, [code]DotSimFpsBody.motor_tick[/code]) to the all-script motor, to the bit: the determinism
-## world's scenarios at 22, 33 and 66 Hz, with and without other players' hulls, under four tunable sets (default; wall
-## slides and jumps; launch, dash, auto-hop and aimed walking; auto and jump-started wall runs that turn the view), the last two on long
-## randomized streams. Every tick's state, timers, wall fields and view turn, and the motor's counters, are identical.
-## With no library it says the native half was skipped and passes; [code]DOT_SIM_REQUIRE_NATIVE=1[/code] (CI) fails instead.
-## Run: [code]godot --headless --path . res://examples/motor_native_tick_parity.tscn[/code]
+## Holds [member DotFpsMotor.native_tick] (the tick's start and end in dot-sim) and [member DotFpsMotor.native_full] (the whole tick in one call, [code]DotSimFpsBody.motor_tick[/code]) to the all-script motor, to the bit: the determinism world's scenarios at 22, 33 and 66 Hz, with and without other players' hulls, under four tunable sets (default; wall slides and jumps; launch, dash, auto-hop and aimed walking; auto and jump-started wall runs that turn the view), the last two on long randomized streams. Every tick's state, timers, wall fields and view turn, and the motor's counters, are identical. With no library it says the native half was skipped and passes; [code]DOT_SIM_REQUIRE_NATIVE=1[/code] (CI) fails instead. Run: [code]godot --headless --path . res://examples/motor_native_tick_parity.tscn[/code]
 
 
 const RANDOM_TICKS := 3000

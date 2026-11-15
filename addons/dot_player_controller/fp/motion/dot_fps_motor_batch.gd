@@ -1,12 +1,7 @@
 class_name DotFpsMotorBatch
 extends RefCounted
 ## Several players' motor ticks in runs of one native call (dot-sim's [code]DotSimMotorBatch[/code]), for a server's players' loop.
-##
-## The game first [method add]s every player in roster order (each motor runs the part of its tick no other player can change),
-## then in the same order [method finish]es one, does its own work for that player and goes on. A run is the consecutive rows
-## dot-sim can tick; it is ticked when its first row is finished, each row seeing the earlier ones where they came to rest, as
-## the players' ticks one after another do. A player that ends its tick elsewhere (a teleport, a death) takes the rows after it
-## back ([method moved_after]); they run again. The answers are [method DotFpsMotor.simulate]'s to the bit.
+## The game first [method add]s every player in roster order (each motor runs the part of its tick no other player can change), then in the same order [method finish]es one, does its own work for that player and goes on. A run is the consecutive rows dot-sim can tick; it is ticked when its first row is finished, each row seeing the earlier ones where they came to rest, as the players' ticks one after another do. A player that ends its tick elsewhere (a teleport, a death) takes the rows after it back ([method moved_after]); they run again. The answers are [method DotFpsMotor.simulate]'s to the bit.
 
 const NATIVE_CLASS := &"DotSimMotorBatch"
 const _IN := 55

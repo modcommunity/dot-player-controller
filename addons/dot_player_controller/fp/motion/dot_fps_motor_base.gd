@@ -142,13 +142,7 @@ var perf_caches: bool = true:
 		if body != null:
 			body.perf_caches = value
 
-## Whether a plain GROUND or AIR tick runs its start (depenetrate, ground check) and its end (friction, wish move,
-## gravity or push, clamp, slide, ground check) in dot-sim's native motor ([code]DotSimFpsBody.motor_pre/motor_post[/code]),
-## when the body can ([method DotFpsBody.native_tick]); the jump, wall and slide moves between stay here. Same bits as this
-## script (examples/motor_native_tick_parity.gd). On by default (API 27); a game's operator switch may turn it off, and a body
-## with no library answers in script.
-## Not used with [member surfaces], edge friction above 1, or a wall run's end of tick. With [member profile] on, the native
-## start is charged to the depenetrate phase and the native end to the move phase.
+## Whether a plain GROUND or AIR tick runs its start (depenetrate, ground check) and its end (friction, wish move, gravity or push, clamp, slide, ground check) in dot-sim's native motor ([code]DotSimFpsBody.motor_pre/motor_post[/code]), when the body can ([method DotFpsBody.native_tick]); the jump, wall and slide moves between stay here. Same bits as this script (examples/motor_native_tick_parity.gd). On by default (API 27); a game's operator switch may turn it off, and a body with no library answers in script. Not used with [member surfaces], edge friction above 1, or a wall run's end of tick. With [member profile] on, the native start is charged to the depenetrate phase and the native end to the move phase.
 static var native_tick: bool = true
 
 ## With [member native_tick], run the whole tick from the start ground check to the end one in one native call when the

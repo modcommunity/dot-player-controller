@@ -60,10 +60,7 @@ func native_slide(
 	return PackedFloat64Array()
 
 
-## Half of a motor tick in one native call (see [member DotFpsMotor.native_tick]): [param phase] 0 is
-## [code]DotSimFpsBody.motor_pre[/code], 1 [code]motor_post[/code], 2 the whole tick [code]motor_tick[/code]; their answer, or empty to run it in script.
-## [param hulls_mode] 0 none, 1 [param hulls] as boxes, 2 the boxes the last call this tick sent,
-## 3 the ones dot-sim's hull world gathers ([method set_hull_world]; empty when it has no answer).
+## Half of a motor tick in one native call (see [member DotFpsMotor.native_tick]): [param phase] 0 is [code]DotSimFpsBody.motor_pre[/code], 1 [code]motor_post[/code], 2 the whole tick [code]motor_tick[/code]; their answer, or empty to run it in script. [param hulls_mode] 0 none, 1 [param hulls] as boxes, 2 the boxes the last call this tick sent, 3 the ones dot-sim's hull world gathers ([method set_hull_world]; empty when it has no answer).
 func native_tick(
 	_phase: int, _state: PackedFloat64Array, _tun: PackedFloat64Array, _hulls_mode: int = 0, _hulls: Array = []
 ) -> PackedFloat64Array:

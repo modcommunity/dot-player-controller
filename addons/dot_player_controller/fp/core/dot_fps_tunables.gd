@@ -1,6 +1,6 @@
 @tool
 class_name DotFpsTunables
-extends "dot_fps_tunables_base.gd"
+extends "dot_fps_tunables_movement.gd"
 
 ## Every number the movement simulation reads, layered like every [DotConfig]: exported defaults, JSON file, [code]DOT_FPS_*[/code] environment, [code]--fps-*[/code] arguments.
 ## Must be identical on client and server or reconciliation corrects forever; see [method fingerprint].

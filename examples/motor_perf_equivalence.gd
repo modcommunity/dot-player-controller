@@ -1,10 +1,6 @@
 extends "res://examples/motor_determinism_selftest.gd"
 
-## The motor's perf work (DotFpsMotor.perf_caches: broad-phase rejection in the flat body, per-tick hull candidates, the rest-query memo, skipped stamina snaps and effect resets)
-## must change nothing a player or the netcode can see. Replays the determinism scenarios' scripted inputs (runs, jumps, crouch-slides, wall runs, strafes, turns, ramps, stairs, corners)
-## through two motors side by side, one on the original code paths and one on the optimised ones, in two worlds (the physics server and analytic boxes with other players' hulls),
-## and asserts position, velocity, mode and flags agree to EPSILON on every one of TICKS ticks. Run: godot --headless --path . res://examples/motor_perf_equivalence.tscn
-## A check that cannot fail proves nothing: the last section turns a perf flag on in one motor only with a deliberately wrong input and must report a divergence.
+## The motor's perf work (DotFpsMotor.perf_caches: broad-phase rejection in the flat body, per-tick hull candidates, the rest-query memo, skipped stamina snaps and effect resets) must change nothing a player or the netcode can see. Replays the determinism scenarios' scripted inputs (runs, jumps, crouch-slides, wall runs, strafes, turns, ramps, stairs, corners) through two motors side by side, one on the original code paths and one on the optimised ones, in two worlds (the physics server and analytic boxes with other players' hulls), and asserts position, velocity, mode and flags agree to EPSILON on every one of TICKS ticks. Run: godot --headless --path . res://examples/motor_perf_equivalence.tscn A check that cannot fail proves nothing: the last section turns a perf flag on in one motor only with a deliberately wrong input and must report a divergence.
 
 const EPSILON := 1e-6
 

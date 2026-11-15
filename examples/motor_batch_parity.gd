@@ -1,13 +1,6 @@
 extends "res://examples/motor_native_tick_parity.gd"
 
-## Holds [DotFpsMotorBatch] (several players' motor ticks in runs of one dot-sim call) to the players' loop it replaces,
-## [method DotFpsMotor.simulate] one player after another, to the bit: eight players walking into each other on random
-## streams, six in dot-sim's hull world, one with no hulls and one gathering by script, at two rates under two tunable
-## sets. A push between the add and a player's turn, a teleport after its tick and a death during another player's turn
-## take the rows after them back; every tick's state and the counters stay identical. One player ticks every other tick
-## two ticks long ([method DotFpsMotorBatch.add]'s delta), as a server's far bot does.
-## With no library it says so and passes; [code]DOT_SIM_REQUIRE_NATIVE=1[/code] (CI) fails instead.
-## Run: [code]godot --headless --path . res://examples/motor_batch_parity.tscn[/code]
+## Holds [DotFpsMotorBatch] (several players' motor ticks in runs of one dot-sim call) to the players' loop it replaces, [method DotFpsMotor.simulate] one player after another, to the bit: eight players walking into each other on random streams, six in dot-sim's hull world, one with no hulls and one gathering by script, at two rates under two tunable sets. A push between the add and a player's turn, a teleport after its tick and a death during another player's turn take the rows after them back; every tick's state and the counters stay identical. One player ticks every other tick two ticks long ([method DotFpsMotorBatch.add]'s delta), as a server's far bot does. With no library it says so and passes; [code]DOT_SIM_REQUIRE_NATIVE=1[/code] (CI) fails instead. Run: [code]godot --headless --path . res://examples/motor_batch_parity.tscn[/code]
 
 const PLAYERS := 8
 const BATCH_TICKS := 1500
@@ -42,29 +35,8 @@ func _batch_replay(batched: bool, hz: int, variant: int, streams: Array) -> Dict
 	var alive: Array[bool] = []
 	var ids := PackedInt64Array()
 	var script_gathers: Array[int] = [0]
-	var wired := true
+	var wired := _batch_players(tun, world, motors, states, alive, script_gathers)
 	for i in range(PLAYERS):
-		var physics := DotFpsPhysicsBody.for_node(self)
-		physics.pass_out_mask = 1 << 3
-		var body: DotFpsBody = physics
-		if i != PLAIN:
-			var me := i
-			body = DotFpsHullBody.new().wrap(physics, func() -> Array:
-				script_gathers[0] += 1
-				var boxes := []
-				for j in range(PLAYERS):
-					if j != me and j != PLAIN and alive[j]:
-						var f := states[j].position
-						boxes.append(AABB(f - Vector3(tun.radius, 0.0, tun.radius), Vector3(tun.radius * 2.0, tun.stand_height, tun.radius * 2.0)))
-				return boxes)
-			if i != SCRIPTED:
-				wired = body.set_hull_world(world, i) and wired
-		motors.append(DotFpsMotor.new(tun, body))
-		var s := DotFpsState.new()
-		s.position = _start(i)
-		s.mode = DotFpsState.Mode.AIR
-		states.append(s)
-		alive.append(true)
 		ids.append(100 + i)
 	var batch := DotFpsMotorBatch.new()
 	var ticks: Array[PackedByteArray] = []
@@ -129,6 +101,37 @@ func _batch_replay(batched: bool, hz: int, variant: int, streams: Array) -> Dict
 			m.launches, m.dashes, m.wall_runs, m.wall_jumps, m.ticks_simulated])
 	return {"ticks": ticks, "counters": counters, "wired": wired, "script_gathers": script_gathers[0],
 		"native_ticks": DotFpsPhysicsBody.native_ticks - before, "batch": batch, "blocks": motors[0].body.hull_blocks + motors[4].body.hull_blocks}
+
+## [method _batch_replay]'s players: a motor and a state each, every player but PLAIN behind a hull body
+## that sees the others (counting its gathers in [param script_gathers]). False when a hull world did not wire.
+func _batch_players(
+	tun: DotFpsTunables, world: Object, motors: Array[DotFpsMotor], states: Array[DotFpsState],
+	alive: Array[bool], script_gathers: Array[int]
+) -> bool:
+	var wired := true
+	for i in range(PLAYERS):
+		var physics := DotFpsPhysicsBody.for_node(self)
+		physics.pass_out_mask = 1 << 3
+		var body: DotFpsBody = physics
+		if i != PLAIN:
+			var me := i
+			body = DotFpsHullBody.new().wrap(physics, func() -> Array:
+				script_gathers[0] += 1
+				var boxes := []
+				for j in range(PLAYERS):
+					if j != me and j != PLAIN and alive[j]:
+						var f := states[j].position
+						boxes.append(AABB(f - Vector3(tun.radius, 0.0, tun.radius), Vector3(tun.radius * 2.0, tun.stand_height, tun.radius * 2.0)))
+				return boxes)
+			if i != SCRIPTED:
+				wired = body.set_hull_world(world, i) and wired
+		motors.append(DotFpsMotor.new(tun, body))
+		var s := DotFpsState.new()
+		s.position = _start(i)
+		s.mode = DotFpsState.Mode.AIR
+		states.append(s)
+		alive.append(true)
+	return wired
 
 
 func _batch_runs() -> void:

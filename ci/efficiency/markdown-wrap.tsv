@@ -1,3 +1,2 @@
 # markdown-wrap
 # Baselines only shrink: scripts/<gate> --update lowers or drops entries and refuses to add.
-README.md::hard_wrap	5
