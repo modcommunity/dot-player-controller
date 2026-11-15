@@ -4,7 +4,7 @@ With `physics/3d/run_on_separate_thread`, `PhysicsDirectSpaceState3D` is only re
 
 | File | Query | Who must call it inside a physics step |
 | --- | --- | --- |
-| `fp/motion/dot_fps_physics_body.gd` | `cast_motion`, `intersect_shape`, `intersect_ray` (8-22 per player per tick) | `DotFpsMotor` through `DotFpsController.simulate_tick`. The controller calls it from its own `_physics_process` when `drive` is LOCAL; a server or replay driver must call `simulate_tick` from its tick |
+| `fp/motion/dot_fps_physics_body_native.gd` (the base of `dot_fps_physics_body.gd`) | `cast_motion`, `intersect_shape`, `intersect_ray` (8-22 per player per tick) | `DotFpsMotor` through `DotFpsController.simulate_tick`. The controller calls it from its own `_physics_process` when `drive` is LOCAL; a server or replay driver must call `simulate_tick` from its tick |
 | `fp/nodes/dot_fps_wall_probe.gd` | two `intersect_ray` for a remote player's wall | Client rendering of remote players only (game-fatal-contact `arena_player.gd`); the caller passes the space |
 | `tp/nodes/dot_tps_controller.gd` | `move_and_slide` in `_apply_intent` | `simulate` only. Its `_process` only moves the camera rig and never reaches `_apply_intent` |
 

@@ -9,7 +9,7 @@ var _section_count := 0
 
 ## Files that query the physics space or move a body. With physics on its own thread these may only run inside the physics step, so a new one fails here until it is listed in docs/threading.md.
 const QUERY_FILES: Array[String] = [
-	"fp/motion/dot_fps_physics_body.gd",
+	"fp/motion/dot_fps_physics_body_native.gd",
 	"fp/nodes/dot_fps_wall_probe.gd",
 	"tp/nodes/dot_tps_controller.gd",
 ]
