@@ -450,6 +450,26 @@ static func _timer_value(code: int) -> float:
 ## Copies received values back into a state; on a predicting client this is the rewind half of reconciliation.
 ## Everything the simulation reads must be restored here, or the replay starts from a state the server never computed.
 static func push(source: Variant, state: DotFpsState) -> void:
+	var has := _carrier_has(source)
+	if has & _HAS_CORE:
+		# Declared properties read directly: this runs per remote player per snapshot and per render frame.
+		state.position = source.net_position
+		state.velocity = source.net_velocity
+		state.yaw = source.net_yaw
+		state.pitch = source.net_pitch
+		state.crouch_fraction = source.net_crouch
+		unpack_flags(state, int(source.net_flags))
+		var mask := int(source.net_modifiers)
+		# unpack_modifiers clears and refills: with nothing to add to an empty list it has nothing to do.
+		if mask != 0 or not state.modifiers.is_empty():
+			unpack_modifiers(state, mask)
+		if has & _HAS_TIMERS:
+			unpack_timers(state, int(source.net_timers))
+		if has & _HAS_TIMERS2:
+			unpack_timers2(state, int(source.net_timers2))
+		if has & _HAS_STAMINA:
+			unpack_stamina(state, int(source.net_stamina))
+		return
 	state.position = source.get(&"net_position")
 	state.velocity = source.get(&"net_velocity")
 	state.yaw = source.get(&"net_yaw")

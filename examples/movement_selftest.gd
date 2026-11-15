@@ -6,7 +6,7 @@ extends "res://examples/movement_selftest_more.gd"
 ##
 ## Most tests run on [DotFpsFlatBody] so a failure has one possible cause, the [DotFpsMotor]; [method _test_physics_body] covers the real implementation.
 
-const CHECKS := 480
+const CHECKS := 484
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
@@ -1594,6 +1594,21 @@ func _test_net_sync_round_trip() -> void:
 	dynamic.store[&"net_timers2"] = -1
 	DotFpsNetSync.pull(source, dynamic)
 	_check(dynamic.store[&"net_timers2"] == DotFpsNetSync.pack_timers2(source), "and is asked again each pull")
+
+	# push() reads the declared properties directly once it has seen the carrier's script.
+	var again := DotFpsState.new()
+	DotFpsNetSync.push(carrier, again)
+	_check(again.position == source.position and again.mode == source.mode, "a second push (cached carrier) restores the same state")
+	again.modifiers.append(Vector2i(1, -1))
+	DotFpsNetSync.push(carrier, again)
+	_check(again.modifiers.is_empty(), "a push of mask 0 empties a stale modifier list")
+	carrier.set(&"net_modifiers", 5)
+	DotFpsNetSync.push(carrier, again)
+	_check(again.modifiers.size() == 2 and again.modifiers[0] == Vector2i(0, -1) and again.modifiers[1] == Vector2i(2, -1), "a push of a mask refills the list ascending")
+	var pushed := DotFpsState.new()
+	DotFpsNetSync.push(dynamic, pushed)
+	DotFpsNetSync.push(dynamic, pushed)
+	_check(pushed.position == source.position, "a _get carrier is pushed from what it answers to")
 
 	_check_mode_packing()
 	_check_timer_and_button_packing()
