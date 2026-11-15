@@ -284,19 +284,64 @@ static func unpack_modifiers(state: DotFpsState, mask: int) -> void:
 ## Copies a state onto a replicating object, ready to be sent.
 ## [param target] is a [Variant] because it is a [code]DotNetBehaviour[/code] in practice and this file cannot name it.
 static func pull(state: DotFpsState, target: Variant) -> void:
-	target.set(&"net_position", state.position)
-	target.set(&"net_velocity", state.velocity)
-	target.set(&"net_yaw", state.yaw)
-	target.set(&"net_pitch", state.pitch)
-	target.set(&"net_crouch", state.crouch_fraction)
-	target.set(&"net_flags", pack_flags(state))
-	target.set(&"net_modifiers", pack_modifiers(state))
+	var has := _carrier_has(target)
+	if has & _HAS_CORE:
+		target.net_position = state.position
+		target.net_velocity = state.velocity
+		target.net_yaw = state.yaw
+		target.net_pitch = state.pitch
+		target.net_crouch = state.crouch_fraction
+		target.net_flags = pack_flags(state)
+		target.net_modifiers = pack_modifiers(state)
+	else:
+		# A carrier without all seven: set() skips the missing ones, where an assignment would stop the script.
+		target.set(&"net_position", state.position)
+		target.set(&"net_velocity", state.velocity)
+		target.set(&"net_yaw", state.yaw)
+		target.set(&"net_pitch", state.pitch)
+		target.set(&"net_crouch", state.crouch_fraction)
+		target.set(&"net_flags", pack_flags(state))
+		target.set(&"net_modifiers", pack_modifiers(state))
+	if has & _HAS_TIMERS:
+		target.net_timers = pack_timers(state)
+	if has & _HAS_TIMERS2:
+		target.net_timers2 = pack_timers2(state)
+	if has & _HAS_STAMINA:
+		target.net_stamina = pack_stamina(state)
+
+
+const _HAS_CORE := 1
+const _HAS_TIMERS := 2
+const _HAS_TIMERS2 := 4
+const _HAS_STAMINA := 8
+const _CORE: Array[StringName] = [&"net_position", &"net_velocity", &"net_yaw", &"net_pitch", &"net_crouch", &"net_flags", &"net_modifiers"]
+
+## Which net_* a carrier's script declares (_HAS_*), by script. [method pull] runs per player per tick on a server, and
+## `in` for a property the carrier lacks walks its scripts and every engine class above them, three times a pull.
+## Main-thread use only, like the carrier itself. A script with a _get answers per instance, so it is asked each time.
+static var _carriers: Dictionary = {}
+
+
+static func _carrier_has(target: Variant) -> int:
+	var script: Variant = (target as Object).get_script() if target is Object else null
+	if script != null:
+		var hit: Variant = _carriers.get(script)
+		if hit != null:
+			return hit
+	var has := _HAS_CORE
+	for property in _CORE:
+		if not property in target:
+			has = 0
+			break
 	if &"net_timers" in target:
-		target.set(&"net_timers", pack_timers(state))
+		has |= _HAS_TIMERS
 	if &"net_timers2" in target:
-		target.set(&"net_timers2", pack_timers2(state))
+		has |= _HAS_TIMERS2
 	if &"net_stamina" in target:
-		target.set(&"net_stamina", pack_stamina(state))
+		has |= _HAS_STAMINA
+	if script != null and not (target as Object).has_method(&"_get"):
+		_carriers[script] = has
+	return has
 
 
 ## The jump timers (coyote, jump buffer, cooldown) in 1/7680 s, which is a whole number of

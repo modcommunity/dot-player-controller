@@ -6,7 +6,7 @@ extends "res://examples/movement_selftest_more.gd"
 ##
 ## Most tests run on [DotFpsFlatBody] so a failure has one possible cause, the [DotFpsMotor]; [method _test_physics_body] covers the real implementation.
 
-const CHECKS := 477
+const CHECKS := 480
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
@@ -1578,6 +1578,23 @@ func _test_net_sync_round_trip() -> void:
 	_check(target.crouch_held == source.crouch_held, "crouch_held round-trips")
 	_check_near( target.crouch_fraction, 1.0, 0.0001, "the crouch fraction round-trips" )
 
+	# pull() keeps, per carrier script, which net_* it declares. Other shapes must still get what they have.
+	var partial_script := GDScript.new()
+	partial_script.source_code = "extends RefCounted\nvar net_position: Vector3\nvar net_yaw: float\n"
+	partial_script.reload()
+	var partial: Object = partial_script.new()
+	DotFpsNetSync.pull(source, partial)
+	DotFpsNetSync.pull(source, partial)
+	_check(partial.get(&"net_position") == source.position and is_equal_approx(partial.get(&"net_yaw"), 91.0),
+		"a carrier with only some of the seven still gets those")
+	var dynamic := _DynamicCarrier.new()
+	DotFpsNetSync.pull(source, dynamic)
+	_check(not dynamic.store.has(&"net_timers2") and dynamic.store[&"net_position"] == source.position,
+		"a _get carrier gets what it answers to")
+	dynamic.store[&"net_timers2"] = -1
+	DotFpsNetSync.pull(source, dynamic)
+	_check(dynamic.store[&"net_timers2"] == DotFpsNetSync.pack_timers2(source), "and is asked again each pull")
+
 	_check_mode_packing()
 	_check_timer_and_button_packing()
 	_check_modifier_mask()
@@ -2421,3 +2438,20 @@ func _test_sprint_stamina() -> void:
 class FakePhysicsSet:
 	extends RefCounted
 	var surfaces: Array = []
+
+
+## A net carrier whose net_* live in a dictionary, so what it has can change between pulls.
+class _DynamicCarrier extends RefCounted:
+	var store: Dictionary = {
+		&"net_position": Vector3.ZERO, &"net_velocity": Vector3.ZERO, &"net_yaw": 0.0, &"net_pitch": 0.0,
+		&"net_crouch": 0.0, &"net_flags": 0, &"net_modifiers": 0,
+	}
+
+	func _get(property: StringName) -> Variant:
+		return store.get(property)
+
+	func _set(property: StringName, value: Variant) -> bool:
+		if not store.has(property):
+			return false
+		store[property] = value
+		return true
