@@ -5,7 +5,7 @@ addons/dot_player_controller/fp/motion/dot_fps_motor.gd::_categorise_ground_sett
 addons/dot_player_controller/fp/nodes/dot_fps_controller.gd	1002
 addons/dot_player_controller/fp/nodes/dot_fps_controller.gd::setup	83
 examples/fps_controller_selftest.gd::_test_change_signals	81
-examples/movement_selftest.gd	2423
+examples/movement_selftest.gd	2266
 examples/movement_selftest.gd::_test_admin_modifiers	142
 examples/movement_selftest.gd::_test_dash	82
 examples/movement_selftest.gd::_test_launch	116
