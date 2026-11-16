@@ -1,6 +1,6 @@
 extends "res://examples/motor_determinism_selftest.gd"
 
-## Holds dot-sim's native collision body ([code]DotSimFpsBody[/code]) to [DotFpsPhysicsBody]'s script answers, to the bit, since web clients run the script and native clients and servers the library, and they play together. Two levels: the motor replays recorded input streams (the determinism world's twelve scenarios at 22, 33 and 66 Hz) once in script and once native, and every tick's state must be identical; then thousands of random sweeps, rest contacts and overlaps, inside and outside motor ticks, are asked of both and every field compared exactly. The replays run again with other players' hulls ([DotFpsHullBody]), and random slides compare the native collide-and-slide with the script's. With no library it says the native half was skipped and passes; [code]DOT_SIM_REQUIRE_NATIVE=1[/code] (CI) fails instead. Run: [code]godot --headless --path . res://examples/motor_native_parity.tscn[/code]
+## Holds dot-sim's native collision body ([code]DotSimFpsBody[/code]) to [DotFpsPhysicsBody]'s script answers, to the bit, since web clients run the script and native clients and servers the library, and they play together. Two levels: the motor replays recorded input streams (the determinism world's twelve scenarios at 22, 33 and 66 Hz) once in script and once native, and every tick's state must be identical; then thousands of random sweeps, rest contacts and overlaps, inside and outside motor ticks, are asked of both and every field compared exactly. The replays run again with other players' hulls ([DotFpsHullBody]), and random slides compare the native collide-and-slide with the script's. With no library it says the native half was skipped and passes; [code]GS_SIM_REQUIRE_NATIVE=1[/code] (CI) fails instead. Run: [code]godot --headless --path . res://examples/motor_native_parity.tscn[/code]
 
 const RATES := [22, 33, 66]
 const RUN_TICKS := 900
@@ -248,8 +248,8 @@ func _run() -> void:
 	var expected := 3
 	if not loaded:
 		print("  dot-sim's motor module is not loaded: the native half is skipped")
-		if OS.get_environment("DOT_SIM_REQUIRE_NATIVE") == "1":
-			_check(false, "the library is loaded (DOT_SIM_REQUIRE_NATIVE=1)")
+		if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("DOT_SIM_REQUIRE_NATIVE")) == "1":
+			_check(false, "the library is loaded (GS_SIM_REQUIRE_NATIVE=1)")
 		expected = 0
 	else:
 		# This suite holds the body's queries; the whole native tick has motor_native_tick_parity.

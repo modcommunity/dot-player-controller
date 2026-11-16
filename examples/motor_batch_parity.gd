@@ -1,6 +1,6 @@
 extends "res://examples/motor_native_tick_parity.gd"
 
-## Holds [DotFpsMotorBatch] (several players' motor ticks in runs of one dot-sim call) to the players' loop it replaces, [method DotFpsMotor.simulate] one player after another, to the bit: eight players walking into each other on random streams, six in dot-sim's hull world, one with no hulls and one gathering by script, at two rates under two tunable sets. A push between the add and a player's turn, a teleport after its tick and a death during another player's turn take the rows after them back; every tick's state and the counters stay identical. One player ticks every other tick two ticks long ([method DotFpsMotorBatch.add]'s delta), as a server's far bot does. With no library it says so and passes; [code]DOT_SIM_REQUIRE_NATIVE=1[/code] (CI) fails instead. Run: [code]godot --headless --path . res://examples/motor_batch_parity.tscn[/code]
+## Holds [DotFpsMotorBatch] (several players' motor ticks in runs of one dot-sim call) to the players' loop it replaces, [method DotFpsMotor.simulate] one player after another, to the bit: eight players walking into each other on random streams, six in dot-sim's hull world, one with no hulls and one gathering by script, at two rates under two tunable sets. A push between the add and a player's turn, a teleport after its tick and a death during another player's turn take the rows after them back; every tick's state and the counters stay identical. One player ticks every other tick two ticks long ([method DotFpsMotorBatch.add]'s delta), as a server's far bot does. With no library it says so and passes; [code]GS_SIM_REQUIRE_NATIVE=1[/code] (CI) fails instead. Run: [code]godot --headless --path . res://examples/motor_batch_parity.tscn[/code]
 
 const PLAYERS := 8
 const BATCH_TICKS := 1500
@@ -167,8 +167,8 @@ func _run() -> void:
 	var expected := 1
 	if not DotFpsPhysicsBody.native_available() or not DotFpsMotorBatch.available() or not ClassDB.class_exists(&"DotSimHullWorld"):
 		print("  dot-sim's motor batch is not loaded: skipped")
-		if OS.get_environment("DOT_SIM_REQUIRE_NATIVE") == "1" and not DotFpsPhysicsBody.native_available():
-			_check(false, "the library is loaded (DOT_SIM_REQUIRE_NATIVE=1)")
+		if (OS.get_environment("GS_SIM_REQUIRE_NATIVE") if OS.has_environment("GS_SIM_REQUIRE_NATIVE") else OS.get_environment("DOT_SIM_REQUIRE_NATIVE")) == "1" and not DotFpsPhysicsBody.native_available():
+			_check(false, "the library is loaded (GS_SIM_REQUIRE_NATIVE=1)")
 		expected = 0
 	else:
 		_build_world()
