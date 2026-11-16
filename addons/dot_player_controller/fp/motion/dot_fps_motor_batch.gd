@@ -14,6 +14,8 @@ var retakes: int = 0
 var stale: int = 0
 
 var _native: Object = null
+## Meta values per row: 4 where dot-sim runs the rows' clocks too ([code]run_rows[/code]), else 3.
+var _meta_len: int = 3
 var _delta: float = 0.0
 var _count: int = 0
 var _motors: Array[DotFpsMotor] = []
@@ -45,6 +47,7 @@ func start(delta: float) -> bool:
 		if delta <= 0.0 or not ClassDB.class_exists(NATIVE_CLASS):
 			return false
 		_native = ClassDB.instantiate(NATIVE_CLASS)
+		_meta_len = 4 if ClassDB.class_has_method(NATIVE_CLASS, &"run_rows") else 3
 	_delta = delta
 	_count = 0
 	_out_from = 0
@@ -66,7 +69,7 @@ func add(motor: DotFpsMotor, state: DotFpsState, command: DotFpsCommand, delta: 
 		_tuns.resize(_count)
 		_stage.resize(_count)
 		_deltas.resize(_count)
-		_meta.resize(_count * 3)
+		_meta.resize(_count * _meta_len)
 		_in.resize(_count * _IN)
 		_sent_position.resize(_count)
 		_sent_velocity.resize(_count)
@@ -74,7 +77,7 @@ func add(motor: DotFpsMotor, state: DotFpsState, command: DotFpsCommand, delta: 
 	_states[row] = state
 	_commands[row] = command
 	_deltas[row] = delta if delta > 0.0 else _delta
-	var stage := motor.batch_prepare(state, command, _deltas[row], _in, _meta, row)
+	var stage := motor.batch_prepare(state, command, _deltas[row], _in, _meta, row, _meta_len)
 	_stage[row] = stage
 	if stage == DotFpsMotor.BATCH_READY:
 		_bodies[row] = motor.batch_body
@@ -98,11 +101,13 @@ func finish(row: int) -> bool:
 			stale += 1
 			_take_back(row)
 			motor.batch_refill(state, _commands[row], _deltas[row], _in, row)
+			if _meta_len > 3:
+				_meta[row * _meta_len + 3] = motor.batch_clocks
 		if row >= _out_to or row < _out_from:
 			_run(row)
 		if row < _out_to:
 			motor.batch_apply(state, _commands[row], _out, (row - _out_from) * _OUT)
-			return _meta[row * 3] == 3
+			return _meta[row * _meta_len] == 3
 	motor.batch_resume(state, _commands[row], _deltas[row])
 	return false
 
@@ -114,7 +119,7 @@ func skip(row: int) -> void:
 		return
 	_take_back(row)
 	_stage[row] = DotFpsMotor.BATCH_DONE
-	_motors[row].batch_cancel()
+	_motors[row].batch_cancel(_states[row], _commands[row], _deltas[row])
 
 
 ## The player of row [param row] ended its tick somewhere else than its motor left it, or died: the rows after it run again.
@@ -148,9 +153,12 @@ func _run(row: int) -> void:
 	while to < _count and _stage[to] == DotFpsMotor.BATCH_READY:
 		to += 1
 		# A body outside the hull world does not tell it where it came to rest: the game does, before the next row.
-		if _meta[(to - 1) * 3] != 3:
+		if _meta[(to - 1) * _meta_len] != 3:
 			break
-	_out = _native.run(_bodies, _tuns, _meta, _in, row, to)
+	if _meta_len > 3:
+		_out = _native.run_rows(_bodies, _tuns, _meta, _in, row, to)
+	else:
+		_out = _native.run(_bodies, _tuns, _meta, _in, row, to)
 	_out_from = row
 	_out_to = row + _out.size() / _OUT
 	rows += _out_to - row
