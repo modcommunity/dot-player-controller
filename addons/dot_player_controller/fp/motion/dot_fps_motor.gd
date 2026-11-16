@@ -86,7 +86,7 @@ func batch_prepare(
 		return _batch_defer(state, command, delta)
 	var tick_tun := _native_tick_tun(state)
 	if (
-		tick_tun.is_empty() or not native_full or _may_run_after_wall_jump(state)
+		tick_tun.is_empty() or not native_full or _wall_jump_run_in_script(state)
 	):
 		return _batch_defer(state, command, delta)
 	var at := row * meta_len
@@ -268,7 +268,7 @@ func _simulate_tail(state: DotFpsState, command: DotFpsCommand, delta: float, cr
 	# The tick's start and end in dot-sim when it can (see [member native_tick]); empty to run them here.
 	var tick_tun := _native_tick_tun(state)
 	var whole := not tick_tun.is_empty() and native_full
-	if whole and _may_run_after_wall_jump(state):
+	if whole and _wall_jump_run_in_script(state):
 		whole = false
 		wall_jump_script_ticks += 1
 	if whole and _native_tick_full(state, command, delta, tick_tun):

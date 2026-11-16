@@ -131,7 +131,7 @@ var settled_ground_ticks: int = 0
 ## ground check of exactly this state. Diagnostic; see [member reuse_settled_ground].
 var reused_ground_ticks: int = 0
 
-## Ticks [member native_full] would have run in dot-sim but ran in script, because a wall run after a wall jump may start in them (see [method _may_run_after_wall_jump]). Diagnostic.
+## Ticks [member native_full] would have run in dot-sim but ran in script, because a wall run after a wall jump may start in them and the library is too old to slow it (see [method _wall_jump_run_in_script]). Diagnostic.
 var wall_jump_script_ticks: int = 0
 
 ## Skip a tick's first ground probe when the last tick ended on a settled one of the same state.

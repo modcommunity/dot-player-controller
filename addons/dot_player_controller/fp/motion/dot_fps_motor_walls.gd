@@ -416,7 +416,20 @@ func _run_speed(state: DotFpsState, flat: Vector3, normal: Vector3) -> float:
 	return (flat - normal * minf(flat.dot(normal), 0.0)).length()
 
 
-## Whether a run may start this tick from a wall jump earlier in this air, which dot-sim's whole tick does not know to slow: such a tick runs in script.
+## -1 not asked yet, else whether dot-sim's whole tick slows a run after a wall jump as [method _run_speed] does ([code]DotSimFpsBody.runs_after_wall_jump[/code]).
+static var _native_runs_after_wall_jump: int = -1
+
+
+## Whether this tick must run in script rather than in dot-sim's whole tick because of [method _may_run_after_wall_jump]: never with a library that slows such a run itself.
+func _wall_jump_run_in_script(state: DotFpsState) -> bool:
+	if _native_runs_after_wall_jump < 0:
+		_native_runs_after_wall_jump = 1 if (
+			ClassDB.class_exists(&"DotSimFpsBody") and ClassDB.class_has_method(&"DotSimFpsBody", &"runs_after_wall_jump")
+		) else 0
+	return _native_runs_after_wall_jump == 0 and _may_run_after_wall_jump(state)
+
+
+## Whether a run may start this tick from a wall jump earlier in this air, which an older dot-sim's whole tick does not know to slow: such a tick runs in script (see [method _wall_jump_run_in_script]).
 func _may_run_after_wall_jump(state: DotFpsState) -> bool:
 	return (
 		tunables.wall_run_enabled and (tunables.wall_run_auto or tunables.wall_run_on_jump)

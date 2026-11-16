@@ -83,8 +83,13 @@ func _tick_replay(way: int, sc: Array, stream: Array[DotFpsCommand], step: float
 	s.mode = DotFpsState.Mode.AIR
 	var ticks: Array[PackedByteArray] = []
 	var before := DotFpsPhysicsBody.native_ticks
+	var runs_after_jump := 0
 	for c in stream:
+		var after_jump := s.wall_jumps_in_air > 0 and not s.is_wall_running()
+		var runs := motor.wall_runs
 		motor.simulate(s, c, step)
+		if after_jump and motor.wall_runs > runs:
+			runs_after_jump += 1
 		ticks.append(var_to_bytes([s.position, s.velocity, s.mode, s.move_flags(), s.ground_normal, s.ground_id, s.surface,
 			s.crouch_held, s.wall_jump_count, s.time_since_grounded, s.time_since_jump_pressed, s.time_since_jump, s.slide_time,
 			s.slide_cooldown_left, s.launch_cooldown_left, s.dash_cooldown_left, s.wall_run_cooldown_left, s.wall_run_time,
@@ -94,12 +99,13 @@ func _tick_replay(way: int, sc: Array, stream: Array[DotFpsCommand], step: float
 		motor.settled_ground_ticks, motor.reused_ground_ticks, motor.slides, motor.launches, motor.dashes, motor.wall_runs,
 		motor.wall_jumps]
 	return {"ticks": ticks, "counters": counters, "end": s.position, "native_ticks": DotFpsPhysicsBody.native_ticks - before,
-		"script_ticks": motor.wall_jump_script_ticks}
+		"script_ticks": motor.wall_jump_script_ticks, "runs_after_jump": runs_after_jump}
 
 
 func _tick_runs() -> void:
 	var names := ["", " +walls", " +moves", " +wallruns"]
 	var total := 0
+	var runs_after_jump := 0
 	for variant: int in [0, 1, 2, 3]:
 		for hulls: bool in [false, true]:
 			for hz: int in RATES:
@@ -109,6 +115,7 @@ func _tick_runs() -> void:
 					var a := _tick_replay(0, sc, stream, step, hulls, variant)
 					var label := "%s @%d Hz%s%s" % [sc[0], hz, " +hulls" if hulls else "", names[variant]]
 					_check(a["native_ticks"] == 0, label + ": the script run did not tick in the library")
+					runs_after_jump += a["runs_after_jump"]
 					var ways: Array[int] = [2]
 					if variant < 2:
 						ways = [1, 2]
@@ -122,13 +129,16 @@ func _tick_runs() -> void:
 						var lw := label + (" full" if way == 2 else " halves")
 						total += stream.size()
 						print("  %-44s end %s  native %d  counters %s" % [lw, a["end"], b["native_ticks"], a["counters"]])
-						# A tick a run after a wall jump may start in runs in script until dot-sim slows that run too, its start and end still in the library: two calls.
+						# With an older library, a tick a run after a wall jump may start in runs in script, its start and end still in the library: two calls.
 						var calls: int = stream.size() + b["script_ticks"]
+						if way == 2 and ClassDB.class_has_method(&"DotSimFpsBody", &"runs_after_wall_jump"):
+							_check(b["script_ticks"] == 0, lw + ": a library that slows a run after a wall jump runs every such tick itself (%d in script)" % b["script_ticks"])
 						var want: bool = b["native_ticks"] == calls if way == 2 else b["native_ticks"] > stream.size()
 						_check(want, lw + ": the native run ticked in the library, one call a tick when whole (%d of %d, %d after a wall jump in script)" % [b["native_ticks"], stream.size(), b["script_ticks"]])
 						_check(first < 0, lw + ": every one of %d ticks identical%s" % [stream.size(), "" if first < 0 else " (first differs at tick %d: script %s native %s)" % [first, bytes_to_var(a["ticks"][first]), bytes_to_var(b["ticks"][first])]])
 						_check(a["counters"] == b["counters"], lw + ": the same motor and hull counters %s (native %s)" % [a["counters"], b["counters"]])
 	print("  %d native ticks compared" % total)
+	_check(runs_after_jump > 0, "the streams start a wall run after a wall jump in the same air (%d times), the case _run_speed slows" % runs_after_jump)
 	_sections += 1
 
 
