@@ -141,6 +141,18 @@ func _tun_cache_check() -> void:
 	var full := motor._native_full_tun(tick)
 	_check(motor._native_tick_tun(s) == tick and motor._native_full_tun(tick) == full,
 		"the native tunables arrays are reused while nothing changes")
+	# A game assigning a tunable every tick (a speed scale, a gate) must not drop the cache when the value is the same.
+	var rev := t.revision
+	var written := 0
+	for p in t.get_property_list():
+		if p["usage"] & PROPERTY_USAGE_SCRIPT_VARIABLE and p["usage"] & PROPERTY_USAGE_EDITOR:
+			t.set(p["name"], t.get(p["name"]))
+			written += 1
+	_check(written > 100 and t.revision == rev,
+		"a same-value write to each of %d exported tunables leaves revision alone (%d -> %d)" % [written, rev, t.revision])
+	t.can_noclip = not t.can_noclip
+	_check(t.revision == rev + 1, "a changed value bumps revision once (%d -> %d)" % [rev, t.revision])
+	t.can_noclip = not t.can_noclip
 	t.max_speed += 1.0
 	t.wall_jump_up_speed += 1.0
 	var tick2 := motor._native_tick_tun(s)
