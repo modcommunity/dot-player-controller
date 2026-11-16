@@ -421,3 +421,16 @@ func _test_walls_off_identical() -> void:
 		"600 ticks with every wall setting off hash the same as before wall movement", digest)
 	_check(motor.wall_runs == 0 and motor.wall_jumps == 0 and s.wall_normal == Vector3.ZERO, "and no wall probe answered anything")
 	_done()
+
+
+## The wall-jump landing and corridor sections, in [method _run_flat]'s order.
+func _test_wall_jump_landings() -> void:
+	_test_wall_jump_land_slide()
+	_test_wall_jump_corridor_speed()
+
+
+## The wall-run rewind sections, in [method _run_flat]'s order.
+func _test_wall_replays() -> void:
+	_test_wall_replay()
+	_test_wall_hop_rewind()
+	_test_wall_replay_128()

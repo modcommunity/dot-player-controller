@@ -107,3 +107,120 @@ func _test_wall_run_alignment() -> void:
 
 	DotFpsNetSync.timer_scale = was
 	_done()
+
+
+## Off a wall run, a jump, crouch held in the air: the landing starts the slide, which lasts until crouch is let go or slide_duration.
+func _test_wall_jump_land_slide() -> void:
+	_section("landing from a wall jump with crouch held slides")
+	var t := _wall_tunables()
+	DotFpsSlidePreset.apply_run(t)
+	var crouch := DotFpsCommand.BUTTON_CROUCH
+
+	var landed := _land_from_wall_jump(t, -1)
+	_check(landed.slid_on == 0, "the slide starts on touchdown",
+		"slid %d ticks after landing, %.2f m/s at landing" % [landed.slid_on, landed.landing_speed])
+	_check(landed.boosted > landed.landing_speed + 0.5,
+		"and gets the slide's burst", "%.2f from %.2f m/s" % [landed.boosted, landed.landing_speed])
+	_check_near(landed.slid_for * STEP, t.slide_duration, STEP * 1.5, "held, it lasts slide_duration")
+
+	var released := _land_from_wall_jump(t, 10)
+	_check(released.slid_on == 0 and released.slid_for == 10, "letting go of crouch ends it",
+		"%d ticks" % released.slid_for)
+
+	# No crouch: a plain landing; and a landing too slow to slide is a crouch.
+	var plain := _land_from_wall_jump(t, -1, 0)
+	_check(plain.slid_on < 0, "landing without crouch does not slide")
+	var slow := _wall_tunables()
+	DotFpsSlidePreset.apply_run(slow)
+	slow.slide_min_speed = 40.0
+	_check(_land_from_wall_jump(slow, -1).slid_on < 0, "nor does a landing under slide_min_speed")
+	var dash := _wall_tunables()
+	DotFpsSlidePreset.apply_run(dash)
+	dash.dash_button = DotFpsCommand.BUTTON_CROUCH
+	dash.dash_enabled = false
+	_check(_land_from_wall_jump(dash, -1).slid_on < 0, "nor one whose crouch is also the dash button, which a landing must not press")
+
+	# A held crouch on the ground is still not a press: only a landing counts.
+	var motor := _motor(t)
+	var crouch_runner := _standing(motor)
+	for _i in range(20):
+		motor.simulate(crouch_runner, _command(1.0, 0.0, 0.0, crouch), STEP)
+	crouch_runner.velocity = Vector3(0.0, 0.0, -10.0)
+	motor.simulate(crouch_runner, _command(1.0, 0.0, 0.0, crouch), STEP)
+	_check(not crouch_runner.is_sliding(), "crouch held on the ground when the speed arrives still does not slide")
+	_done()
+
+
+## Runs along the right-hand wall, jumps off it and holds [param buttons] until landing and after, letting go [param release] ticks after the slide starts (never when negative).
+func _land_from_wall_jump(t: DotFpsTunables, release: int, buttons: int = DotFpsCommand.BUTTON_CROUCH) -> Dictionary:
+	var motor := _motor(t, _wall_world())
+	var s := _beside_wall(9.0)
+	_run_along(motor, s, 10)
+	motor.simulate(s, _command(1.0, 0.0, 0.0, DotFpsCommand.BUTTON_JUMP), STEP)
+	var result := {"slid_on": -1, "slid_for": 0, "landing_speed": 0.0, "boosted": 0.0}
+	if not _check(motor.wall_jumps == 1, "the run ends in a wall jump"):
+		return result
+	var ground_at := -1
+	var slide_at := -1
+	for i in range(300):
+		var pressed := buttons if release < 0 or slide_at < 0 or i - slide_at < release else 0
+		var speed := s.horizontal_speed()
+		motor.simulate(s, _command(1.0, 0.0, 0.0, pressed), STEP)
+		if ground_at < 0 and s.is_grounded():
+			ground_at = i
+			result.landing_speed = speed
+		if slide_at < 0 and s.is_sliding():
+			slide_at = i
+			result.boosted = s.horizontal_speed()
+		if slide_at >= 0 and s.is_sliding():
+			result.slid_for += 1
+		if slide_at >= 0 and not s.is_sliding():
+			break
+	if slide_at >= 0:
+		# The landing is seen at the next tick's start when the move's own check grounded the player.
+		result.slid_on = maxi(slide_at - ground_at - 1, 0) if ground_at >= 0 else -1
+	return result
+
+
+## Bouncing down a corridor: each wall jump's push across it must not be turned along the next wall by the run that wall starts, or every bounce adds the push again.
+func _test_wall_jump_corridor_speed() -> void:
+	_section("wall jumps down a corridor gain only the push's lean along it")
+	var t := _wall_tunables()
+	t.wall_run_auto = true
+	t.wall_run_turn_view = true
+	t.wall_run_turn_view_max_angle = 180.0
+	var blend := t.wall_jump_look_blend
+	# The most of one push that can point along the wall: the look along it, blended in.
+	var lean := t.wall_jump_push_speed * blend / Vector2(1.0 - blend, blend).length()
+	var worst := {"over": -INF, "case": ""}
+	var runs := 0
+	for speed in [3.0, 6.0, 9.0]:
+		for look in [0.0, 30.0, -30.0]:
+			for every in [8, 14, 20, 30]:
+				var r := _corridor_bounce(t, speed, look, every)
+				runs += r.runs
+				var bound: float = maxf(speed, t.wall_run_min_speed) + r.jumps * lean + 0.5
+				var over: float = r.along - bound
+				if over > worst.over:
+					worst = {"over": over, "case": "start %.0f look %.0f every %d: %.2f m/s along after %d jumps, bound %.2f" % [
+						speed, look, every, r.along, r.jumps, bound]}
+	_check(runs > 0, "the bounces start runs on the facing wall")
+	_check(worst.over <= 0.0, "speed along the corridor stays within the start plus each jump's lean", worst.case)
+	_done()
+
+
+## Starts beside the right-hand wall at [param speed] down -Z, presses jump every [param every] ticks with the view [param look] degrees off the run's, and returns the fastest speed along the corridor, the wall jumps and the runs.
+func _corridor_bounce(t: DotFpsTunables, speed: float, look: float, every: int) -> Dictionary:
+	var motor := _motor(t, _wall_world())
+	var s := _beside_wall(speed, 3.0)
+	var yaw := 0.0
+	var along := 0.0
+	for i in range(120):
+		var buttons := DotFpsCommand.BUTTON_JUMP if i % every == 2 else 0
+		motor.simulate(s, _command(1.0, 0.0, yaw + look, buttons), STEP)
+		yaw += motor.view_turn
+		if motor.wall_jumps > 0:
+			along = maxf(along, absf(s.velocity.z))
+		if s.is_grounded():
+			break
+	return {"along": along, "jumps": motor.wall_jumps, "runs": motor.wall_runs}
