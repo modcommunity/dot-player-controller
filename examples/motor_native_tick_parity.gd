@@ -93,7 +93,8 @@ func _tick_replay(way: int, sc: Array, stream: Array[DotFpsCommand], step: float
 		motor.crease_leg_ticks, motor.split_leg_ticks, motor.depenetrated_ticks, motor.embedded_ticks, motor.lifted_ticks,
 		motor.settled_ground_ticks, motor.reused_ground_ticks, motor.slides, motor.launches, motor.dashes, motor.wall_runs,
 		motor.wall_jumps]
-	return {"ticks": ticks, "counters": counters, "end": s.position, "native_ticks": DotFpsPhysicsBody.native_ticks - before}
+	return {"ticks": ticks, "counters": counters, "end": s.position, "native_ticks": DotFpsPhysicsBody.native_ticks - before,
+		"script_ticks": motor.wall_jump_script_ticks}
 
 
 func _tick_runs() -> void:
@@ -121,8 +122,10 @@ func _tick_runs() -> void:
 						var lw := label + (" full" if way == 2 else " halves")
 						total += stream.size()
 						print("  %-44s end %s  native %d  counters %s" % [lw, a["end"], b["native_ticks"], a["counters"]])
-						var want: bool = b["native_ticks"] == stream.size() if way == 2 else b["native_ticks"] > stream.size()
-						_check(want, lw + ": the native run ticked in the library, one call a tick when whole")
+						# A tick a run after a wall jump may start in runs in script until dot-sim slows that run too, its start and end still in the library: two calls.
+						var calls: int = stream.size() + b["script_ticks"]
+						var want: bool = b["native_ticks"] == calls if way == 2 else b["native_ticks"] > stream.size()
+						_check(want, lw + ": the native run ticked in the library, one call a tick when whole (%d of %d, %d after a wall jump in script)" % [b["native_ticks"], stream.size(), b["script_ticks"]])
 						_check(first < 0, lw + ": every one of %d ticks identical%s" % [stream.size(), "" if first < 0 else " (first differs at tick %d: script %s native %s)" % [first, bytes_to_var(a["ticks"][first]), bytes_to_var(b["ticks"][first])]])
 						_check(a["counters"] == b["counters"], lw + ": the same motor and hull counters %s (native %s)" % [a["counters"], b["counters"]])
 	print("  %d native ticks compared" % total)

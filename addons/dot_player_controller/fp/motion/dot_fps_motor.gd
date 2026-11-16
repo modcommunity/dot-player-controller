@@ -78,7 +78,9 @@ func batch_prepare(
 	if profile or (idle_fast_path and _rest_valid and command.move == Vector2.ZERO and command.buttons == 0):
 		return BATCH_DEFER
 	var tick_tun := _native_tick_tun(state)
-	if tick_tun.is_empty() or not native_full:
+	if (
+		tick_tun.is_empty() or not native_full or _may_run_after_wall_jump(state)
+	):
 		return BATCH_DEFER
 	batch_body = body.native_batch(meta, row * 3)
 	if batch_body == null:
@@ -180,7 +182,11 @@ func _simulate_tail(state: DotFpsState, command: DotFpsCommand, delta: float, cr
 
 	# The tick's start and end in dot-sim when it can (see [member native_tick]); empty to run them here.
 	var tick_tun := _native_tick_tun(state)
-	if not tick_tun.is_empty() and native_full and _native_tick_full(state, command, delta, tick_tun):
+	var whole := not tick_tun.is_empty() and native_full
+	if whole and _may_run_after_wall_jump(state):
+		whole = false
+		wall_jump_script_ticks += 1
+	if whole and _native_tick_full(state, command, delta, tick_tun):
 		if profile:
 			_lap(7)
 		state.previous_buttons = command.buttons
@@ -691,6 +697,7 @@ func _advance_timers(
 	state.time_since_jump = minf(state.time_since_jump + delta, TIMER_CAP)
 
 	if state.mode == DotFpsState.Mode.GROUND:
+		_landing_counts_as_crouch_press(state, command)
 		state.time_since_grounded = 0.0
 		# Counted in TICKS, not seconds: "jumped on the tick the player landed" is a perfect
 		# bunny-hop, and a seconds counter answers that differently at 64 Hz and 128 Hz.
@@ -1251,6 +1258,21 @@ func _update_slide(
 		var scale := boosted / speed
 		state.velocity.x *= scale
 		state.velocity.z *= scale
+
+
+## The first tick on the ground after a real stretch in the air (time_since_grounded still holds it) with crouch held sees crouch as pressed again,
+## so a crouch pressed in the air (off a wall run, after a jump) starts the slide its press would have on the ground.
+## Done on the replicated previous buttons before anything reads them, so script, dot-sim's whole tick and the batch all see the same press.
+## [constant WALL_ENTRY_MIN_AIR] keeps a one-tick kerb bump at a crouched run from counting as a landing; a crouch that also launches or dashes is left alone.
+func _landing_counts_as_crouch_press(state: DotFpsState, command: DotFpsCommand) -> void:
+	var crouch := DotFpsCommand.BUTTON_CROUCH
+	if (
+		tunables.slide_enabled and not state.is_sliding()
+		and state.time_since_grounded >= WALL_ENTRY_MIN_AIR
+		and command.is_pressed(crouch)
+		and ((tunables.launch_button | tunables.dash_button) & crouch) == 0
+	):
+		state.previous_buttons &= ~crouch
 
 
 func _end_slide(state: DotFpsState) -> void:

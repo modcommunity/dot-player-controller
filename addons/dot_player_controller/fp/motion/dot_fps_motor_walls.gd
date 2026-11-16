@@ -341,7 +341,7 @@ func _try_jump_run(state: DotFpsState, wall: DotFpsBody.Hit) -> bool:
 
 	var normal := _flat_normal(wall.normal)
 	var flat := Vector3(state.velocity.x, 0.0, state.velocity.z)
-	var speed := flat.length()
+	var speed := _run_speed(state, flat, normal)
 	if normal == Vector3.ZERO or speed < tunables.wall_run_jump_min_speed:
 		return false
 
@@ -387,7 +387,7 @@ func _try_auto_run(state: DotFpsState, command: DotFpsCommand, wall: DotFpsBody.
 
 	var normal := _flat_normal(wall.normal)
 	var flat := Vector3(state.velocity.x, 0.0, state.velocity.z)
-	var speed := flat.length()
+	var speed := _run_speed(state, flat, normal)
 	if normal == Vector3.ZERO or speed < tunables.wall_run_jump_min_speed:
 		return
 
@@ -406,6 +406,23 @@ func _try_auto_run(state: DotFpsState, command: DotFpsCommand, wall: DotFpsBody.
 		return
 
 	_turn_along(state, tangent * speed)
+
+
+## The speed a run starts at: all of the horizontal speed, except after a wall jump in this air, where the part going into the new wall is dropped as [method _try_wall_jump] drops it.
+## Otherwise a jump across to a facing wall turns the whole push along that wall, and each bounce down a corridor adds the push again.
+func _run_speed(state: DotFpsState, flat: Vector3, normal: Vector3) -> float:
+	if state.wall_jumps_in_air <= 0:
+		return flat.length()
+	return (flat - normal * minf(flat.dot(normal), 0.0)).length()
+
+
+## Whether a run may start this tick from a wall jump earlier in this air, which dot-sim's whole tick does not know to slow: such a tick runs in script.
+func _may_run_after_wall_jump(state: DotFpsState) -> bool:
+	return (
+		tunables.wall_run_enabled and (tunables.wall_run_auto or tunables.wall_run_on_jump)
+		and state.mode == DotFpsState.Mode.AIR and state.wall_jumps_in_air > 0
+		and not state.is_wall_running() and not state.wall_run_spent
+	)
 
 
 ## Begins a run with the horizontal velocity [param turned] (along the wall).

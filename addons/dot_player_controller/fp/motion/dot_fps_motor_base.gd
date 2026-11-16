@@ -131,6 +131,9 @@ var settled_ground_ticks: int = 0
 ## ground check of exactly this state. Diagnostic; see [member reuse_settled_ground].
 var reused_ground_ticks: int = 0
 
+## Ticks [member native_full] would have run in dot-sim but ran in script, because a wall run after a wall jump may start in them (see [method _may_run_after_wall_jump]). Diagnostic.
+var wall_jump_script_ticks: int = 0
+
 ## Skip a tick's first ground probe when the last tick ended on a settled one of the same state.
 ## Off if the floor can change between ticks (a platform that is not moved with its rider).
 var reuse_settled_ground: bool = true
