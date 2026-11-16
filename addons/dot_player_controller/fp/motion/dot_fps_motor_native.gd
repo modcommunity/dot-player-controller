@@ -12,10 +12,10 @@ func _native_tick_tun(state: DotFpsState) -> PackedFloat64Array:
 		or (state.mode != DotFpsState.Mode.GROUND and state.mode != DotFpsState.Mode.AIR)
 	):
 		return PackedFloat64Array()
-	if tunables.get_instance_id() != _tun_for or tunables.revision != _tun_rev:
+	if tunables != _tun_for or tunables.revision != _tun_rev:
 		_tun_cache = _build_tick_tun()
 		_tun_full_cache = PackedFloat64Array()
-		_tun_for = tunables.get_instance_id()
+		_tun_for = tunables
 		_tun_rev = tunables.revision
 	return _tun_cache
 
@@ -24,7 +24,7 @@ func _native_tick_tun(state: DotFpsState) -> PackedFloat64Array:
 ## changes ([member DotFpsTunables.revision]): rebuilding them was a per-tick copy of about 75 values per player.
 var _tun_cache := PackedFloat64Array()
 var _tun_full_cache := PackedFloat64Array()
-var _tun_for := 0
+var _tun_for: DotFpsTunables = null
 var _tun_rev := -1
 
 
@@ -133,9 +133,16 @@ func _fill_full_in(state: DotFpsState, command: DotFpsCommand, delta: float, a: 
 	var push := _surface.push
 	var w := state.wall_normal
 	var buttons := command.buttons if state.sprinting else command.buttons & ~DotFpsCommand.BUTTON_SPRINT
-	var effects := (
-		(1 if _effects.deny_move else 0) | (2 if _effects.deny_jump else 0) | (4 if _effects.deny_crouch else 0)
-	)
+	var t := tunables
+	if t != _fill_for or t.revision != _fill_rev:
+		_fill_for = t
+		_fill_rev = t.revision
+		_fill_clean.clear()
+		_fill_buttons = -1
+	if buttons != _fill_buttons or load_fraction != _fill_load:
+		_fill_speed = t.speed_for(buttons, load_fraction)
+		_fill_buttons = buttons
+		_fill_load = load_fraction
 	a[o + 0] = p.x
 	a[o + 1] = p.y
 	a[o + 2] = p.z
@@ -159,22 +166,26 @@ func _fill_full_in(state: DotFpsState, command: DotFpsCommand, delta: float, a: 
 	a[o + 20] = command.move.x
 	a[o + 21] = command.move.y
 	a[o + 22] = state.yaw
-	a[o + 23] = effects
-	a[o + 24] = _effects.jump
-	a[o + 25] = tunables.jump_velocity() * _surface.jump_scale * _effects.jump
-	a[o + 26] = tunables.speed_for(buttons, load_fraction)
-	a[o + 27] = _effects.max_speed
+	var c := _fill_clean if _effects_clean else _fill_values()
+	if c.is_empty():
+		_fill_clean = _fill_values()
+		c = _fill_clean
+	a[o + 23] = c[0]
+	a[o + 24] = c[1]
+	a[o + 25] = c[2] * _surface.jump_scale * c[1]
+	a[o + 26] = _fill_speed
+	a[o + 27] = c[3]
 	a[o + 28] = _surface.max_speed_scale
 	a[o + 29] = _surface.friction_scale
-	a[o + 30] = _effects.friction
+	a[o + 30] = c[4]
 	a[o + 31] = _surface.accelerate_scale
-	a[o + 32] = _effects.accelerate
-	a[o + 33] = tunables.air_accelerate * _effects.air_accelerate
+	a[o + 32] = c[5]
+	a[o + 33] = c[6]
 	a[o + 34] = push.x
 	a[o + 35] = push.y
 	a[o + 36] = push.z
-	a[o + 37] = tunables.gravity * _effects.gravity
-	a[o + 38] = tunables.gravity * tunables.wall_run_gravity_scale * _effects.gravity
+	a[o + 37] = c[7]
+	a[o + 38] = c[8]
 	a[o + 39] = state.time_since_jump
 	a[o + 40] = state.time_since_grounded
 	a[o + 41] = state.time_since_jump_pressed
@@ -191,6 +202,29 @@ func _fill_full_in(state: DotFpsState, command: DotFpsCommand, delta: float, a: 
 	a[o + 52] = w.x
 	a[o + 53] = w.y
 	a[o + 54] = w.z
+
+
+## [method _fill_full_in]'s values only the tunables and the effects decide: the effect flags, jump scale, jump velocity,
+## max speed, friction and accelerate scales, air accelerate, gravity and wall-run gravity.
+func _fill_values() -> PackedFloat64Array:
+	var t := tunables
+	var e := _effects
+	return PackedFloat64Array([
+		(1 if e.deny_move else 0) | (2 if e.deny_jump else 0) | (4 if e.deny_crouch else 0), e.jump, t.jump_velocity(),
+		e.max_speed, e.friction, e.accelerate, t.air_accelerate * e.air_accelerate, t.gravity * e.gravity,
+		t.gravity * t.wall_run_gravity_scale * e.gravity,
+	])
+
+
+## [method _fill_values] kept while the effects are clean (all ones, [member _effects_clean]) and [member tunables] and
+## its [member DotFpsTunables.revision] stay, and the last [method DotFpsTunables.speed_for] with its buttons and load:
+## about a dozen reads and two calls a player a tick.
+var _fill_clean := PackedFloat64Array()
+var _fill_for: DotFpsTunables = null
+var _fill_rev := -1
+var _fill_buttons := -1
+var _fill_load := NAN
+var _fill_speed := 0.0
 
 
 ## Writes a whole native tick's 45 values into the state and the counters.

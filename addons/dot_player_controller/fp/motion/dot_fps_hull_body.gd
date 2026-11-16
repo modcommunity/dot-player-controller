@@ -95,9 +95,12 @@ func end_tick() -> void:
 
 
 func _sync() -> void:
-	inner.collision_mask = collision_mask
-	inner.exclude = exclude
-	inner.pass_out_mask = pass_out_mask
+	if inner.collision_mask != collision_mask:
+		inner.collision_mask = collision_mask
+	if not is_same(inner.exclude, exclude):
+		inner.exclude = exclude
+	if inner.pass_out_mask != pass_out_mask:
+		inner.pass_out_mask = pass_out_mask
 
 
 func _hull_list() -> Array:
