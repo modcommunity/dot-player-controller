@@ -133,6 +133,15 @@ func _render_blend_checks(controller: DotFpsController) -> void:
 		"a render_clock's alpha draws the eye, extrapolated past 1 and two ticks back below 0",
 		"%s %s %s" % [on_clock.position, past.position, before.position]
 	)
+	# render_position is render_state's position to the bit, without the copy, at every alpha the clock can give.
+	var same := true
+	for a: float in [-1.0, -0.5, 0.0, 0.25, 1.0, 1.5, 2.0, 3.0]:
+		clock.alpha = a
+		same = same and controller.render_position() == controller.render_state().position
+	for a: float in [0.0, 0.3, 1.0]:
+		same = same and controller.render_position(a) == controller.render_state(a).position
+	_check(same, "render_position is render_state's position on a clock and at a given alpha")
+	clock.alpha = -0.5
 	controller._position_two_back = Vector3(NAN, NAN, NAN)
 	_check(
 		controller.render_state().position.is_equal_approx(Vector3.ZERO),
@@ -152,6 +161,7 @@ func _render_blend_checks(controller: DotFpsController) -> void:
 		controller.render_state(0.5).position.is_equal_approx(Vector3(0.0, 0.0, 10.0)),
 		"but a REMOTE player is left exactly where the network put it"
 	)
+	_check(controller.render_position(0.5) == controller.state.position, "and so is its render_position")
 	controller.drive = DotFpsController.Drive.LOCAL
 
 

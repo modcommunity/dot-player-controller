@@ -33,3 +33,4 @@ Moved from `dot_player_controller_api.gd`; one line per level, newest last. The 
 - 29: `DotFpsController.observe_stats`: off skips folding each tick into `stats` (jumps, strafe sync) for a game with no run HUD; `airborne_time` is kept either way.
 - 30: `DotFpsTunables` setters ignore a same-value write: `revision` moves only on a real change, so a game may assign a tunable every tick without dropping `DotFpsMotor`'s cached native settings.
 - 31: `DotFpsMotorBatch` lets dot-sim's `run_rows` (when the loaded dot-sim has it) run each row's clocks (timers, cooldowns) with the move, so a row's script prepare skips them; `DotFpsMotor.batch_cancel(state, command, delta)` takes the row's tick to settle those clocks. Answers stay `simulate`'s to the bit.
+- 32: `DotFpsController.render_position(alpha)`: `render_state(alpha).position` without copying the state, for a reader that needs only where a body is drawn (a killcam recording every body each frame).
