@@ -120,6 +120,24 @@ func _loop(batched: bool) -> Dictionary:
 		"digest": digest, "counters": hash(counters), "wired": wired, "rows": batch.rows, "runs": batch.runs}
 
 
+## One more batched run with dot-sim's query timers on (--profile): engine queries per row and their cost, split by
+## where the motor asked them. The timers add their own cost, so the totals here are not the bench's numbers.
+func _profiled() -> void:
+	ClassDB.class_call_static(&"DotSimFpsBody", &"reset_profile")
+	ClassDB.class_call_static(&"DotSimFpsBody", &"set_profile", true)
+	await _loop(true)
+	var c: PackedInt64Array = ClassDB.class_call_static(&"DotSimFpsBody", &"profile_counters")
+	var sites: String = ClassDB.class_call_static(&"DotSimFpsBody", &"profile_sites")
+	ClassDB.class_call_static(&"DotSimFpsBody", &"set_profile", false)
+	var rows := float(maxi(c[8], 1))
+	var line := "  profile per row:"
+	var names := ["cast", "rest", "overlap", "ray", "tick"]
+	for i in mini(names.size(), c.size() / 2):
+		line += " %s %.2fx %.2fus" % [names[i], c[i * 2] / rows, c[i * 2 + 1] / rows]
+	print(line)
+	print("  " + sites)
+
+
 func _run() -> void:
 	print("motor batch bench: n=%d ticks=%d" % [_n, _ticks])
 	if not DotFpsPhysicsBody.native_available() or not DotFpsMotorBatch.available() or not ClassDB.class_exists(&"DotSimHullWorld"):
@@ -146,6 +164,8 @@ func _run() -> void:
 	print("  best batched %.1f us/player/tick: begin_tick %.1f, add %.1f, finish %.1f, end_tick %.1f; rows %d in %d runs" % [
 		best["total"], best["begin"], best["add"], best["finish"], best["end"], best["rows"], best["runs"]])
 	print("  BATCH_DIGEST %d counters %d" % [best["digest"], best["counters"]])
+	if "--profile" in OS.get_cmdline_user_args():
+		await _profiled()
 	var ok: bool = best["wired"] and digests.size() == 1
 	print("  batched runs identical to each other: %s; identical to the one-by-one loop: %s" % [
 		digests.size() == 1, one["digest"] == best["digest"] and one["counters"] == best["counters"]])
