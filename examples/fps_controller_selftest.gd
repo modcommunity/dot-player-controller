@@ -4,11 +4,11 @@ extends "res://examples/fps_controller_selftest_sections.gd"
 ## [method movement_selftest] tests the simulation; this tests the wiring around it (reference resolution, collider following the crouch, fixed-step accumulator, drive modes, registry, the noclip safety gate), which a host game touches first.
 ## Scenes are built in code so a failure names a line and an editor change cannot silently pass.
 
-const CHECKS := 130
+const CHECKS := 132
 
 ## Sections entered against sections that ran to their last line, and against this: a
 ## runtime error aborts a section silently. CHECKS is the other half (docs/testing.md).
-const SECTIONS := 19
+const SECTIONS := 20
 
 
 func _ready() -> void:
@@ -22,6 +22,7 @@ func _run() -> void:
 
 	await _test_zero_configuration()
 	await _test_external_drive()
+	await _test_threaded_bind()
 	await _test_mask_set_after_setup()
 	await _test_collider_follows_crouch()
 	await _test_noclip_gate()
@@ -285,6 +286,35 @@ func _test_zero_configuration() -> void:
 	controller.view = kept
 	_check(controller.is_processing(), "until a view is assigned again")
 
+	world.queue_free()
+	await get_tree().process_frame
+	_done()
+
+
+## With `physics/3d/run_on_separate_thread` the space is reachable only inside the step, and a server
+## makes a player's body between ticks (a join): the bind must not ask for the space there.
+func _test_threaded_bind() -> void:
+	_section("a body made between ticks on a threaded server binds in the step")
+	var native := load("res://addons/dot_player_controller/fp/motion/dot_fps_physics_body_native.gd") as GDScript
+	var was: bool = native.get(&"threaded_physics")
+	native.set(&"threaded_physics", true)
+	await get_tree().process_frame
+
+	var world := _make_world()
+	var controller := _make_player(world, DotFpsController.Drive.EXTERNAL)
+	var body := controller.body as DotFpsPhysicsBody
+	_check(body != null and not body.is_bound(), "made between ticks, the body holds no space handle")
+
+	await get_tree().physics_frame
+	controller.teleport(Vector3(0.0, 2.0, 0.0))
+	for i in range(120):
+		controller.apply_command(_command(0.0))
+		controller.simulate_tick(i + 1, STEP)
+	_check(body != null and body.is_bound() and controller.state.is_grounded(),
+		"its first tick in the step binds it, and it lands",
+		"bound %s at %s" % [body != null and body.is_bound(), controller.state.position])
+
+	native.set(&"threaded_physics", was)
 	world.queue_free()
 	await get_tree().process_frame
 	_done()

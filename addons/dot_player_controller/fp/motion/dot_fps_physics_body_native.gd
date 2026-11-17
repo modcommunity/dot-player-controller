@@ -285,7 +285,14 @@ func _charge_native(kind: StringName, t: int, before: int) -> void:
 		DotFrameCost.add_query(cost_system, kind, t, maxi(_native.query_count() - before, 1))
 
 
+## Whether physics runs on its own thread (`physics/3d/run_on_separate_thread`, dot-server-deploy's `sv_physics_thread`):
+## the space is then reachable only inside the physics step. Read at startup; a suite sets it to drive that path.
+static var threaded_physics: bool = bool(ProjectSettings.get_setting("physics/3d/run_on_separate_thread", false))
+
+
 ## Binds to the physics space [param node] lives in. A scene change invalidates the handle, so [method is_bound] is checked before use.
+## A body made between ticks on a threaded server (a join, a module load) binds without the handle, which would be an engine
+## error there; every query entry point fetches it through [method revalidate], inside the step.
 func bind(node: Node3D) -> DotResult:
 	if node == null or not node.is_inside_tree():
 		return DotResult.fail(
@@ -294,16 +301,20 @@ func bind(node: Node3D) -> DotResult:
 		)
 
 	_owner = node
+	_shape_params.shape = _shape
+	_shape_params.collide_with_bodies = true
+	_shape_params.collide_with_areas = false
+
+	if threaded_physics and not Engine.is_in_physics_frame():
+		_space = null
+		return DotResult.success(null)
+
 	_space = node.get_world_3d().direct_space_state
 
 	if _space == null:
 		return DotResult.fail(
 			DotError.CODE_STATE, "No physics space is available yet."
 		)
-
-	_shape_params.shape = _shape
-	_shape_params.collide_with_bodies = true
-	_shape_params.collide_with_areas = false
 
 	return DotResult.success(null)
 
@@ -363,6 +374,9 @@ var _owner: Node3D = null
 ## The handle is cached but does not survive a scene change, and a dead one answers every query "nothing there", which looks like falling through a loaded level.
 func revalidate() -> bool:
 	if _owner == null or not _owner.is_inside_tree():
+		return false
+
+	if threaded_physics and not Engine.is_in_physics_frame():
 		return false
 
 	var space := _owner.get_world_3d().direct_space_state

@@ -12,4 +12,6 @@ The `_process` of both controllers draws (camera rig, view); neither queries the
 
 `controller_selftest` section "space-query audit" fails when the set of querying files differs from this table, when one gains an input, deferred or awaited entry point, or when a `_process` reaches a query or a tick.
 
-Open: the camera rig's `DotCameraBoom` probe runs in `_process` (client only; a server never runs a rig), and the callers in games (mg-wipeout, game-fatal-contact server drivers) are audited under the nightly item.
+A server makes a player's body between ticks (a join, a module load), so `DotFpsPhysicsBody.bind` does not fetch the space there when physics is threaded: it leaves the handle empty and every query entry point (`sweep`, `native_tick`, `native_batch`, the rest and ray probes) fetches it through `revalidate()` inside the step. `threaded_physics` on `dot_fps_physics_body_native.gd` is read from the project setting at startup; `fps_controller_selftest` section "a body made between ticks on a threaded server binds in the step" forces it on.
+
+Client only, so not in the table: the camera rig's `DotCameraBoom` probe (dot-core `DotCameraProbe`) runs in `_process`. The threaded setting is a server setting and a client never sets it. The game-side callers are audited in dot-physics `docs/threading.md`.
