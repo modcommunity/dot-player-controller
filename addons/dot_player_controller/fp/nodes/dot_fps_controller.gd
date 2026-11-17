@@ -45,27 +45,9 @@ func _ready() -> void:
 ## Builds everything. Called by [method Node._ready]; safe to call again after
 ## changing the tunables.
 func setup() -> DotResult:
-	if tunables == null:
-		tunables = DotFpsTunables.new()
-
-	if _base_tunables == null:
-		_base_tunables = tunables
-
-	# Always from the base, never from whatever the last style left behind. Calling
-	# setup() twice with a style set must not apply it twice.
-	if style != null:
-		tunables = style.apply_to(_base_tunables)
-	else:
-		tunables = _base_tunables
-
-	if load_layered_config or config_file != "":
-		var loaded := tunables.load_layered(config_file)
-		if not loaded.ok:
-			return loaded.wrap("Movement configuration is not usable.")
-	else:
-		var valid := tunables.validate()
-		if not valid.ok:
-			return valid.wrap("Movement configuration is not usable.")
+	var usable := _resolve_tunables()
+	if not usable.ok:
+		return usable
 
 	# The noclip gate is applied per tick, not here (see _gate_abilities): the tunables are a Resource the host keeps,
 	# so anything assigning can_noclip later (a server reloading config mid-round) would re-open a gate set once at setup.
@@ -126,6 +108,33 @@ func setup() -> DotResult:
 			"movement": tunables.describe_summary(),
 		}
 	)
+
+	return DotResult.success(null)
+
+
+## The tunables this setup runs with: the style applied to the base, then loaded or validated.
+func _resolve_tunables() -> DotResult:
+	if tunables == null:
+		tunables = DotFpsTunables.new()
+
+	if _base_tunables == null:
+		_base_tunables = tunables
+
+	# Always from the base, never from whatever the last style left behind. Calling
+	# setup() twice with a style set must not apply it twice.
+	if style != null:
+		tunables = style.apply_to(_base_tunables)
+	else:
+		tunables = _base_tunables
+
+	if load_layered_config or config_file != "":
+		var loaded := tunables.load_layered(config_file)
+		if not loaded.ok:
+			return loaded.wrap("Movement configuration is not usable.")
+	else:
+		var valid := tunables.validate()
+		if not valid.ok:
+			return valid.wrap("Movement configuration is not usable.")
 
 	return DotResult.success(null)
 
