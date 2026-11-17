@@ -95,7 +95,8 @@ func setup() -> DotResult:
 
 	# After the game's own, so turning this on does not renumber a game's modifiers.
 	if admin_abilities:
-		var _count := DotFpsAdminModifiers.register(motor)
+		# DotFpsAdminModifiers, loaded so it and this file do not keep each other's parsers alive.
+		var _count: int = (load("uid://debq1g843c2uy") as GDScript).register(motor)
 
 	_setup_sampler()
 

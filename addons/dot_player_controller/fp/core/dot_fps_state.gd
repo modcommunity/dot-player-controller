@@ -130,12 +130,12 @@ var tick: int = 0
 
 
 ## A readable name for a mode id; [param motor] supplies registered custom names, else the number is shown.
-static func mode_name(id: int, motor: DotFpsMotor = null) -> String:
+static func mode_name(id: int, motor: RefCounted = null) -> String:  # a DotFpsMotor, untyped so this file and the motor do not keep each other's parsers alive
 	if id >= 0 and id < FIRST_CUSTOM_MODE:
 		return Mode.keys()[id]
 
 	if motor != null:
-		var custom := motor.mode_for(id)
+		var custom: RefCounted = motor.mode_for(id)
 		if custom != null:
 			return String(custom._name())
 

@@ -188,12 +188,16 @@ var _rest_surface: StringName
 ## Registers a custom movement mode and returns its id.
 ## Ids travel on the wire, so register in the same fixed order on every machine, not conditionally
 ## on being a client or server.
-func register_mode(mode: DotFpsMoveMode) -> int:
+## [param mode] is a [DotFpsMoveMode]; held untyped so the motor and the mode base do not keep each other's parsers alive.
+func register_mode(mode: RefCounted) -> int:
 	if mode == null:
+		return -1
+	if not _is_move_mode(mode):
+		push_error("DotFpsMotor.register_mode: not a DotFpsMoveMode")
 		return -1
 
 	for existing_id in _modes:
-		var existing: DotFpsMoveMode = _modes[existing_id]
+		var existing: RefCounted = _modes[existing_id]
 		if existing._name() == mode._name():
 			DotLog.warn(
 				CHANNEL,
@@ -218,14 +222,25 @@ func register_mode(mode: DotFpsMoveMode) -> int:
 	return id
 
 
-func mode_for(id: int) -> DotFpsMoveMode:
-	var found: Variant = _modes.get(id)
-	return found if found is DotFpsMoveMode else null
+## Whether [param o] is a [DotFpsMoveMode] (its script, or one it extends, is the mode base). Registration only.
+static func _is_move_mode(o: Object) -> bool:
+	var base: Script = load("uid://cjd3om261ppfg")
+	var s: Script = o.get_script()
+	while s != null:
+		if s == base:
+			return true
+		s = s.get_base_script()
+	return false
+
+
+## The [DotFpsMoveMode] registered under [param id], or null. Only [method register_mode] fills [member _modes], and it admits modes only.
+func mode_for(id: int) -> RefCounted:
+	return _modes.get(id)
 
 
 func mode_id_of(name: StringName) -> int:
 	for id in _modes:
-		if (_modes[id] as DotFpsMoveMode)._name() == name:
+		if _modes[id]._name() == name:
 			return id
 	return -1
 

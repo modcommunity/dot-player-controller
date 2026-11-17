@@ -1231,7 +1231,7 @@ static func aim_for(yaw_degrees: float, pitch_degrees: float) -> Vector3:
 func describe() -> Dictionary:
 	var mode_names := PackedStringArray()
 	for id in _modes:
-		mode_names.append(String((_modes[id] as DotFpsMoveMode)._name()))
+		mode_names.append(String(_modes[id]._name()))
 
 	return {
 		"ticks": ticks_simulated,
