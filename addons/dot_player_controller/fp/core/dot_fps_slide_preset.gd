@@ -5,7 +5,7 @@ extends RefCounted
 ## stops carrying its own copy. A slide stays off by default; a game calls one of these to turn it on.
 
 ## Crouch at any real run slides: a burst, then a long low-friction carry. The minimum is under a
-## 5.74 m/s run, so a run slides and a crouch-walk never does (Arena's slide).
+## 5.74 m/s run, so a run slides and a crouch-walk never does (FC's slide).
 const RUN_MIN_SPEED := 4.1
 const RUN_BOOST := 3.5
 const RUN_MAX_SPEED := 14.0
@@ -44,7 +44,7 @@ static func apply_sprint(
 
 
 ## The operator cvars of a slide, by suffix: `suffix -> [tunables member, description]`. A game names them with its
-## own prefix through [method cvar_table] (Arena: `arena_slide`, `arena_slide_boost`...), so the members and the
+## own prefix through [method cvar_table] (FC: `fc_slide`, `fc_slide_boost`...), so the members and the
 ## words are written once.
 const CVAR_SUFFIXES := {
 	"": ["slide_enabled", "Crouch at a run slides (1) or only crouches (0)"],

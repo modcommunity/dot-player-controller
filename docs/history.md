@@ -52,7 +52,7 @@ After the walkable-slope fix, `_snap_to_ground` held every player to the floor p
 
 ## The launch that a snapshot cancelled
 
-The slide and launch timers first stayed out of the snapshot "like the jump timers". game-arena's net suite measured the cost: the client predicts a launch, an older snapshot arrives, the replay reaches the press with the client's current cooldown and buttons, no launch, 3.2 m between the ends. Fixed by packing the timers and `previous_buttons` into `net_flags`. The dash's first cooldown check strafed against the dash and read the air-control brake as a second dash.
+The slide and launch timers first stayed out of the snapshot "like the jump timers". game-fatal-contact's net suite measured the cost: the client predicts a launch, an older snapshot arrives, the replay reaches the press with the client's current cooldown and buttons, no launch, 3.2 m between the ends. Fixed by packing the timers and `previous_buttons` into `net_flags`. The dash's first cooldown check strafed against the dash and read the air-control brake as a second dash.
 
 ## render_state was unreachable
 
@@ -64,11 +64,11 @@ The slide and launch timers first stayed out of the snapshot "like the jump time
 
 ## Jump reach copied five times
 
-Before `DotFpsTunables.jump_reach` existed, game-playlot, game-arena, game-g2gfast, mg-buses-from-hell and mg-smash-copter each had their own copy of the arithmetic, and two of them sized courses with the airtime back to the height they left, which nobody could finish. They now delegate to the tunables.
+Before `DotFpsTunables.jump_reach` existed, game-playlot, game-fatal-contact, game-g2gfast, mg-buses-from-hell and mg-smash-copter each had their own copy of the arithmetic, and two of them sized courses with the airtime back to the height they left, which nobody could finish. They now delegate to the tunables.
 
 ## A wall run that ended four ticks in
 
-game-arena's north gallery, over the wire (2026-10-10): a slide-jump off a ledge's end onto the wall beside it ran on the wall offline and, in `headless_net`, ran four ticks and fell. One lost crouch press moved the slide a tick; the uncrouch in the air then dropped the feet a few centimetres under the ledge's top while its end face was 10 cm behind the hull, nearer than the wall 16 cm beside it, and `_wall_contact` took the nearest wall. Its speed "along" was zero, under `wall_run_end_speed`, so the run ended, on both machines, agreeing perfectly. A run now prefers the sideways probes ([wall-movement](wall-movement.md#the-wall-is-asked-for-never-remembered)).
+game-fatal-contact's north gallery, over the wire (2026-10-10): a slide-jump off a ledge's end onto the wall beside it ran on the wall offline and, in `headless_net`, ran four ticks and fell. One lost crouch press moved the slide a tick; the uncrouch in the air then dropped the feet a few centimetres under the ledge's top while its end face was 10 cm behind the hull, nearer than the wall 16 cm beside it, and `_wall_contact` took the nearest wall. Its speed "along" was zero, under `wall_run_end_speed`, so the run ended, on both machines, agreeing perfectly. A run now prefers the sideways probes ([wall-movement](wall-movement.md#the-wall-is-asked-for-never-remembered)).
 
 ## Motor query cost on a 32-player server (2026-10-11)
 
@@ -76,7 +76,7 @@ game-g2gfast's `load_probe` (32 players on surf_mesa at 128 ticks) spends about 
 
 ## A landing that set the eye (2026-10-11)
 
-`DotFpsView.note_landing` set the full dip (9 cm at 16 m/s) and a 6 degree upward pitch on the landing frame and wound them back linearly: one frame moved the eye 9 cm and the view 6 degrees, a snap on top of the corner the landing already is. game-arena, which writes its camera itself, had copied the wall-run lean from the view and had no landing dip, strafe roll or widening at all. The cues moved into `DotFpsViewMotion` (no nodes): the dip is a critically damped spring kicked in velocity (the eye goes on down and comes back), the strafe roll and widening are two exponential stages so they start gently, and the landing nod is 1.5 degrees down following the dip. `fps_controller_selftest`'s "camera motion" section fails with either old shape back.
+`DotFpsView.note_landing` set the full dip (9 cm at 16 m/s) and a 6 degree upward pitch on the landing frame and wound them back linearly: one frame moved the eye 9 cm and the view 6 degrees, a snap on top of the corner the landing already is. game-fatal-contact, which writes its camera itself, had copied the wall-run lean from the view and had no landing dip, strafe roll or widening at all. The cues moved into `DotFpsViewMotion` (no nodes): the dip is a critically damped spring kicked in velocity (the eye goes on down and comes back), the strafe roll and widening are two exponential stages so they start gently, and the landing nod is 1.5 degrees down following the dip. `fps_controller_selftest`'s "camera motion" section fails with either old shape back.
 
 ## The rewrite
 
@@ -112,4 +112,4 @@ The default hull is now the one an imported 0.0254 m/unit map is built for: stan
 
 ## Faster hugging a wall
 
-Holding forward and strafe into a wall on the ground (video 0:21 of the arena feedback) ran at 8.25 m/s against a 7 m/s cap, for good. Ground acceleration measures speed along the wish only, and the wall slide strips the sideways half of the velocity every tick, so a diagonal wish never sees the cap until the forward speed is `max_speed / cos(45)`. `_move` now holds a blocked ground walk to the larger of the cap and the speed the tick started at (free running is untouched, so the recorded digests of unblocked runs stand; three scenarios that touch walls in `motor_determinism_selftest` were re-recorded). `movement_selftest`'s "holding forward and strafe into a wall" runs it against the physics body, walls from 0 to 60 degrees, both sides, two profiles. `[wall-hug-speed-1]`
+Holding forward and strafe into a wall on the ground (video 0:21 of the FC feedback) ran at 8.25 m/s against a 7 m/s cap, for good. Ground acceleration measures speed along the wish only, and the wall slide strips the sideways half of the velocity every tick, so a diagonal wish never sees the cap until the forward speed is `max_speed / cos(45)`. `_move` now holds a blocked ground walk to the larger of the cap and the speed the tick started at (free running is untouched, so the recorded digests of unblocked runs stand; three scenarios that touch walls in `motor_determinism_selftest` were re-recorded). `movement_selftest`'s "holding forward and strafe into a wall" runs it against the physics body, walls from 0 to 60 degrees, both sides, two profiles. `[wall-hug-speed-1]`

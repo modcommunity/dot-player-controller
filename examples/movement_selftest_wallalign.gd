@@ -1,15 +1,15 @@
 extends "res://examples/movement_selftest_walls.gd"
 
-## The wall-run alignment probe of the movement self-test: numbers, at the arena's 66 Hz, for what "lined up" means
+## The wall-run alignment probe of the movement self-test: numbers, at FC's 66 Hz, for what "lined up" means
 ## (the view along the wall once the attach turn has settled, the velocity along it, a steady distance from it) and for
 ## a client rewound from the wire ending a run on the tick the server does.
 
 const ALIGN_HZ := 66
-## The arena's attach ease (game-fatal-contact VIEW_TURN_RATE): the share of the pending turn applied each second.
+## The FC's attach ease (game-fatal-contact VIEW_TURN_RATE): the share of the pending turn applied each second.
 const ALIGN_EASE_RATE := 22.0
 
 
-## One auto run, approached [param deg] off the wall with the view held there, the view turn eased in as the arena does.
+## One auto run, approached [param deg] off the wall with the view held there, the view turn eased in as FC does.
 ## Returns the worst angle between the view and the wall's tangent in the first tenth of a second and after the first
 ## third, the velocity's sideways speed after that, the spread of the distance from the wall, and the run's ticks.
 func _align_trial(t: DotFpsTunables, deg: float) -> Dictionary:
@@ -81,7 +81,7 @@ func _test_wall_run_alignment() -> void:
 	var was := DotFpsNetSync.timer_scale
 	DotFpsNetSync.set_tick_rate(ALIGN_HZ)
 
-	# The arena's wall run: touch a wall in the air, the view turned along it from any angle.
+	# The FC's wall run: touch a wall in the air, the view turned along it from any angle.
 	var t := _wall_tunables()
 	t.wall_run_auto = true
 	t.wall_run_turn_view = true

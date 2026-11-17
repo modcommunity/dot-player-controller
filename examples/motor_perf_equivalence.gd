@@ -40,7 +40,7 @@ func _make_flat_world() -> void:
 		_flat_boxes.append(AABB(Vector3(-25 + i * 4.0, 0, -20 + (i % 3) * 9.0), Vector3(1.0 + (i % 4) * 0.5, 0.3 + (i % 5) * 0.4, 1.5)))
 
 
-## A flat body wrapped with the hulls of ten other players that walk circles, as the arena does for each of its bots.
+## A flat body wrapped with the hulls of ten other players that walk circles, as FC does for each of its bots.
 func _bodies_flat(clock: Array, crowd: int = 10) -> Array[DotFpsBody]:
 	var out: Array[DotFpsBody] = []
 	for _i in range(2):

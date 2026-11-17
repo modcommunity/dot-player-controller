@@ -134,7 +134,7 @@ func _test_slide_preset() -> void:
 	var d := DotFpsTunables.new()
 	_check(not d.slide_enabled, "a slide is off until a game asks")
 
-	# Arena's arena_player_tunables.gd, as it was before the preset moved here.
+	# FC's fc_player_tunables.gd, as it was before the preset moved here.
 	var a := DotFpsTunables.new()
 	DotFpsSlidePreset.apply_run(a)
 	_check(a.slide_enabled and not a.slide_requires_sprint, "the run preset slides with no sprint")
@@ -155,9 +155,9 @@ func _test_slide_preset() -> void:
 	DotFpsSlidePreset.apply_sprint(z, false, 1.5, 10.5, 0.9, 1.0)
 	_check(not z.slide_enabled, "the game's switch turns it off")
 
-	var cv := DotFpsSlidePreset.cvar_table("arena_slide")
-	_check(cv.size() == 6 and cv["arena_slide"][0] == "slide_enabled", "the cvar table names the switch under the bare prefix")
-	_check(cv["arena_slide_min_speed"][0] == "slide_min_speed" and cv["arena_slide_cooldown"][0] == "slide_cooldown", "and each number under its suffix")
+	var cv := DotFpsSlidePreset.cvar_table("fc_slide")
+	_check(cv.size() == 6 and cv["fc_slide"][0] == "slide_enabled", "the cvar table names the switch under the bare prefix")
+	_check(cv["fc_slide_min_speed"][0] == "slide_min_speed" and cv["fc_slide_cooldown"][0] == "slide_cooldown", "and each number under its suffix")
 	var all_members := true
 	for key: String in cv:
 		all_members = all_members and DotFpsTunables.new().get(cv[key][0]) != null

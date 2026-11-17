@@ -27,7 +27,7 @@ func _ready() -> void:
 	_run.call_deferred()
 
 
-## A controller on analytic geometry with the other players' hulls solid, as the arena builds its bots (ArenaPlayer.HeadlessController).
+## A controller on analytic geometry with the other players' hulls solid, as FC builds its bots (FcPlayer.HeadlessController).
 class FlatController extends DotFpsController:
 	var flat_body: DotFpsBody = null
 
@@ -272,7 +272,7 @@ func _world_into(parent: Node3D, full: bool) -> void:
 func _run() -> void:
 	print("motor bench: n=%d ticks=%d legacy=%s" % [_n, _ticks, _legacy])
 	await get_tree().physics_frame
-	await _scenario("arena-like flat+hulls", false, 0.0, true)
+	await _scenario("FC-like flat+hulls", false, 0.0, true)
 	await _scenario("flat, all moving", false, 0.0)
 	await _scenario("world, all moving", true, 0.0)
 	await _scenario("world, 50% idle", true, 0.5)
