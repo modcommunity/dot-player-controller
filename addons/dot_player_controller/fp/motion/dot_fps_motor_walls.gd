@@ -565,6 +565,10 @@ func _try_wall_jump(
 	# Whatever was going into the wall is gone (the wall stopped it); along it is kept.
 	var kept := flat - normal * minf(flat.dot(normal), 0.0)
 	var jumped := kept + push * tunables.wall_jump_push_speed * _effects.jump
+	# A wall jump redirects speed; it never adds its push on top of speed already carried.
+	var limit := maxf(flat.length(), tunables.wall_jump_push_speed * _effects.jump)
+	if jumped.length() > limit:
+		jumped = jumped.normalized() * limit
 
 	state.velocity.x = jumped.x
 	state.velocity.z = jumped.z
