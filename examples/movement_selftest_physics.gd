@@ -658,3 +658,83 @@ func _test_physics_wall_hug_speed() -> void:
 		"holding forward and strafe into a wall, at any angle, never runs faster than max_speed",
 		worst_case)
 	_done()
+
+
+## `mp_solidplayers_unlag`: a physics-capsule hull is met where the mover's view had it, and stands where it does after.
+func _test_hull_rewind() -> void:
+	_section("hull rewind: a mover meets another player's capsule where its view drew it, physics body")
+	var world := Node3D.new()
+	var rules := DotPlayerBodyRules.new()
+	var other := StaticBody3D.new()
+	world.add_child(other)
+	rules.apply_hull(other, 1.8, 0.35)
+	var mine := StaticBody3D.new()
+	world.add_child(mine)
+	add_child(world)
+	other.global_position = Vector3(5.0, 0.0, 0.0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	var body := DotFpsPhysicsBody.new()
+	if not _check(body.bind(world).ok, "the physics body binds to the world"):
+		world.queue_free()
+		_done()
+		return
+	var bodies := {1: mine, 2: other}
+	var rewind := DotPlayerHullRewind.new()
+	var asked: Array = []
+	rewind.feet_fn = func(mover: Variant, key: Variant, tick: int) -> Variant:
+		asked.append([mover, key, tick])
+		return Vector3(2.0, 0.0, 0.0) if key == 2 else null
+	var sweep := func() -> float:
+		return body.sweep(Vector3(0, 1, 0), Vector3(8, 0, 0), 1.8, 0.35).fraction
+	var now: float = sweep.call()
+	_check(now > 0.4 and now < 0.6, "against the present the sweep stops at the hull's 5 m (%.3f of 8)" % now)
+
+	_check(is_equal_approx(rewind.around(rules, 1, bodies, 10, sweep), now), "unlag off (the default): the present, feet_fn never asked")
+	_check(asked.is_empty() and not rewind.is_rewound(), "nothing moved while unlag is off")
+
+	rules.unlag = true
+	var then: float = rewind.around(rules, 1, bodies, 10, sweep)
+	_check(then < now - 0.2 and then > 0.1, "unlag on: it stops at where the hull stood then, 2 m (%.3f of 8)" % then)
+	_check(asked == [[1, 2, 10]], "feet_fn was asked for the other player only, at the mover's tick: %s" % [asked])
+	_check(not rewind.is_rewound() and is_equal_approx(sweep.call(), now), "and the hull is back at 5 m after")
+	_check(is_equal_approx(other.global_position.x, 5.0), "the node itself was never moved")
+
+	rules.solid = false
+	_check(is_equal_approx(rewind.around(rules, 1, bodies, 10, sweep), now), "mp_solidplayers 0 overrules unlag")
+	rules.solid = true
+
+	rewind.snap_fn = func(feet: Vector3) -> Vector3: return Vector3(roundf(feet.x * 0.5) * 2.0 + 1.0, feet.y, feet.z)
+	var snapped_hit: float = rewind.around(rules, 1, bodies, 10, sweep)
+	_check(snapped_hit > then, "snap_fn moves the rewound hull onto the wire grid (3 m: %.3f of 8)" % snapped_hit)
+	rewind.snap_fn = Callable()
+
+	rewind.reach = 1.0
+	var far: float = rewind.around(rules, 1, bodies, 10, sweep, Vector3(-30, 0, 0))
+	_check(is_equal_approx(far, now), "a hull far from the mover, then and now, is left alone")
+	rewind.reach = 0.0
+
+	var held := rewind.moved_total
+	var _n := rewind.rewind(1, bodies, 11)
+	var _n2 := rewind.rewind(1, bodies, 12)
+	_check(rewind.restore() == 1 and is_equal_approx(sweep.call(), now) and rewind.moved_total == held + 2, "a second rewind restores the first, so a missed restore cannot stack")
+
+	var link := ControllerLink.new()
+	link.held["mp_solidplayers_unlag"] = "1"
+	var client := DotPlayerBodyRules.new()
+	_check(client.follow_cvars(link) and client.unlag and client.solid, "a client follows the server's mp_solidplayers_unlag")
+	link.replicated_cvar_changed.emit("mp_solidplayers_unlag", "0")
+	_check(not client.unlag and not client.set_cvar("mp_solidplayers_unlag", "x"), "and its changes; a non-number is refused")
+	_check(client.cvar_specs().size() == 2, "the rule registers two cvars")
+	world.queue_free()
+	_done()
+
+
+class ControllerLink:
+	extends RefCounted
+	signal replicated_cvar_changed(cvar_name: String, value: String)
+	var held: Dictionary = {}
+
+	func replicated_cvar(cvar_name: String, fallback: String) -> String:
+		return String(held.get(cvar_name, fallback))

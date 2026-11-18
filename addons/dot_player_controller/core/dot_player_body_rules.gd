@@ -8,6 +8,9 @@ extends RefCounted
 signal changed
 
 const CVAR_SOLID := "mp_solidplayers"
+## `mp_solidplayers_unlag`: 1 lets [DotPlayerHullRewind] move the other players' hulls back to where the mover's screen
+## drew them while it steps; 0 (default) collides with the present. Read on every machine, replicated.
+const CVAR_UNLAG := "mp_solidplayers_unlag"
 
 var solid: bool = true:
 	set(value):
@@ -21,6 +24,15 @@ var solid: bool = true:
 ## [method apply_exceptions] is given; unset, every pair stops. dot-team's `DotTeamBlockRules.blocks`
 ## is the family's answer. `mp_solidplayers` 0 overrules it: nobody blocks.
 var pair_fn: Callable = Callable()
+
+## Whether a mover's step meets the others' hulls where its view had them ([DotPlayerHullRewind]); only matters
+## while [member solid]. Off by default: it costs two transform writes per other hull per mover per tick.
+var unlag: bool = false:
+	set(value):
+		if value == unlag:
+			return
+		unlag = value
+		changed.emit()
 
 
 ## Whether [param a] and [param b] stop at each other: [member solid], then [member pair_fn].
@@ -97,6 +109,8 @@ func cvar_specs() -> Array[Dictionary]:
 	return [
 		{"name": CVAR_SOLID, "value": "1" if solid else "0", "min": 0.0, "max": 1.0,
 			"description": "Players and bots: 1 solid to each other, 0 they pass through each other"},
+		{"name": CVAR_UNLAG, "value": "1" if unlag else "0", "min": 0.0, "max": 1.0,
+			"description": "Solid players: 1 a mover meets the others' hulls where its view drew them (lag-compensated), 0 where they are now"},
 	]
 
 
@@ -128,21 +142,25 @@ func follow_cvars(source: Object) -> bool:
 		return false
 	if not source.has_method(&"replicated_cvar") or not source.has_signal(&"replicated_cvar_changed"):
 		return false
-	var held := String(source.call(&"replicated_cvar", CVAR_SOLID, ""))
-	if held != "":
-		var _applied := set_cvar(CVAR_SOLID, held)
+	for name_in: String in [CVAR_SOLID, CVAR_UNLAG]:
+		var held := String(source.call(&"replicated_cvar", name_in, ""))
+		if held != "":
+			var _applied := set_cvar(name_in, held)
 	if not source.is_connected(&"replicated_cvar_changed", _on_replicated_cvar):
 		source.connect(&"replicated_cvar_changed", _on_replicated_cvar)
 	return true
 
 
 func set_cvar(cvar_name: String, value: String) -> bool:
-	if cvar_name != CVAR_SOLID:
+	if cvar_name != CVAR_SOLID and cvar_name != CVAR_UNLAG:
 		return false
 	var text := value.strip_edges()
 	if not text.is_valid_int():
 		return false
-	solid = text.to_int() != 0
+	if cvar_name == CVAR_UNLAG:
+		unlag = text.to_int() != 0
+	else:
+		solid = text.to_int() != 0
 	return true
 
 
@@ -155,8 +173,8 @@ func _on_replicated_cvar(cvar_name: String, value: String) -> void:
 
 
 func describe() -> Dictionary:
-	return {"solid": solid}
+	return {"solid": solid, "unlag": unlag}
 
 
 func describe_lines() -> PackedStringArray:
-	return PackedStringArray(["players: %s" % ("solid to each other" if solid else "pass through each other")])
+	return PackedStringArray(["players: %s%s" % ["solid to each other" if solid else "pass through each other", " (lag-compensated)" if solid and unlag else ""]])
