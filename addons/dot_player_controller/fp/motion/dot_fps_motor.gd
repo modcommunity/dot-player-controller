@@ -948,21 +948,15 @@ func _update_slide(
 	if not tunables.can_crouch or _effects.deny_crouch or _effects.deny_move:
 		return
 
-	var pressed := (
-		(command.buttons & ~state.previous_buttons) & DotFpsCommand.BUTTON_CROUCH
-	) != 0
+	var pressed := ((command.buttons & ~state.previous_buttons) & DotFpsCommand.BUTTON_CROUCH) != 0
 
-	# Landing from a wall run or wall jump with crouch held slides without a fresh press or sprint.
-	var wall_landing := command.is_pressed(DotFpsCommand.BUTTON_CROUCH) and (
-		state.wall_run_spent or state.wall_jumps_in_air > 0 or state.wall_run_time >= 0.0
-	)
+	var landing := command.is_pressed(DotFpsCommand.BUTTON_CROUCH) and state.came_off_wall()
 
-	if not wall_landing:
-		if not pressed:
-			return
-
-		if tunables.slide_requires_sprint and not command.is_pressed(DotFpsCommand.BUTTON_SPRINT):
-			return
+	if not landing and (
+		not pressed
+		or (tunables.slide_requires_sprint and not command.is_pressed(DotFpsCommand.BUTTON_SPRINT))
+	):
+		return
 
 	var speed := state.horizontal_speed()
 

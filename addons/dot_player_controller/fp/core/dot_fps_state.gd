@@ -163,6 +163,11 @@ func is_wall_running() -> bool:
 	return wall_run_time >= 0.0
 
 
+## True while on, or just landed from, a wall run or wall jump: crouch held then slides on landing without a fresh press or sprint.
+func came_off_wall() -> bool:
+	return wall_run_spent or wall_jumps_in_air > 0 or wall_run_time >= 0.0
+
+
 ## Bits of [method move_flags]: what the body is doing, readable on a remote player too.
 enum Move { CROUCH = 1, SLIDE = 2, SPRINT = 4, WALL_RUN = 8, AIR = 16 }
 
