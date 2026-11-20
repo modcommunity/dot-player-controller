@@ -529,16 +529,21 @@ func _test_wall_jump() -> void:
 	_run_along(motor, s, 10)
 	var along_before := -s.velocity.z
 	motor.simulate(s, _command(1.0, 0.0, 0.0, jump), STEP)
-	var push := Vector3(s.velocity.x, 0.0, s.velocity.z + along_before)
+	var push := Vector3(s.velocity.x, 0.0, s.velocity.z)
 	_check(motor.wall_jumps == 1 and not s.is_wall_running(), "a jump press during a run jumps off the wall")
 	_check(s.velocity.x < -t.wall_jump_push_speed * 0.6, "away from the wall", "%.2f m/s along the normal" % -s.velocity.x)
 	_check_near(s.velocity.y, t.wall_jump_up_speed, 0.4, "and up at wall_jump_up_speed")
-	_check(-s.velocity.z >= along_before - 0.01,
-		"keeping every bit of the speed along the wall", "%.2f from %.2f" % [-s.velocity.z, along_before])
+	# The jump redirects the speed already carried; it never adds the push on top, so the horizontal speed is
+	# capped at the larger of what was carried and the push speed.
+	var flat_speed := Vector2(s.velocity.x, s.velocity.z).length()
+	_check(flat_speed <= maxf(along_before, t.wall_jump_push_speed) + 0.01,
+		"never adding the push on top of the speed carried", "%.2f from %.2f" % [flat_speed, along_before])
+	_check(-s.velocity.z > 0.0, "and still going the way the run went", "%.2f along the wall" % -s.velocity.z)
 	var expected := (Vector3.LEFT * (1.0 - t.wall_jump_look_blend) + Vector3.FORWARD * t.wall_jump_look_blend).normalized()
-	_check(push.normalized().dot(expected) > 0.999,
+	var uncapped := Vector3(0.0, 0.0, -along_before) + expected * t.wall_jump_push_speed
+	_check(push.normalized().dot(uncapped.normalized()) > 0.999,
 		"the push leans from the normal toward the view by wall_jump_look_blend",
-		"%s against %s" % [push.normalized(), expected])
+		"%s against %s" % [push.normalized(), uncapped.normalized()])
 
 	# Looking into the wall still pushes away from it.
 	var facing_motor := _motor(t, _wall_world())
@@ -604,6 +609,8 @@ func _test_wall_replay() -> void:
 
 	var t := _wall_tunables()
 	t.wall_slide_speed = 2.0
+	# A push fast enough to cross the corridor before the fall outruns a run: the jump redirects carried speed, it adds none.
+	t.wall_jump_push_speed = 12.0
 	var commands: Array[DotFpsCommand] = []
 	for i in range(240):
 		var buttons := DotFpsCommand.BUTTON_JUMP if i % 45 == 30 else 0

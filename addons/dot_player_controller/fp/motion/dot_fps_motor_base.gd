@@ -186,8 +186,7 @@ var _rest_surface: StringName
 
 
 ## Registers a custom movement mode and returns its id.
-## Ids travel on the wire, so register in the same fixed order on every machine, not conditionally
-## on being a client or server.
+## Ids travel on the wire, so register in the same fixed order on every machine, not conditionally on being a client or server.
 ## [param mode] is a [DotFpsMoveMode]; held untyped so the motor and the mode base do not keep each other's parsers alive.
 func register_mode(mode: RefCounted) -> int:
 	if mode == null:

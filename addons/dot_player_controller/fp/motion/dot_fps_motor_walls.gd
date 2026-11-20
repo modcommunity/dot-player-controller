@@ -427,8 +427,7 @@ func _wall_jump_run_in_script(state: DotFpsState) -> bool:
 			ClassDB.class_exists(&"DotSimFpsBody") and ClassDB.class_has_method(&"DotSimFpsBody", &"runs_after_wall_jump")
 		) else 0
 		if _native_runs_after_wall_jump == 0 and ClassDB.class_exists(&"DotSimFpsBody"):
-			# Said once, loudly: every air tick after a wall jump then leaves dot-sim's batch for the script tail, about a
-			# third of a 32-bot server's motor time on dot-sim v0.2.7 (simhost-sim-cost-1, 2026-11-16).
+			# Said once, loudly: every air tick after a wall jump then leaves dot-sim's batch for the script tail, about a third of a 32-bot server's motor time on dot-sim v0.2.7.
 			DotLog.warn(CHANNEL, "dot-sim has no DotSimFpsBody.runs_after_wall_jump (older than v0.2.8): ticks after a wall jump run in script; update dot-sim")
 	return _native_runs_after_wall_jump == 0 and _may_run_after_wall_jump(state)
 

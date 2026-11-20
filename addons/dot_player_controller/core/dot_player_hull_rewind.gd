@@ -1,13 +1,9 @@
 class_name DotPlayerHullRewind
 extends RefCounted
 
-## Lag-compensated collision for players whose hulls are physics bodies ([method DotPlayerBodyRules.apply_hull]).
-## Around a mover's step, [method around] puts every other player's hull where the game's [member feet_fn] says
-## the mover's view had it, runs the step, and puts the hulls back. Without it a client predicts a bump against the
-## drawn (interpolated) remote and the server moves the mover against the present: every bump with a moving player
-## is a correction. Design and limits: docs/collision.md, "Lag-compensated hulls".
-## Only the physics server's transform is written, never the node, so nothing the game reads (positions, hitboxes,
-## the interpolator) sees a rewound player, and a hull that only stops the mover has no other state to answer for.
+## Lag-compensated collision for players whose hulls are physics bodies ([method DotPlayerBodyRules.apply_hull]): [method around] puts every other player's hull where the game's [member feet_fn] says the mover's view had it, runs the step, and puts the hulls back.
+## Without it a client predicts a bump against the drawn (interpolated) remote and the server moves the mover against the present: every bump with a moving player is a correction. Design and limits: docs/collision.md, "Lag-compensated hulls".
+## Only the physics server's transform is written, never the node, so nothing the game reads (positions, hitboxes, the interpolator) sees a rewound player.
 
 ## `(mover_key, other_key, tick) -> Vector3 or null`: the other's feet at the mover's view tick (the server's
 ## per-tick history; a client's interpolator at the same tick). Null leaves that hull where it stands.
