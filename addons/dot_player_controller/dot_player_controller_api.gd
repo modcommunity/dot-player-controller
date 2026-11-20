@@ -1,6 +1,6 @@
 extends RefCounted
 
-## dot-player-controller's API level; the bumping rule is on dot-core's DotAddonApi.
+## GameSpice Player Controller's API level; the bumping rule is on GameSpice Core's DotAddonApi.
 ## LEVEL rises by one for anything new a game could call; OLDEST rises to LEVEL when
 ## something a game could have called is removed or changes meaning.
 

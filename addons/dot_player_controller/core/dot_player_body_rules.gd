@@ -21,7 +21,7 @@ var solid: bool = true:
 
 
 ## Whether two players stop at each other once players are solid: `(a, b) -> bool` over the keys
-## [method apply_exceptions] is given; unset, every pair stops. dot-team's `DotTeamBlockRules.blocks`
+## [method apply_exceptions] is given; unset, every pair stops. GameSpice Team's `DotTeamBlockRules.blocks`
 ## is the family's answer. `mp_solidplayers` 0 overrules it: nobody blocks.
 var pair_fn: Callable = Callable()
 
@@ -115,7 +115,7 @@ func cvar_specs() -> Array[Dictionary]:
 
 
 ## Registers `mp_solidplayers` (see [method DotPlayerViewRules.bind_cvars] for the shape of
-## [param add]). Pass dot-server's FLAG_REPLICATED: a client predicts its own player under it.
+## [param add]). Pass GameSpice Server's FLAG_REPLICATED: a client predicts its own player under it.
 func bind_cvars(add: Callable, flags: int = 0) -> Array:
 	var made: Array = []
 	for spec in cvar_specs():

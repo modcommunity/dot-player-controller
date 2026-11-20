@@ -14,4 +14,4 @@ The `_process` of both controllers draws (camera rig, view); neither queries the
 
 A server makes a player's body between ticks (a join, a module load), so `DotFpsPhysicsBody.bind` does not fetch the space there when physics is threaded: it leaves the handle empty and every query entry point (`sweep`, `native_tick`, `native_batch`, the rest and ray probes) fetches it through `revalidate()` inside the step. `threaded_physics` on `dot_fps_physics_body_native.gd` is read from the project setting at startup; `fps_controller_selftest` section "a body made between ticks on a threaded server binds in the step" forces it on.
 
-Client only, so not in the table: the camera rig's `DotCameraBoom` probe (dot-core `DotCameraProbe`) runs in `_process`. The threaded setting is a server setting and a client never sets it. The game-side callers are audited in dot-physics `docs/threading.md`.
+Client only, so not in the table: the camera rig's `DotCameraBoom` probe (GameSpice Core `DotCameraProbe`) runs in `_process`. The threaded setting is a server setting and a client never sets it. The game-side callers are audited in GameSpice Physics `docs/threading.md`.

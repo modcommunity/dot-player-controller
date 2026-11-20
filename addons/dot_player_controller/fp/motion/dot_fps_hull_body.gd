@@ -12,7 +12,7 @@ static var hull_stops: int = 0
 var inner: DotFpsBody = null
 var hulls_fn: Callable = Callable()
 
-## dot-sim's hull world the native tick gathers from instead of [member hulls_fn] ([method set_hull_world]), or null.
+## GameSpice Sim's hull world the native tick gathers from instead of [member hulls_fn] ([method set_hull_world]), or null.
 var hull_world: Object = null
 
 var _boxes: Array = []

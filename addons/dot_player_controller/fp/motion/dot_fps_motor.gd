@@ -51,7 +51,7 @@ func simulate(
 	body.end_tick()
 
 
-## [method batch_prepare]'s answers: the tick is over, the caller runs [method batch_resume], or the row is filled for dot-sim's batch.
+## [method batch_prepare]'s answers: the tick is over, the caller runs [method batch_resume], or the row is filled for GameSpice Sim's batch.
 const BATCH_DONE := 0
 const BATCH_DEFER := 1
 const BATCH_READY := 2
@@ -59,12 +59,12 @@ const BATCH_READY := 2
 ## After a [constant BATCH_READY] answer: the native body and tunables of the row.
 var batch_body: Object = null
 var batch_tun := PackedFloat64Array()
-## The clocks and cooldowns of the prepared tick left to dot-sim's row (bit 0), the tick having begun on the ground
+## The clocks and cooldowns of the prepared tick left to GameSpice Sim's row (bit 0), the tick having begun on the ground
 ## (bit 1): a fourth meta value for [code]DotSimMotorBatch.run_rows[/code]. Every end but [method batch_apply] runs them here.
 var batch_clocks: int = 0
 
 
-## The start of [method simulate] for a tick that may run in dot-sim's batch with other players' ([DotFpsMotorBatch]): everything before the first world query that depends on another player. On [constant BATCH_READY] row [param row] of [param input] (55 values) and [param meta] ([param meta_len] values, 3 or 4) is filled and [method batch_apply] ends the tick; on [constant BATCH_DEFER] [method batch_resume] does, the same way [method simulate] would have. With 4 the row may leave the clocks to dot-sim ([member batch_clocks], API 31).
+## The start of [method simulate] for a tick that may run in GameSpice Sim's batch with other players' ([DotFpsMotorBatch]): everything before the first world query that depends on another player. On [constant BATCH_READY] row [param row] of [param input] (55 values) and [param meta] ([param meta_len] values, 3 or 4) is filled and [method batch_apply] ends the tick; on [constant BATCH_DEFER] [method batch_resume] does, the same way [method simulate] would have. With 4 the row may leave the clocks to GameSpice Sim ([member batch_clocks], API 31).
 func batch_prepare(
 	state: DotFpsState, command: DotFpsCommand, delta: float, input: PackedFloat64Array, meta: PackedInt64Array, row: int,
 	meta_len: int = 3
@@ -138,7 +138,7 @@ func batch_resume(state: DotFpsState, command: DotFpsCommand, delta: float) -> v
 
 
 ## Drops a prepared tick whose player will not tick after all. Its start stays run, clocks included, so a row that left
-## them to dot-sim needs the tick's [param state], [param command] and [param delta].
+## them to GameSpice Sim needs the tick's [param state], [param command] and [param delta].
 func batch_cancel(state: DotFpsState = null, command: DotFpsCommand = null, delta: float = 0.0) -> void:
 	if batch_clocks != 0:
 		if state == null or command == null:
@@ -170,7 +170,7 @@ func _clocks_may_wait(state: DotFpsState, command: DotFpsCommand) -> bool:
 	)
 
 
-## [method _simulate_head] where [method _clocks_may_wait]: the same writes but the clocks, which dot-sim's row runs
+## [method _simulate_head] where [method _clocks_may_wait]: the same writes but the clocks, which GameSpice Sim's row runs
 ## ([member batch_clocks]). The modifiers, effects, noclip and mode calls would all return at once.
 func _batch_head(state: DotFpsState, command: DotFpsCommand) -> void:
 	view_turn = 0.0
@@ -265,7 +265,7 @@ func _simulate_tail(state: DotFpsState, command: DotFpsCommand, delta: float, cr
 		state.previous_buttons = command.buttons
 		return
 
-	# The tick's start and end in dot-sim when it can (see [member native_tick]); empty to run them here.
+	# The tick's start and end in GameSpice Sim when it can (see [member native_tick]); empty to run them here.
 	var tick_tun := _native_tick_tun(state)
 	var whole := not tick_tun.is_empty() and native_full
 	if whole and _wall_jump_run_in_script(state):
@@ -335,7 +335,7 @@ func _simulate_tail(state: DotFpsState, command: DotFpsCommand, delta: float, cr
 	)
 
 
-## The end of [method _simulate_tail] when dot-sim did not run it: friction, the wish move, gravity or the surface push,
+## The end of [method _simulate_tail] when GameSpice Sim did not run it: friction, the wish move, gravity or the surface push,
 ## the slide, and the end-of-tick ground check. [param left_ground] is a jump or a launch this tick.
 func _script_tick_end(
 	state: DotFpsState, command: DotFpsCommand, delta: float, wall: DotFpsBody.Hit, left_ground: bool,
@@ -408,7 +408,7 @@ func _advance_timers(
 		DotFpsNetSync.snap_stamina(state)
 
 
-## The clocks, cooldowns, landing crouch press and wall reset of [method _advance_timers]; dot-sim's
+## The clocks, cooldowns, landing crouch press and wall reset of [method _advance_timers]; GameSpice Sim's
 ## [code]full::advance_timers[/code] is the same for a batch row. [param grounded]: the tick began on the ground.
 func _advance_clocks(state: DotFpsState, command: DotFpsCommand, delta: float, grounded: bool) -> void:
 	state.time_since_jump = minf(state.time_since_jump + delta, TIMER_CAP)
@@ -975,7 +975,7 @@ func _update_slide(
 
 ## The first tick on the ground after a real stretch in the air (time_since_grounded still holds it) with crouch held sees crouch as pressed again,
 ## so a crouch pressed in the air (off a wall run, after a jump) starts the slide its press would have on the ground.
-## Done on the replicated previous buttons before anything reads them, so script, dot-sim's whole tick and the batch all see the same press; [constant WALL_ENTRY_MIN_AIR] keeps a one-tick kerb bump at a crouched run from counting as a landing; a crouch that also launches or dashes is left alone.
+## Done on the replicated previous buttons before anything reads them, so script, GameSpice Sim's whole tick and the batch all see the same press; [constant WALL_ENTRY_MIN_AIR] keeps a one-tick kerb bump at a crouched run from counting as a landing; a crouch that also launches or dashes is left alone.
 func _landing_counts_as_crouch_press(state: DotFpsState, command: DotFpsCommand) -> void:
 	var crouch := DotFpsCommand.BUTTON_CROUCH
 	if (

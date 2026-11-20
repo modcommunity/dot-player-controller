@@ -59,7 +59,7 @@ Everything the next replayed tick reads goes in `net_flags`, after the dash, so 
 | jump counts | 3 | the airborne total and the per-wall count as one of the seven pairs that can happen |
 | heading | 3 | the wall the per-wall count counts, in eighths of a turn |
 
-That fills the word to 64 bits. **A field after these needs a new property, not a wider word**: dot-net's `UINT` stops at 64, and the top bit already makes the int negative in GDScript, which every read masks off. The heading is kept quantised in the simulation itself, not only on the wire, so a restored value is the one the simulation made.
+That fills the word to 64 bits. **A field after these needs a new property, not a wider word**: GameSpice Net's `UINT` stops at 64, and the top bit already makes the int negative in GDScript, which every read masks off. The heading is kept quantised in the simulation itself, not only on the wire, so a restored value is the one the simulation made.
 
 The negative controls in `movement_selftest`'s "wall movement replays" drop these fields from a mid-run snapshot and must diverge; the same section replays at 64 Hz through `pack_flags`/`unpack_flags` and must reproduce every position.
 

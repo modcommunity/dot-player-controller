@@ -774,7 +774,7 @@ func would_overlap(state: DotFpsState, feet: Vector3) -> bool:
 
 ## [method _slide] then [method _prefer_step] (mode 0, [param flag] walking) or the slide and step of [method move_and_slide]
 ## (mode 1, [param flag] step) in one native call, when the body runs one ([method DotFpsBody.native_slide]); null to run them here.
-## The native slide is this script's to the bit (dot-sim's motor parity suite), so a web client running the script agrees.
+## The native slide is this script's to the bit (GameSpice Sim's motor parity suite), so a web client running the script agrees.
 func _native_move(
 	from: Vector3, velocity: Vector3, motion: Vector3, height: float, mode: int, flag: bool
 ) -> MoveResult:

@@ -1,6 +1,6 @@
 extends "dot_fps_motor_slide.gd"
 
-## The motor's native side: the tunables and input rows it hands dot-sim, the answers it writes back, and the rest
+## The motor's native side: the tunables and input rows it hands GameSpice Sim, the answers it writes back, and the rest
 ## stamp that lets a settled walker skip its ground probe. Split out of [DotFpsMotor] for file size; it is the layer
 ## between that and dot_fps_motor_slide.gd, and nothing outside the motor names this script.
 

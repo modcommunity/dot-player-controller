@@ -120,7 +120,7 @@ func _loop(batched: bool) -> Dictionary:
 		"digest": digest, "counters": hash(counters), "wired": wired, "rows": batch.rows, "runs": batch.runs}
 
 
-## One more batched run with dot-sim's query timers on (--profile): engine queries per row and their cost, split by
+## One more batched run with GameSpice Sim's query timers on (--profile): engine queries per row and their cost, split by
 ## where the motor asked them. The timers add their own cost, so the totals here are not the bench's numbers.
 func _profiled() -> void:
 	ClassDB.class_call_static(&"DotSimFpsBody", &"reset_profile")

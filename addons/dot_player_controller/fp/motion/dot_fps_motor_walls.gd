@@ -416,23 +416,23 @@ func _run_speed(state: DotFpsState, flat: Vector3, normal: Vector3) -> float:
 	return (flat - normal * minf(flat.dot(normal), 0.0)).length()
 
 
-## -1 not asked yet, else whether dot-sim's whole tick slows a run after a wall jump as [method _run_speed] does ([code]DotSimFpsBody.runs_after_wall_jump[/code]).
+## -1 not asked yet, else whether GameSpice Sim's whole tick slows a run after a wall jump as [method _run_speed] does ([code]DotSimFpsBody.runs_after_wall_jump[/code]).
 static var _native_runs_after_wall_jump: int = -1
 
 
-## Whether this tick must run in script rather than in dot-sim's whole tick because of [method _may_run_after_wall_jump]: never with a library that slows such a run itself.
+## Whether this tick must run in script rather than in GameSpice Sim's whole tick because of [method _may_run_after_wall_jump]: never with a library that slows such a run itself.
 func _wall_jump_run_in_script(state: DotFpsState) -> bool:
 	if _native_runs_after_wall_jump < 0:
 		_native_runs_after_wall_jump = 1 if (
 			ClassDB.class_exists(&"DotSimFpsBody") and ClassDB.class_has_method(&"DotSimFpsBody", &"runs_after_wall_jump")
 		) else 0
 		if _native_runs_after_wall_jump == 0 and ClassDB.class_exists(&"DotSimFpsBody"):
-			# Said once, loudly: every air tick after a wall jump then leaves dot-sim's batch for the script tail, about a third of a 32-bot server's motor time on dot-sim v0.2.7.
+			# Said once, loudly: every air tick after a wall jump then leaves GameSpice Sim's batch for the script tail, about a third of a 32-bot server's motor time on GameSpice Sim v0.2.7.
 			DotLog.warn(CHANNEL, "dot-sim has no DotSimFpsBody.runs_after_wall_jump (older than v0.2.8): ticks after a wall jump run in script; update dot-sim")
 	return _native_runs_after_wall_jump == 0 and _may_run_after_wall_jump(state)
 
 
-## Whether a run may start this tick from a wall jump earlier in this air, which an older dot-sim's whole tick does not know to slow: such a tick runs in script (see [method _wall_jump_run_in_script]).
+## Whether a run may start this tick from a wall jump earlier in this air, which an older GameSpice Sim's whole tick does not know to slow: such a tick runs in script (see [method _wall_jump_run_in_script]).
 func _may_run_after_wall_jump(state: DotFpsState) -> bool:
 	return (
 		tunables.wall_run_enabled and (tunables.wall_run_auto or tunables.wall_run_on_jump)

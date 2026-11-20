@@ -168,7 +168,7 @@ func cvar_specs() -> Array[Dictionary]:
 
 ## Registers these rules' cvars through [param add] (a server module's `add_cvar`, shaped
 ## `(name, default, description, flags) -> cvar`) and keeps these rules in step with it. Pass
-## FLAG_REPLICATED. Duck-typed (dot-server is not a dependency); a value already held is read back.
+## FLAG_REPLICATED. Duck-typed (GameSpice Server is not a dependency); a value already held is read back.
 func bind_cvars(add: Callable, flags: int = 0) -> Array:
 	var made: Array = []
 	for spec in cvar_specs():
@@ -189,7 +189,7 @@ func bind_cvars(add: Callable, flags: int = 0) -> Array:
 	return made
 
 
-## Follows a server's value through [param source] (dot-server's `DotClientLink`, or
+## Follows a server's value through [param source] (GameSpice Server's `DotClientLink`, or
 ## anything with `replicated_cvar(name, fallback)` and a `replicated_cvar_changed(name,
 ## value)` signal). False when it cannot (an older shell's link); the rules keep their own.
 func follow_cvars(source: Object) -> bool:

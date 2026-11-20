@@ -2,7 +2,7 @@ class_name DotTpsCameraRig
 extends Node3D
 
 ## The orbit camera: a boom that stays out of the level, a shoulder it can swap, and an aim blend.
-## Built in code, not a scene (a scene is something a game must merge). The arm is a dot-core
+## Built in code, not a scene (a scene is something a game must merge). The arm is a GameSpice Core
 ## [DotCameraBoom], not a SpringArm3D, and the shoulder is part of its swept line. Tree: docs/rationale.md.
 
 # No log channel: a camera following a state it is handed every frame. It has nothing
@@ -13,7 +13,7 @@ extends Node3D
 ## Whether the camera becomes current when this rig is for the local player.
 @export var make_current: bool = true
 
-## Layers the boom stops against. Set from a dot-physics layout by the game.
+## Layers the boom stops against. Set from a GameSpice Physics layout by the game.
 @export_flags_3d_physics var collision_mask: int = 1
 
 ## Layers whose bodies fade when they come between the camera and the character (other

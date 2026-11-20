@@ -52,7 +52,7 @@ signal teleported(to: Transform3D)
 ## Distinct from [member active]: a player frozen in a warm-up keeps their controller and camera.
 @export var input_enabled: bool = true
 
-## Multiplier on movement speed, for dot-player-class and for status effects.
+## Multiplier on movement speed, for GameSpice Player Class and for status effects.
 @export_range(0.0, 10.0, 0.01) var speed_scale: float = 1.0
 
 ## Multiplier on jump strength.

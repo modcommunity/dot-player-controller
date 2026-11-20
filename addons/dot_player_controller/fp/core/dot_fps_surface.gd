@@ -34,7 +34,7 @@ extends Resource
 @export var push: Vector3 = Vector3.ZERO
 
 ## How much of a hard landing this surface takes away: 0 none, 1 all (snow, a mattress, a
-## hay bale). Read by dot-combat's DotFallDamage; the controller itself ignores it.
+## hay bale). Read by GameSpice Combat's DotFallDamage; the controller itself ignores it.
 @export_range(0.0, 1.0, 0.01) var fall_damping: float = 0.0
 
 @export_group("Presentation")
@@ -49,7 +49,7 @@ static func make(p_id: StringName) -> DotFpsSurface:
 	return s
 
 
-## A movement surface read off a dot-physics `DotPhysicsSurface` (duck-typed: no dependency).
+## A movement surface read off a GameSpice Physics `DotPhysicsSurface` (duck-typed: no dependency).
 ## `traction` is the friction scale, `move_scale` the acceleration scale, `dampening` lowers top speed
 ## (1 - 0.15 per unit, floor 0.4), `jump_scale` carries over; a `liquid` or non-`solid` is not stood on.
 static func from_physics(surface: Object) -> DotFpsSurface:

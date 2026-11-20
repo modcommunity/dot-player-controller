@@ -26,7 +26,7 @@ func render_state(alpha: float = -1.0) -> DotFpsState:
 			render_clock != null and is_instance_valid(render_clock)
 			and render_clock.has_method(&"render_alpha")
 		):
-			# By name: the clock is dot-net's, which this addon does not depend on, and
+			# By name: the clock is GameSpice Net's, which this addon does not depend on, and
 			# one older than `render_alpha` leaves the engine's fraction in charge.
 			var from_clock := float(render_clock.call(&"render_alpha"))
 			alpha = clampf(from_clock, 0.0, 1.0)

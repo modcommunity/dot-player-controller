@@ -110,7 +110,7 @@ enum Drive {
 @export var drive: Drive = Drive.LOCAL
 
 ## Simulation ticks per second in [constant Drive.LOCAL].
-## Ignored in the other modes, where the driver sets the rate (dot-net: [code]DotNetConfig.tick_rate[/code]). It must match on client and server: delta is an input to the simulation.
+## Ignored in the other modes, where the driver sets the rate (GameSpice Net: [code]DotNetConfig.tick_rate[/code]). It must match on client and server: delta is an input to the simulation.
 @export_range(1, 240, 1) var tick_rate: int = 60
 
 ## [member DotFpsMotor.static_world]: nothing the body queries moves between ticks. Off by default.
@@ -218,7 +218,7 @@ var _previous_state: DotFpsState = DotFpsState.new()
 ## (a [member render_clock] alpha below 0). NAN until a tick has run since the last reset.
 var _position_two_back: Vector3 = Vector3(NAN, NAN, NAN)
 
-## The clock this controller's ticks are counted on, for a client predicting it: anything with a [code]render_alpha() -> float[/code] (dot-net's [code]DotNetClock[/code]), asked by name so this addon needs no dot-net. Null draws at the engine's physics fraction. See [method render_state].
+## The clock this controller's ticks are counted on, for a client predicting it: anything with a [code]render_alpha() -> float[/code] (GameSpice Net's [code]DotNetClock[/code]), asked by name so this addon needs no GameSpice Net. Null draws at the engine's physics fraction. See [method render_state].
 ## A connected client's ticks are the clock's: it stretches them while it settles, so a physics frame runs no tick and a later one two, and drawing at the engine's fraction jumped the eye 10 to 16 cm on 4 to 8 frames in 5 s at 60 Hz.
 ## Set it by [code]controller.set(&"render_clock", clock)[/code] from a game pack, so a shell with an older copy of this addon ignores it.
 var render_clock: Object = null

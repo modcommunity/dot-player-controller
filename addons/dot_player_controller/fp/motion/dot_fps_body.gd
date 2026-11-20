@@ -60,14 +60,14 @@ func native_slide(
 	return PackedFloat64Array()
 
 
-## Half of a motor tick in one native call (see [member DotFpsMotor.native_tick]): [param phase] 0 is [code]DotSimFpsBody.motor_pre[/code], 1 [code]motor_post[/code], 2 the whole tick [code]motor_tick[/code]; their answer, or empty to run it in script. [param hulls_mode] 0 none, 1 [param hulls] as boxes, 2 the boxes the last call this tick sent, 3 the ones dot-sim's hull world gathers ([method set_hull_world]; empty when it has no answer).
+## Half of a motor tick in one native call (see [member DotFpsMotor.native_tick]): [param phase] 0 is [code]DotSimFpsBody.motor_pre[/code], 1 [code]motor_post[/code], 2 the whole tick [code]motor_tick[/code]; their answer, or empty to run it in script. [param hulls_mode] 0 none, 1 [param hulls] as boxes, 2 the boxes the last call this tick sent, 3 the ones GameSpice Sim's hull world gathers ([method set_hull_world]; empty when it has no answer).
 func native_tick(
 	_phase: int, _state: PackedFloat64Array, _tun: PackedFloat64Array, _hulls_mode: int = 0, _hulls: Array = []
 ) -> PackedFloat64Array:
 	return PackedFloat64Array()
 
 
-## This body's native body for a tick in dot-sim's batch ([DotFpsMotorBatch]), with its hulls mode and masks written at [param at]
+## This body's native body for a tick in GameSpice Sim's batch ([DotFpsMotorBatch]), with its hulls mode and masks written at [param at]
 ## in [param meta]; null when the tick must run through [method native_tick] or in script. [param hulls_mode] is a wrapper's ask.
 func native_batch(_meta: PackedInt64Array, _at: int, _hulls_mode: int = 0) -> Object:
 	return null
@@ -84,7 +84,7 @@ func set_static_world(_on: bool) -> void:
 	pass
 
 
-## Lets [method native_tick]'s hulls mode 3 gather from dot-sim's [code]DotSimHullWorld[/code] [param world] as roster slot [param slot] (null: none).
+## Lets [method native_tick]'s hulls mode 3 gather from GameSpice Sim's [code]DotSimHullWorld[/code] [param world] as roster slot [param slot] (null: none).
 ## False when this body cannot (no native body, or a library without the hull world).
 func set_hull_world(_world: Object, _slot: int) -> bool:
 	return false

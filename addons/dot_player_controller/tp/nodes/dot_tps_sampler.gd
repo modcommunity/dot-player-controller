@@ -3,7 +3,7 @@ extends Node
 
 ## Devices to [DotPlayerIntent]. The only node in this addon that reads input, kept apart from the
 ## controller so a replay cannot pick up what the player is holding now.
-## Action names are exported because dot-ui owns rebinding.
+## Action names are exported because GameSpice UI owns rebinding.
 
 const CHANNEL := "player.tps"
 

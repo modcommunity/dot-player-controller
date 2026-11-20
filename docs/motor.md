@@ -62,7 +62,7 @@ Scales rather than absolute values, for the reason surfaces use them: an absolut
 
 **`timescale` is not applied by `apply_to`.** Scaling the simulation means scaling `delta`, which is the host's tick loop's decision, and on a server it has to be the same for every player or the tick counter stops meaning anything.
 
-The ranking half of a style (ranked, points multiplier, minimum time) is `DotTimerStyle` in dot-timer; a game pairs them by id.
+The ranking half of a style (ranked, points multiplier, minimum time) is `DotTimerStyle` in GameSpice Timer; a game pairs them by id.
 
 ## Statistics
 
@@ -75,7 +75,7 @@ The ranking half of a style (ranked, points multiplier, minimum time) is `DotTim
 
 ## Simulating ahead
 
-`DotFpsSimulator` (`controller.simulator()`) is a second `DotFpsMotor` over a copy of the player's body, with a duplicate of the tunables, the same modifiers and custom modes registered in the same order, and the same surfaces. A bot that surfs plans on it offline and checks its next second against it at run time (dot-bot's surf planner and pilot, which reach it by duck typing because dot-bot names no other addon).
+`DotFpsSimulator` (`controller.simulator()`) is a second `DotFpsMotor` over a copy of the player's body, with a duplicate of the tunables, the same modifiers and custom modes registered in the same order, and the same surfaces. A bot that surfs plans on it offline and checks its next second against it at run time (GameSpice Bot's surf planner and pilot, which reach it by duck typing because GameSpice Bot names no other addon).
 
 - **A second motor, not a model.** The motor is a pure function of (state, command, delta, tunables, body), and every body only queries, so the copy is the game itself: game-airdrift measured 0.0000 m between a simulated ride of 486 ticks and the live player given the same commands. A re-implementation of the clip and air-acceleration rule would drift, and a ride planned on it falls off the real ramp.
 - **The body copies itself** (`DotFpsBody.copy_for_simulation`): a physics body binds to the same node with the same masks and exclusions, a flat body shares its boxes and planes. A copy, not the live body, because the physics body counts its queries and a game's body may cache per sweep, and a simulation run between two live ticks must not show in either. A game body that cannot copy itself returns null and the caller hands `setup` (or `simulator(body)`) one of its own; game-fatal-contact hands its map body without the other players' hulls.
@@ -86,8 +86,8 @@ The ranking half of a style (ranked, points multiplier, minimum time) is `DotTim
 ## Deliberately not here
 
 - **Ladders and vehicles.** `DotFpsMoveMode` is the hook; the modes are a game's decision about feel. The self-test's ladder is a worked example of the interface, not something to use. Swimming is here ([extending.md](extending.md#custom-modes-and-swimming)) because its hard part, determinism, is this addon's.
-- **Weapons, health, hit detection.** dot-net's lag compensation rewinds positions; what to trace is a game's concern.
+- **Weapons, health, hit detection.** GameSpice Net's lag compensation rewinds positions; what to trace is a game's concern.
 - **Camera shake, weapon sway, procedural lean.** `DotFpsView` has bob, a landing kick and strafe roll; the rest is cosmetic.
 - **On-screen touch controls.** `DotFpsTouchSampler` turns fingers into commands and ships no art or layout; a game draws its own and calls `hold()`.
 - **Moving platforms.** They need a velocity frame the player inherits, and doing that deterministically needs the platform in the replicated simulation, which is dot-net's problem.
-- **A character mesh or animation.** The controller publishes position, yaw, pitch and crouch; driving an `AnimationTree` is a game's layer (or dot-player-char's).
+- **A character mesh or animation.** The controller publishes position, yaw, pitch and crouch; driving an `AnimationTree` is a game's layer (or GameSpice Player Char's).

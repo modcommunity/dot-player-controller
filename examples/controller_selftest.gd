@@ -92,7 +92,7 @@ class StubController extends DotPlayerController:
 		vel = Vector3.ZERO
 
 
-## A server cvar as dot-server's DotConVar looks to the rules: a changed signal and a value.
+## A server cvar as GameSpice Server's DotConVar looks to the rules: a changed signal and a value.
 class FakeCvar:
 	extends RefCounted
 	signal changed(old_value: String, new_value: String)
@@ -105,7 +105,7 @@ class FakeCvar:
 		changed.emit(old, v)
 
 
-## A client link as dot-server's DotClientLink looks to the rules.
+## A client link as GameSpice Server's DotClientLink looks to the rules.
 class FakeLink:
 	extends RefCounted
 	signal replicated_cvar_changed(cvar_name: String, value: String)

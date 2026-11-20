@@ -1,4 +1,4 @@
-# dot-player-controller
+# GameSpice Player Controller
 
 Everything that drives a player: an abstract controller contract with a switch that hands one controller to the next, a first-person movement model (`fp/`, which was `dot-fps-controller`) built to be predicted and replayed, and a third-person controller with an orbit rig (`tp/`).
 
@@ -14,7 +14,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | [docs/collision.md](docs/collision.md) | `DotFpsBody`, `DotFpsPhysicsBody`, sweeps, embeds, ramps, ground checks |
 | [docs/extending.md](docs/extending.md) | surfaces, modifiers, admin abilities, custom modes, swimming, slide/launch/dash, the plug-in table |
 | [docs/wall-movement.md](docs/wall-movement.md) | wall running, wall jumping, the wall slide, their camera roll and their bits in `net_flags` |
-| [docs/networking.md](docs/networking.md) | wiring a controller to dot-net, `DotFpsNetSync`, `net_flags`, `render_state` |
+| [docs/networking.md](docs/networking.md) | wiring a controller to GameSpice Net, `DotFpsNetSync`, `net_flags`, `render_state` |
 | [docs/testing.md](docs/testing.md) | adding a check, or believing a green run |
 | [docs/history.md](docs/history.md) | a movement bug that "cannot be happening"; what each fix was and how it looked |
 
@@ -28,7 +28,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | `addons/dot_player_controller/fp/motion/` | the simulation: `DotFpsMotor`, `DotFpsBody` and its flat and physics implementations, `DotFpsMoveMode`, `DotFpsSwimMode`, `DotFpsLadderMode` (boxes as data; the game calls `update` each tick), `DotFpsSimulator` (a second motor a bot runs ahead) |
 | `addons/dot_player_controller/fp/nodes/` | `DotFpsController`, `DotFpsSampler`, `DotFpsTouchSampler`, `DotFpsView`, `DotFpsViewMotion` (its motion cues without nodes) |
 | `addons/dot_player_controller/fp/net/` | `DotFpsNetSync`: what replicates, at what precision |
-| `addons/dot_player_controller/tp/` | `core/` (motor, state, tunables) and `nodes/` (controller, `DotTpsCameraRig` on dot-core's `DotCameraBoom` and `DotCameraFade`) |
+| `addons/dot_player_controller/tp/` | `core/` (motor, state, tunables) and `nodes/` (controller, `DotTpsCameraRig` on GameSpice Core's `DotCameraBoom` and `DotCameraFade`) |
 | `addons/dot_player_controller/dot_player_controller_api.gd` | the API level (22) |
 | `examples/` | ten self-test scenes, `sandbox.tscn` (a course to feel the movement out, not a test) |
 
@@ -88,17 +88,17 @@ Short forms; the reasoning is in the linked file.
 - Slide, launch and dash are off by default; their timers ride in `net_flags`, and their signals are not emitted during a replay. [extending](docs/extending.md#slide-launch-and-dash)
 - Wall run, wall jump and wall slide are off by default and probe nothing while off; a run never writes the horizontal velocity and eases the vertical, never sets it; a run keeps the wall beside its velocity over a nearer one behind. [wall-movement](docs/wall-movement.md)
 - `net_flags` is full at 64 bits since the wall fields; anything else that must replicate needs a new property. [wall-movement](docs/wall-movement.md#what-the-wire-carries)
-- dot-net is never named: `DotFpsCommand` and `DotFpsNetSync` reach it by method name. `_net_state_applied` restores the whole state; `delta` is the tick; compare `fingerprint()` at connect. [networking](docs/networking.md)
+- GameSpice Net is never named: `DotFpsCommand` and `DotFpsNetSync` reach it by method name. `_net_state_applied` restores the whole state; `delta` is the tick; compare `fingerprint()` at connect. [networking](docs/networking.md)
 - `render_state()` needs the host to step once per physics frame at `tick_rate`; a connected client sets `render_clock` (dot-net's clock, by name) so a slip is drawn through; never call it for a `Drive.REMOTE` player. [networking](docs/networking.md#rendering-between-ticks)
 - Forward EVERY input event to `DotFpsSampler.handle_event`, not only mouse motion: a wheel tick on jump reaches a command only through its latch. [networking](docs/networking.md#rendering-between-ticks)
 - Draw the owner's view from `DotFpsSampler.look_now()` once a frame, not from the state's angles, or a frame with no tick in it does not turn. [networking](docs/networking.md#rendering-between-ticks)
 - A camera cue on an event (a landing) kicks a velocity or eases toward a target, never sets the eye on that frame; the cues live in `DotFpsViewMotion`, which a game writing its own camera calls rather than copies. [history](docs/history.md)
 - A field added to `DotFpsViewMotion` is also exported on `DotFpsView` and forwarded in `_sync_motion`; `fps_controller_selftest` checks every field by reflection. [extending](docs/extending.md)
-- The rig's arm is dot-core's `DotCameraBoom`, placed by `follow()` (`auto_place` off), with the shoulder as the boom's `side_offset` so the sweep covers it; never a `SpringArm3D` again. `tps_selftest`'s "against a wall" section is the only one with a level; the rest still collides with nothing. [design](docs/design.md#the-third-person-half)
+- The rig's arm is GameSpice Core's `DotCameraBoom`, placed by `follow()` (`auto_place` off), with the shoulder as the boom's `side_offset` so the sweep covers it; never a `SpringArm3D` again. `tps_selftest`'s "against a wall" section is the only one with a level; the rest still collides with nothing. [design](docs/design.md#the-third-person-half)
 
 **Server rules a game binds**
 
-- `DotPlayerBodyRules.pair_fn` (`(a, b) -> bool`, dot-team's `DotTeamBlockRules.blocks`) says which pairs stop at each other; `apply_exceptions(entries)` turns it into `DotFpsController.set_extra_excludes` on every machine, and again on `changed`. `mp_solidplayers` 0 overrules it. [collision](docs/collision.md#pairs-that-pass-through)
+- `DotPlayerBodyRules.pair_fn` (`(a, b) -> bool`, GameSpice Team's `DotTeamBlockRules.blocks`) says which pairs stop at each other; `apply_exceptions(entries)` turns it into `DotFpsController.set_extra_excludes` on every machine, and again on `changed`. `mp_solidplayers` 0 overrules it. [collision](docs/collision.md#pairs-that-pass-through)
 
 - `mp_forceview` (`DotPlayerViewRules`): 0 the player's choice, 1 first person only, 2 third person only; bound REPLICATED by the server module and followed by the client through its link; a client never decides it. [design](docs/design.md#the-view-and-solid-players)
 - `mp_solidplayers` (`DotPlayerBodyRules`, 1 by default): apply it with `apply_to(controller, base, player_layers)` wherever a player's collision mask is set AND `apply_hull()` on the body (players carry no shape of their own, so a mask alone hits nothing), on every machine, or prediction disagrees with the server. [design](docs/design.md#the-view-and-solid-players)

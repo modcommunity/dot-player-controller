@@ -1,6 +1,6 @@
 extends DotFpsBody
 
-## [DotFpsPhysicsBody]'s space binding, query parameters, cost accounting and the native (dot-sim) fast path.
+## [DotFpsPhysicsBody]'s space binding, query parameters, cost accounting and the native (GameSpice Sim) fast path.
 ## Split out of dot_fps_physics_body.gd for file size; nothing outside the body names this script.
 
 const CHANNEL := "fps.body"
@@ -24,7 +24,7 @@ var query_count: int:
 
 var _queries: int = 0
 
-## dot-sim's native body ([code]DotSimFpsBody[/code], the [code]motor[/code] module): the same sweep, rest contact and overlap, rounded the same way, so its answers are this script's to the bit (dot-sim's motor parity suite proves it over recorded input streams).
+## GameSpice Sim's native body ([code]DotSimFpsBody[/code], the [code]motor[/code] module): the same sweep, rest contact and overlap, rounded the same way, so its answers are this script's to the bit (GameSpice Sim's motor parity suite proves it over recorded input streams).
 ## Used when the extension is loaded, [member native_enabled] is on and [member profile] is off; on the web, or with no library installed, this script answers.
 ## The motor's collide-and-slide runs there too ([method native_slide]).
 const NATIVE_CLASS := &"DotSimFpsBody"
@@ -98,7 +98,7 @@ func native_slide(
 ## Tick halves run natively ([method native_tick]), for a suite's check.
 static var native_ticks: int = 0
 
-## 1 when the loaded library has the motor tick ([code]motor_pre[/code]; dot-sim releases before it do not), 0 when not, -1 unknown.
+## 1 when the loaded library has the motor tick ([code]motor_pre[/code]; GameSpice Sim releases before it do not), 0 when not, -1 unknown.
 static var _tick_known: int = -1
 
 ## 1 when the loaded library has the whole motor tick ([code]motor_tick[/code]), 0 when not, -1 unknown.
@@ -119,7 +119,7 @@ static func native_full_available() -> bool:
 	return _full_known == 1 and native_tick_available()
 
 
-## Whether [method set_hull_world] can work: the loaded library has dot-sim's hull world.
+## Whether [method set_hull_world] can work: the loaded library has GameSpice Sim's hull world.
 static func native_hull_world_available() -> bool:
 	if _world_known < 0:
 		_world_known = 1 if ClassDB.class_exists(&"DotSimHullWorld") and ClassDB.class_has_method(NATIVE_CLASS, &"set_hull_world") else 0
@@ -285,7 +285,7 @@ func _charge_native(kind: StringName, t: int, before: int) -> void:
 		DotFrameCost.add_query(cost_system, kind, t, maxi(_native.query_count() - before, 1))
 
 
-## Whether physics runs on its own thread (`physics/3d/run_on_separate_thread`, dot-server-deploy's `sv_physics_thread`):
+## Whether physics runs on its own thread (`physics/3d/run_on_separate_thread`, GameSpice Server Deploy's `sv_physics_thread`):
 ## the space is then reachable only inside the physics step. Read at startup; a suite sets it to drive that path.
 static var threaded_physics: bool = bool(ProjectSettings.get_setting("physics/3d/run_on_separate_thread", false))
 

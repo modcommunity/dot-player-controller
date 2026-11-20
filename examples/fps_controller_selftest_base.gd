@@ -143,7 +143,7 @@ func _command(
 
 
 
-## Stands in for dot-net's DotNetClock: all `render_state` asks of a clock is `render_alpha`.
+## Stands in for GameSpice Net's DotNetClock: all `render_state` asks of a clock is `render_alpha`.
 class FakeClock extends RefCounted:
 	var alpha: float = 0.0
 

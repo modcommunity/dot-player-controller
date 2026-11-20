@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-## Editor entry point for dot-player-controller. Registers inspector types only.
+## Editor entry point for GameSpice Player Controller. Registers inspector types only.
 ##
 ## No autoloads: one process can host a server, a client and a spectator camera.
 

@@ -59,7 +59,7 @@ func has_surface(id: StringName) -> bool:
 	return _by_id.has(id)
 
 
-## Every surface of a dot-physics `DotPhysicsSurfaceSet` (anything with a `surfaces` array), through
+## Every surface of a GameSpice Physics `DotPhysicsSurfaceSet` (anything with a `surfaces` array), through
 ## [method DotFpsSurface.from_physics]. Its fallback is the plain default, not the physics set's:
 ## an untagged floor is normal ground.
 static func from_physics(physics_set: Object) -> DotFpsSurfaceSet:

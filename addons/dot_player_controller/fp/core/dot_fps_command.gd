@@ -100,7 +100,7 @@ func sanitise(pitch_min: float = -89.0, pitch_max: float = 89.0) -> void:
 
 ## Writes the command into a bit writer (8 bits buttons, 20 movement, 21 view).
 ## [param writer] is [Variant] because a script that mentions a missing [code]DotNetWriter[/code] class fails to parse
-## in a project without dot-net.
+## in a project without GameSpice Net.
 func write(writer: Variant) -> void:
 	writer.write_float_range(move.x, -1.0, 1.0, 10)
 	writer.write_float_range(move.y, -1.0, 1.0, 10)

@@ -68,7 +68,7 @@ The simulation is a pure function of (state, command, delta, world), so a client
 | `DotFpsViewMotion` | Landing dip, strafe and slide roll, wall-run lean as plain numbers, for games with their own camera. |
 | `DotFpsSampler` | Keyboard, mouse and gamepad to commands. |
 | `DotFpsTouchSampler` | Touch to commands. |
-| `DotFpsNetSync` | What to replicate and how, without importing dot-net. |
+| `DotFpsNetSync` | What to replicate and how, without importing GameSpice Net. |
 | `DotFpsSurface` | Ground behaviour such as ice, mud or a conveyor. |
 | `DotFpsModifier` | A temporary change such as a speed pad, slow field, stun or launcher. |
 | `DotFpsMoveMode` | A movement mode your game adds, such as a ladder, water or grapple. |
@@ -101,7 +101,7 @@ These are part of the simulation, so they replicate and survive replays. See [do
 
 ### Networking
 
-The controller does not import dot-net. Wiring it up takes about 30 lines; see [docs/networking.md](docs/networking.md). Compare `DotFpsTunables.fingerprint()` between client and server, because a config mismatch looks like packet loss.
+The controller does not import GameSpice Net. Wiring it up takes about 30 lines; see [docs/networking.md](docs/networking.md). Compare `DotFpsTunables.fingerprint()` between client and server, because a config mismatch looks like packet loss.
 
 ## Third-person movement
 

@@ -4,7 +4,7 @@ extends Resource
 
 ## A named variation on the movement ("sideways", "low gravity"): same map and records table, different rules.
 ## A transform, not a second system: [method apply_to] derives tunables without mutating the base and [method filter_command] clears forbidden buttons, identically on client and server.
-## A style must not change mid-run ([DotTimerRun]); the ranking half is [code]DotTimerStyle[/code] in dot-timer.
+## A style must not change mid-run ([DotTimerRun]); the ranking half is [code]DotTimerStyle[/code] in GameSpice Timer.
 
 ## A three-state switch so a style can say "leave it alone" without a second override bool per field.
 enum Toggle {

@@ -15,7 +15,7 @@ extends "dot_fps_controller_render.gd"
 ##
 ## A component, not a base class: a host's player already extends what it needs. Everything it touches goes through a [DotNodeRef], so the layout above is a suggestion.
 ## [constant Drive.LOCAL] samples the keyboard and ticks itself; [constant Drive.EXTERNAL] is fed by a net behaviour, replay or bot through [method apply_command] and [method simulate_tick]. The simulation is identical.
-## dot-net is not required; see [DotFpsNetSync] and docs/networking.md.
+## GameSpice Net is not required; see [DotFpsNetSync] and docs/networking.md.
 ## It extends [DotPlayerController] for an identity and handover by a [DotPlayerControllerSwitch]; all of it is inert without a [DotPlayer] ancestor.
 
 
@@ -495,7 +495,7 @@ func apply_command(command: DotFpsCommand) -> void:
 
 
 ## Advances the simulation by one tick.
-## [param delta] must be the fixed tick duration, not a frame time. Under dot-net it runs on the server and the predicting client with the identical command.
+## [param delta] must be the fixed tick duration, not a frame time. Under GameSpice Net it runs on the server and the predicting client with the identical command.
 func simulate_tick(tick: int, delta: float) -> void:
 	if not begin_tick(tick, delta):
 		return
@@ -787,7 +787,7 @@ var _held_centre := NAN
 
 
 ## Moves the player, discarding velocity and smoothing.
-## Under dot-net this is server-authoritative: a client that teleported itself is corrected on the next snapshot.
+## Under GameSpice Net this is server-authoritative: a client that teleported itself is corrected on the next snapshot.
 func teleport(
 	position: Vector3,
 	yaw: float = NAN,
@@ -819,7 +819,7 @@ func teleport(
 
 
 
-## Facts a statistics rule can read about this player right now: airborne, airborne_seconds, wall_running, sliding and speed. dot-combat reads it duck-typed from a victim's controller; only a simulating (server) controller has true values.
+## Facts a statistics rule can read about this player right now: airborne, airborne_seconds, wall_running, sliding and speed. GameSpice Combat reads it duck-typed from a victim's controller; only a simulating (server) controller has true values.
 func get_stats_facts() -> Dictionary:
 	return {
 		"airborne": state.mode == DotFpsState.Mode.AIR,

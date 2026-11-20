@@ -8,7 +8,7 @@ Usage, on every machine: set the player's mask with `world.body_rules.mask(physi
 
 **Both halves, or nothing changes.** The family's player bodies carry no collision shape: the motor sweeps a capsule of its own and the hitboxes are analytic, so a mask with the player layer in it hits nothing. `apply_hull` gives the body a standing capsule on its own layer, which its own controller excludes (it excludes its body) and every other player's sweep stops at. It stays standing height when its owner crouches: a crouched player is not something to walk over.
 
-**Why solid by default.** dot-physics' shooter layout leaves players out of each other's mask, which is the competitive genre's choice: nobody blocks a doorway. The first play test (2026-10-11) showed the other side of it in every game with bots: a bot walks into the player and its face fills the first-person screen, because nothing stops two bodies sharing one place. Solid bodies keep heads at least two radii apart; dot-core's `DotCameraFade` hides whatever still gets inside the near plane.
+**Why solid by default.** GameSpice Physics' shooter layout leaves players out of each other's mask, which is the competitive genre's choice: nobody blocks a doorway. The first play test (2026-10-11) showed the other side of it in every game with bots: a bot walks into the player and its face fills the first-person screen, because nothing stops two bodies sharing one place. Solid bodies keep heads at least two radii apart; GameSpice Core's `DotCameraFade` hides whatever still gets inside the near plane.
 
 **It is part of the simulation, so it replicates.** A client predicts its own player against the others' capsules where it draws them, which can disagree with the server by a few centimetres when two players lean on each other; the reconcile corrects it. A server that wants the genre's pass-through sets 0.
 
@@ -26,7 +26,7 @@ DotTpsCameraRig          moved to the character, yaw applied here
         DotCameraFade    characters between the camera and the rig fade
 ```
 
-**A DotCameraBoom, not a SpringArm3D.** The spring arm cast a ray and snapped to its hit; the boom sweeps a sphere along the line to the shoulder point and eases in ahead of an obstacle (dot-core's docs/camera.md). The shoulder is part of that line: a Marker3D offset sideways after the arm's cast put the camera through any wall the shoulder was against.
+**A DotCameraBoom, not a SpringArm3D.** The spring arm cast a ray and snapped to its hit; the boom sweeps a sphere along the line to the shoulder point and eases in ahead of an obstacle (GameSpice Core's docs/camera.md). The shoulder is part of that line: a Marker3D offset sideways after the arm's cast put the camera through any wall the shoulder was against.
 
 **exclude_own_body.** The rig hangs off the player, so the arm's cast starts inside the player's own collider. The boom's sweeps ignore a shape they start in, so today this is belt and braces for the arm; it is what keeps the player's own body off the fade's list. A `SpringArm3D` excludes nothing unless told, so on a third-person game whose player is a `CharacterBody3D` the arm collides on its first millimetre and collapses to the margin: the camera sits inside the character's head at every distance with every tunable reading as configured. It went unnoticed because `tps_selftest` builds no physics world, so its arm collides with nothing and reports the full length. It walks up rather than taking the body as an argument because the rig is built before the controller has resolved its player.
 

@@ -1,6 +1,6 @@
 class_name DotFpsLegSlow
 extends Node
-## Slows a controller for a few seconds when something breaks the player's legs (dot-combat's `DotFallDamage.legs_broken(seconds, speed_scale)`, or any source of the same shape).
+## Slows a controller for a few seconds when something breaks the player's legs (GameSpice Combat's `DotFallDamage.legs_broken(seconds, speed_scale)`, or any source of the same shape).
 ##
 ## It is a [DotFpsModifier] added through the controller, so the slowdown is part of the replicated modifier set and survives prediction. Off by default: with no [member source] nothing is added, and a game that never sets fall damage never emits the signal. Register the definition on every machine ([method register], from `_ready`), add it on the server only.
 

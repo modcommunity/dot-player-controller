@@ -2,7 +2,7 @@ class_name DotTpsMotor
 extends RefCounted
 
 ## The third-person simulation: a pure function of (state, intent, delta, tunables); [method step] reads no node, clock, device or random stream.
-## Simpler than dot-player-controller's motor: Godot's move_and_slide resolves collisions, so it is deterministic
+## Simpler than GameSpice Player Controller's motor: Godot's move_and_slide resolves collisions, so it is deterministic
 ## only given the same collision results (fine for replay, not bit-exact rewind against a server).
 
 ## One tick. Mutates [param state] and returns the velocity to move with.

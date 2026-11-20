@@ -1,7 +1,7 @@
 class_name DotFpsMotorBatch
 extends RefCounted
-## Several players' motor ticks in runs of one native call (dot-sim's [code]DotSimMotorBatch[/code]), for a server's players' loop.
-## The game first [method add]s every player in roster order (each motor runs the part of its tick no other player can change), then in the same order [method finish]es one, does its own work for that player and goes on. A run is the consecutive rows dot-sim can tick; it is ticked when its first row is finished, each row seeing the earlier ones where they came to rest, as the players' ticks one after another do. A player that ends its tick elsewhere (a teleport, a death) takes the rows after it back ([method moved_after]); they run again. The answers are [method DotFpsMotor.simulate]'s to the bit.
+## Several players' motor ticks in runs of one native call (GameSpice Sim's [code]DotSimMotorBatch[/code]), for a server's players' loop.
+## The game first [method add]s every player in roster order (each motor runs the part of its tick no other player can change), then in the same order [method finish]es one, does its own work for that player and goes on. A run is the consecutive rows GameSpice Sim can tick; it is ticked when its first row is finished, each row seeing the earlier ones where they came to rest, as the players' ticks one after another do. A player that ends its tick elsewhere (a teleport, a death) takes the rows after it back ([method moved_after]); they run again. The answers are [method DotFpsMotor.simulate]'s to the bit.
 
 const NATIVE_CLASS := &"DotSimMotorBatch"
 const _IN := 55
@@ -14,7 +14,7 @@ var retakes: int = 0
 var stale: int = 0
 
 var _native: Object = null
-## Meta values per row: 4 where dot-sim runs the rows' clocks too ([code]run_rows[/code]), else 3.
+## Meta values per row: 4 where GameSpice Sim runs the rows' clocks too ([code]run_rows[/code]), else 3.
 var _meta_len: int = 3
 var _delta: float = 0.0
 var _count: int = 0
@@ -36,12 +36,12 @@ var _out_from: int = 0
 var _out_to: int = 0
 
 
-## Whether the loaded dot-sim has the batch.
+## Whether the loaded GameSpice Sim has the batch.
 static func available() -> bool:
 	return ClassDB.class_exists(NATIVE_CLASS)
 
 
-## Starts a players' loop of ticks [param delta] long; false when dot-sim has no batch (the game ticks each player itself).
+## Starts a players' loop of ticks [param delta] long; false when GameSpice Sim has no batch (the game ticks each player itself).
 func start(delta: float) -> bool:
 	if _native == null:
 		if delta <= 0.0 or not ClassDB.class_exists(NATIVE_CLASS):
@@ -87,7 +87,7 @@ func add(motor: DotFpsMotor, state: DotFpsState, command: DotFpsCommand, delta: 
 	return row
 
 
-## Ends row [param row]'s motor tick. True when dot-sim's hull world already holds where the player came to rest; on false
+## Ends row [param row]'s motor tick. True when GameSpice Sim's hull world already holds where the player came to rest; on false
 ## the game tells it ([method moved_after] is not needed then: no later row has run).
 func finish(row: int) -> bool:
 	var stage := _stage[row]

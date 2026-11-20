@@ -148,7 +148,7 @@ func _render_blend_checks(controller: DotFpsController) -> void:
 		"and with no tick two back, below 0 holds the previous tick",
 		str(controller.render_state().position)
 	)
-	# A clock without render_alpha (an older dot-net) is the engine's fraction, 0..1.
+	# A clock without render_alpha (an older GameSpice Net) is the engine's fraction, 0..1.
 	controller.render_clock = RefCounted.new()
 	var engine := controller.render_state().position.z
 	_check( engine >= 0.0 and engine <= 10.0, "a clock without render_alpha leaves the engine's fraction in charge", str(engine) )

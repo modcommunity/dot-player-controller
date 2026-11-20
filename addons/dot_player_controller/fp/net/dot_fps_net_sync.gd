@@ -2,7 +2,7 @@ class_name DotFpsNetSync
 extends RefCounted
 
 ## What a networked player has to replicate, and how to get it in and out of a [DotFpsState].
-## dot-net is not a dependency and is not imported here: a script that mentions a missing `class_name` fails to parse, so the thin `DotNetBehaviour` that joins the two lives in the host game.
+## GameSpice Net is not a dependency and is not imported here: a script that mentions a missing `class_name` fails to parse, so the thin `DotNetBehaviour` that joins the two lives in the host game.
 ##
 ## [codeblock]
 ## class_name PlayerNet extends DotNetBehaviour
@@ -89,12 +89,12 @@ const WALL_RUN_SHIFT := DASH_SHIFT + DASH_BITS
 const WALL_JUMP_COUNT_SHIFT := WALL_RUN_SHIFT + WALL_RUN_BITS
 const WALL_HEADING_SHIFT := WALL_JUMP_COUNT_SHIFT + WALL_JUMP_COUNT_BITS
 
-## 64: the word is full. dot-net's UINT takes up to 64 bits, and the top field's high
+## 64: the word is full. GameSpice Net's UINT takes up to 64 bits, and the top field's high
 ## bit makes the int negative in GDScript, which every read here masks off. A field
 ## after this one needs a second property, not a wider word.
 const FLAG_BITS := WALL_HEADING_SHIFT + WALL_HEADING_BITS
 
-## Most modifiers a motor can register, and the width of the replicated mask (dot-net's UINT takes up to 64).
+## Most modifiers a motor can register, and the width of the replicated mask (GameSpice Net's UINT takes up to 64).
 const MODIFIER_BITS := 48
 
 
@@ -162,7 +162,7 @@ static func state_specs() -> Array[Dictionary]:
 	]
 
 
-## Bits one full state update costs, before dot-net's own framing.
+## Bits one full state update costs, before GameSpice Net's own framing.
 static func estimated_state_bits() -> int:
 	# position 3x16 + velocity 3x12 + yaw 12 + pitch 9 + crouch 6 + flags (mode, crouch,
 	# the slide, launch and dash timers, buttons, the wall run and wall jumps) + modifiers

@@ -697,7 +697,7 @@ func _push_cap_horizontal_only(t: DotFpsTunables) -> void:
 		"a horizontal push still raises it", "%.3f" % caps[Vector3(0.0, 0.0, -80.0)])
 
 
-## Surfaces read off dot-physics, duck-typed: the fields DotPhysicsSurface has.
+## Surfaces read off GameSpice Physics, duck-typed: the fields DotPhysicsSurface has.
 func _surfaces_from_physics() -> void:
 	var mud_physics := FakePhysicsSurface.new()
 	mud_physics.id = &"mud"
@@ -2181,7 +2181,7 @@ func _test_physics_bank() -> void:
 	_done()
 
 
-## The fields `DotFpsSurface.from_physics` reads off a dot-physics `DotPhysicsSurface`,
+## The fields `DotFpsSurface.from_physics` reads off a GameSpice Physics `DotPhysicsSurface`,
 ## which this addon does not depend on.
 class FakePhysicsSurface:
 	extends RefCounted
