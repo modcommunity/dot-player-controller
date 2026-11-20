@@ -1,4 +1,4 @@
-[![Player Controller - GameSpice addon](docs/banner.png)](https://moddingcommunity.com/a/202-dot-player-controller)
+[![Player Controller - GameSpice addon](docs/banner.png)](https://moddingcommunity.com/a/2-gs-player-controller)
 
 Everything that drives a player: a shared base, a first-person movement model built for prediction and reconciliation, and a third-person model with a camera rig.
 
